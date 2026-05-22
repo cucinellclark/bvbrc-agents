@@ -8,7 +8,7 @@ Multi-agent AI copilot for BV-BRC (Bacterial-Viral Bioinformatics Resource Cente
 
 ```
 Orchestrator (Python/FastAPI, port 9000)
-     → Consolidated MCP Server (port 8053)
+     → Consolidated MCP Server (port 8053)  [separate repo]
           → agent_chat(agent_type="data")      → Data Agent
           → agent_chat(agent_type="service")   → Service Agent
           → agent_chat(agent_type="workspace") → Workspace Agent
@@ -19,26 +19,45 @@ The orchestrator uses a cheap routing LLM (`gpt41mini`) to classify requests, th
 ## Repository layout
 
 ```
-bvbrc-agents/
+bvbrc-agents/                    (this repo)
 ├── agents/
-│   ├── data_agent/          Data retrieval agent (Solr queries)
-│   ├── service_agent/       Service agent v2 — 3-phase workflow builder
-│   └── workspace_agent/     Workspace browsing agent (read-only)
+│   ├── data_agent/              Data retrieval agent (Solr queries)
+│   ├── service_agent/           Service agent v2 — 3-phase workflow builder
+│   └── workspace_agent/         Workspace browsing agent (read-only)
 ├── orchestrator/
-│   ├── orchestrator/        Python FastAPI orchestrator package
-│   ├── config/              agents.yaml
-│   ├── tests/               pytest suite (117 tests)
-│   ├── scripts/             start_orchestrator.sh
+│   ├── orchestrator/            Python FastAPI orchestrator package
+│   ├── config/                  agents.yaml
+│   ├── tests/                   pytest suite (117 tests)
+│   ├── scripts/                 start_orchestrator.sh
 │   └── pyproject.toml
-├── mcp_server/              Consolidated FastMCP HTTP server
-│   ├── tools/               MCP tool registrations + agent_chat_tool.py
-│   ├── functions/           Solr query, service plan, workspace functions
-│   ├── common/              Shared utilities (auth, config, LLM client)
-│   └── config/              config.json
-├── config/                  Shared LLM config (llm.yaml + llm_config.py)
-├── self_evolving_agents/    Plans and docs for the self-evolving feature
+├── config/                      Shared LLM config (llm.yaml + llm_config.py)
+├── self_evolving_agents/        Plans and docs for the self-evolving feature
+├── setup.sh                     One-step setup (clones MCP server, installs deps)
 └── AGENTS.md
 ```
+
+After running `./setup.sh`, the following is cloned into this directory (gitignored):
+
+```
+├── mcp_server/                  Consolidated FastMCP HTTP server
+│   ├── tools/                   MCP tool registrations + agent_chat_tool.py
+│   ├── functions/               Solr query, service plan, workspace functions
+│   ├── common/                  Shared utilities (auth, config, LLM client)
+│   ├── config/                  config.json
+│   └── bvbrc-python-api/        BV-BRC Solr Python API (also cloned)
+```
+
+The MCP server has its own repo: `git@github.com:cucinellclark/bvbrc-mcp-server.git`
+
+## Setup
+
+```bash
+git clone git@github.com:cucinellclark/bvbrc-agents.git
+cd bvbrc-agents
+./setup.sh
+```
+
+This clones the MCP server, creates virtual environments, and installs all dependencies.
 
 ## Shared config: `config/llm.yaml`
 

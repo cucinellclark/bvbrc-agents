@@ -31,11 +31,8 @@ logs/
 .DS_Store
 Thumbs.db
 
-# MCP server runtime data
-mcp_server/rag_data/
-
-# bvbrc-python-api (cloned dependency -- has its own repo)
-mcp_server/bvbrc-python-api/
+# MCP server (cloned dependency -- has its own repo)
+mcp_server/
 
 # Byte-compiled / cached
 *.pyc
