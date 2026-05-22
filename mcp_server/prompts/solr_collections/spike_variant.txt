@@ -1,0 +1,14 @@
+ Primary Key: id
+
+    aa_variant (string)
+    country (case insensitive string)
+    date_inserted (date)
+    date_modified (date)
+    growth_rate (number)
+    id (string)
+    lineage_count (integer)
+    month (string)
+    prevalence (number)
+    region (case insensitive string)
+    sequence_features (array of strings)
+    total_isolates (integer)

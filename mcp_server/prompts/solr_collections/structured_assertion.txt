@@ -1,0 +1,17 @@
+ Primary Key: id
+
+    comment (string)
+    date_inserted (date)
+    date_modified (date)
+    evidence_code (string)
+    feature_id (string)
+    id (string)
+    owner (string)
+    patric_id (string) - Unique genome_feature identifier; follows pattern fig|XXXXXXX.X.peg.X
+    pmid (string)
+    property (string)
+    public (boolean)
+    refseq_locus_tag (string)
+    score (string)
+    source (string)
+    value (string)

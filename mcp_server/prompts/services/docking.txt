@@ -1,0 +1,16 @@
+The parameters for the docking app are:
+  - protein_input_type: Protein input type (required)
+  - input_pdb: PDB structure IDs (optional)
+  - user_pdb_file: User-provided PDB files (optional)
+  - ligand_library_type: Ligand library type (required)
+  - ligand_named_library: Named ligand library (optional)
+  - ligand_smiles_list: SMILES string list (optional)
+  - ligand_ws_file: Workspace ligand file (optional)
+  - top_n: Number of top results to return (optional)
+  - batch_size: Batch processing size (default: 10)
+  - output_path: Output directory (required)
+  - output_file: Output basename (required)
+
+At least one protein input (input_pdb or user_pdb_file) must be provided.
+At least one ligand input (ligand_named_library, ligand_smiles_list, or ligand_ws_file) must be provided.
+

@@ -1,0 +1,77 @@
+Goal
+- Submit `ComprehensiveGenomeAnalysis` with unambiguous input mode and valid enum IDs.
+
+Required
+- `input_type`, `output_path`, `output_file`, `scientific_name`
+- `code` (use default `0` if unknown)
+- `domain` (use default `"auto"` if unknown)
+
+Conditional Required
+- If `input_type="reads"`: require one of `paired_end_libs` or `single_end_libs` or `srr_ids`
+- If `input_type="contigs"`: require `contigs` or `reference_assembly`
+- If `input_type="genbank"`: require `genbank_file` or `gto`
+
+Allowed Values
+- `input_type`: `reads`, `contigs`, `genbank`
+- `recipe`: `auto`, `unicycler`, `canu`, `spades`, `meta-spades`, `plasmid-spades`, `single-cell`, `flye`
+- `domain`: `Bacteria`, `Archaea`, `Viruses`, `auto`
+- `code`: `0`, `1`, `4`, `11`, `25`
+- Library `platform`: `infer`, `illumina`, `pacbio`, `pacbio_hifi`, `nanopore`
+
+Compatibility
+- `reads` mode: do not include `contigs`, `reference_assembly`, `genbank_file`, or `gto`
+- `contigs` mode: do not include read inputs (`paired_end_libs`, `single_end_libs`, `srr_ids`) or genbank inputs
+- `genbank` mode: do not include read or contig inputs
+
+Defaults
+- `recipe="auto"`, `racon_iter=2`, `pilon_iter=2`
+- `trim=false`, `normalize=false`, `filtlong=false`
+- `target_depth=200`, `genome_size=5000000`, `min_contig_len=300`, `min_contig_cov=5`
+- `code=0`, `domain="auto"`, `public=false`, `queue_nowait=false`, `skip_indexing=false`
+
+Hard Validation Rules
+- Reject non-enum values for `input_type`, `recipe`, `domain`, `code`, and library `platform`
+- Reject ambiguous mixed input-mode payloads
+- Normalize common aliases only when unambiguous (`read` -> `reads`, `meta-flye` -> `flye`, `bacterial` -> `Bacteria`)
+- For paired reads, use canonical object shape only:
+  - each `paired_end_libs` item must include `read1` and `read2`
+  - optional fields: `platform`, `interleaved`, `read_orientation_outward`
+- Do not emit paired-read aliases like `left_reads/right_reads`, `forward_reads/reverse_reads`, `r1/r2`, or `file/lib_type` objects
+
+Common Failure To Avoid
+- Invalid recipe IDs (`meta-flye`, `megahit`) without normalization/confirmation
+- `input_type` not matching provided file/source fields
+- Missing reads/contigs/genbank source for selected `input_type`
+
+Examples
+```json
+{
+  "input_type": "reads",
+  "output_path": "/__USER_ID__/home/Project",
+  "output_file": "ecoli_cga",
+  "paired_end_libs": [
+    {
+      "read1": "/__USER_ID__/home/reads/sample_R1.fastq",
+      "read2": "/__USER_ID__/home/reads/sample_R2.fastq",
+      "platform": "illumina"
+    }
+  ],
+  "scientific_name": "Escherichia coli",
+  "taxonomy_id": 562,
+  "code": 11,
+  "domain": "Bacteria"
+}
+```
+
+```json
+{
+  "input_type": "contigs",
+  "output_path": "/__USER_ID__/home/Project",
+  "output_file": "my_contig_cga",
+  "contigs": "/__USER_ID__/home/inputs/my_contigs",
+  "scientific_name": "Klebsiella pneumoniae",
+  "code": 11,
+  "domain": "Bacteria"
+}
+```
+

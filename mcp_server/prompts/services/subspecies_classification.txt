@@ -1,0 +1,12 @@
+The parameters for the subspecies classification app are:
+  - input_source: Input source type - id_list/fasta_data/fasta_file/genome_group (required)
+  - input_fasta_data: Input sequences in FASTA format (optional)
+  - input_fasta_file: Input FASTA file (optional)
+  - input_genome_group: Input genome group (optional)
+  - ref_msa_fasta: Reference multiple sequence alignment (optional)
+  - virus_type: Virus type for classification (required)
+  - output_path: Output directory (required)
+  - output_file: Output basename (required)
+
+At least one sequence input (input_fasta_data, input_fasta_file, or input_genome_group) must be provided.
+

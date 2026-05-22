@@ -1,0 +1,216 @@
+{
+  "manifest_version": "0.2",
+  "name": "bvbrc-mcp",
+  "display_name": "BV-BRC MCP",
+  "version": "0.0.1",
+  "description": "MCP Server for the Bacterial-Viral Bioinformatics Resource Center",
+  "author": {
+    "name": "BV-BRC",
+    "email": "cucinell@anl.gov"
+  },
+  "homepage": "https://www.bv-brc.org",
+  "documentation": "https://www.bv-brc.org/docs/",
+  "server": {
+    "type": "python",
+    "entry_point": "stdio_server.py",
+    "mcp_config": {
+      "command": "${__dirname}/mcp_env/bin/python3",
+      "args": ["${__dirname}/stdio_server.py"],
+      "env": {
+        "PYTHONPATH": "${__dirname}:${__dirname}/mcp_env/lib/python3.10/site-packages",
+        "KB_AUTH_TOKEN": ""
+      }
+    }
+  },
+  "tools": [
+    {
+      "name": "query_collection",
+      "description": "Query BV-BRC data directly using collection name and Solr query expression"
+    },
+    {
+      "name": "solr_collection_parameters",
+      "description": "Get parameters for a given collection"
+    },
+    {
+      "name": "solr_query_instructions",
+      "description": "Get general query instructions for all collections"
+    },
+    {
+      "name": "solr_collections",
+      "description": "Get all available collections"
+    },
+    {
+      "name": "list_service_apps",
+      "description": "Enumerate all apps"
+    },
+    {
+      "name": "submit_date_app",
+      "description": "Start the date app"
+    },
+    {
+      "name": "get_service_info",
+      "description": "Get information about the service"
+    },
+    {
+      "name": "get_job_details",
+      "description": "Query tasks"
+    },
+    {
+      "name": "list_jobs",
+      "description": "List jobs with sorting and filtering"
+    },
+    {
+      "name": "genome_assembly",
+      "description": "Genome assembly service"
+    },
+    {
+      "name": "genome_annotation",
+      "description": "Genome annotation service"
+    },
+    {
+      "name": "comprehensive_genome_analysis",
+      "description": "Comprehensive genome analysis service"
+    },
+    {
+      "name": "blast",
+      "description": "BLAST search service"
+    },
+    {
+      "name": "primer_design",
+      "description": "Primer design service"
+    },
+    {
+      "name": "variation",
+      "description": "Variation analysis service"
+    },
+    {
+      "name": "tnseq",
+      "description": "TnSeq analysis service"
+    },
+    {
+      "name": "bacterial_genome_tree",
+      "description": "Bacterial genome tree service"
+    },
+    {
+      "name": "gene_tree",
+      "description": "Gene tree service"
+    },
+    {
+      "name": "core_genome_mlst",
+      "description": "Core genome MLST service"
+    },
+    {
+      "name": "whole_genome_snp",
+      "description": "Whole genome SNP analysis service"
+    },
+    {
+      "name": "taxonomic_classification",
+      "description": "Taxonomic classification service"
+    },
+    {
+      "name": "metagenomic_binning",
+      "description": "Metagenomic binning service"
+    },
+    {
+      "name": "metagenomic_read_mapping",
+      "description": "Metagenomic read mapping service"
+    },
+    {
+      "name": "rnaseq",
+      "description": "RNA-seq analysis service"
+    },
+    {
+      "name": "expression_import",
+      "description": "Expression import service"
+    },
+    {
+      "name": "sars_wastewater_analysis",
+      "description": "SARS wastewater analysis service"
+    },
+    {
+      "name": "sequence_submission",
+      "description": "Sequence submission service"
+    },
+    {
+      "name": "influenza_ha_subtype_conversion",
+      "description": "Influenza HA subtype conversion service"
+    },
+    {
+      "name": "subspecies_classification",
+      "description": "Subspecies classification service"
+    },
+    {
+      "name": "viral_assembly",
+      "description": "Viral assembly service"
+    },
+    {
+      "name": "genome_alignment",
+      "description": "Genome alignment service"
+    },
+    {
+      "name": "sars_genome_analysis",
+      "description": "SARS genome analysis service"
+    },
+    {
+      "name": "msa_snp_analysis",
+      "description": "MSA SNP analysis service"
+    },
+    {
+      "name": "metacats",
+      "description": "Metacats analysis service"
+    },
+    {
+      "name": "proteome_comparison",
+      "description": "Proteome comparison service"
+    },
+    {
+      "name": "comparative_systems",
+      "description": "Comparative systems analysis service"
+    },
+    {
+      "name": "docking",
+      "description": "Docking service"
+    },
+    {
+      "name": "similar_genome_finder",
+      "description": "Similar genome finder service"
+    },
+    {
+      "name": "fastqutils",
+      "description": "FASTQ utilities service"
+    },
+    {
+      "name": "workspace_browse_tool",
+      "description": "Find and list files in the user's personal workspace by name, type, or extension"
+    },
+    {
+      "name": "get_file_metadata",
+      "description": "Get normalized file metadata from either workspace paths or local session files"
+    },
+    {
+      "name": "workspace_download_file_tool",
+      "description": "Download a file from the workspace"
+    },
+    {
+      "name": "workspace_upload",
+      "description": "Create an upload URL for a file in the workspace"
+    },
+    {
+      "name": "create_genome_group",
+      "description": "Create a genome group in the workspace"
+    },
+    {
+      "name": "create_feature_group",
+      "description": "Create a feature group in the workspace"
+    },
+    {
+      "name": "get_genome_group_ids",
+      "description": "Get genome_ids from a specific genome group (requires genome_group_name or genome_group_path)"
+    },
+    {
+      "name": "get_feature_group_ids",
+      "description": "Get feature_ids from a specific feature group (requires feature_group_name or feature_group_path)"
+    }
+  ],
+  "license": "MIT"
+}

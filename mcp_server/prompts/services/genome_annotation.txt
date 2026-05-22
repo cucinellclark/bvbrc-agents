@@ -1,0 +1,11 @@
+The parameters for the genome annotation app are:
+  - contigs: Input contig file (required)
+  - scientific_name: Scientific name of organism (required)
+  - code: Genetic code (default: 0)
+    - options: 0, 1, 4, 11, 25
+  - domain: Taxonomic domain (default: 'auto')
+    - options: Bacteria, Archaea, Viruses, auto
+  - recipe: Specifies a non-default annotation recipe (optional)
+  - taxonomy_id: NCBI Taxonomy ID (optional)
+  - output_path: Output directory (required)
+  - output_file: Output basename (required)

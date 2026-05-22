@@ -1,0 +1,14 @@
+The parameters for the genome alignment app are:
+  - genome_ids: Genome IDs for alignment (required)
+  - recipe: Alignment algorithm - progressiveMauve (default: progressiveMauve)
+  - seedWeight: Seed weight for alignment (optional)
+  - maxGappedAlignerLength: Maximum gapped aligner length (optional)
+  - maxBreakpointDistanceScale: Maximum breakpoint distance scale (optional)
+  - conservationDistanceScale: Conservation distance scale (optional)
+  - weight: Alignment weight (optional)
+  - minScaledPenalty: Minimum scaled penalty (optional)
+  - hmmPGoHomologous: HMM probability for homologous regions (optional)
+  - hmmPGoUnrelated: HMM probability for unrelated regions (optional)
+  - output_path: Output directory (required)
+  - output_file: Output basename (required)
+

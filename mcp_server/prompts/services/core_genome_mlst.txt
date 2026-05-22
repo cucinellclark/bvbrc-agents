@@ -1,0 +1,12 @@
+The parameters for the core genome MLST app are:
+  - input_genome_type: Input type - genome_group/genome_fasta (required, default: genome_group)
+  - analysis_type: Analysis type - chewbbaca (required, default: chewbbaca)
+  - input_genome_group: Genome group name (optional)
+  - input_genome_fasta: Genome FASTA data (optional)
+  - schema_location: Path to schema directory (optional)
+  - input_schema_selection: Schema species selection (required)
+  - output_path: Output directory (required)
+  - output_file: Output basename (required)
+
+At least one genome input (input_genome_group or input_genome_fasta) must be provided.
+

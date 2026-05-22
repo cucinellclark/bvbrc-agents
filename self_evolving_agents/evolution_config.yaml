@@ -1,0 +1,350 @@
+# =============================================================================
+# Self-Evolving Agents Configuration
+# =============================================================================
+# Controls which LLM models are used for each evolution component, what files
+# are eligible for evolution, scoring rubrics, and approval policies.
+#
+# This is the single source of truth for the evolution system. All components
+# read from this file. Environment variable overrides follow the same pattern
+# as config/llm.yaml (prefix with EVOLUTION_).
+#
+# The evolution system uses SEPARATE models from the agents themselves.
+# This lets you use a cheap model for judging, a strong model for proposing
+# changes, and your production model for validation -- independently.
+# =============================================================================
+
+
+# ---------------------------------------------------------------------------
+# LLM Endpoints
+# ---------------------------------------------------------------------------
+# Define named endpoints that components reference. This avoids repeating
+# base_url/api_key for every component.
+
+endpoints:
+  argo:
+    base_url: "https://apps.inside.anl.gov/argoapi/v1"
+    api_key: "cucinell"
+    timeout_seconds: 120
+
+  # Add additional endpoints here if needed (e.g., local vLLM, Azure, etc.)
+  # local:
+  #   base_url: "http://mango.cels.anl.gov:8004/v1"
+  #   api_key: "not-needed"
+  #   timeout_seconds: 60
+
+
+# ---------------------------------------------------------------------------
+# Models per Component
+# ---------------------------------------------------------------------------
+# Each evolution component can use a different model. Use the cheapest
+# model that works for the task to control costs.
+#
+# Guidelines:
+#   - judge: High volume, needs consistency. A mid-tier model works well.
+#   - prompt_evolver: Needs creativity + domain understanding. Use your best.
+#   - code_evolver: Needs strong code generation. Use your best.
+#   - validator: Runs the benchmark to verify proposals. Uses the SAME model
+#     as production so the comparison is fair.
+#   - router_judge: Specialized judge for routing decisions. Can be cheap.
+
+models:
+  # Judges traces for quality scoring. Called once per interaction.
+  judge:
+    endpoint: argo
+    model: "gpt41mini"
+    temperature: 0.0
+    max_tokens: 2048
+
+  # Proposes prompt edits based on failure analysis.
+  prompt_evolver:
+    endpoint: argo
+    model: "gpt41"
+    temperature: 0.3       # Slight creativity for diverse proposals
+    max_tokens: 4096
+
+  # Proposes code changes (tool logic, agent loop, routing, etc.)
+  code_evolver:
+    endpoint: argo
+    model: "gpt41"
+    temperature: 0.2
+    max_tokens: 8192
+
+  # Validates proposals by re-running benchmarks. Should match production.
+  validator:
+    endpoint: argo
+    model: "gpt41"
+    temperature: 0.0
+    max_tokens: 4096
+
+  # Lightweight classifier for routing-specific judgments.
+  router_judge:
+    endpoint: argo
+    model: "gpt41mini"
+    temperature: 0.0
+    max_tokens: 512
+
+
+# ---------------------------------------------------------------------------
+# Evolution Targets
+# ---------------------------------------------------------------------------
+# What files/sections are eligible for evolution. Each target specifies:
+#   - path: relative to Agents/ root
+#   - type: "prompt" or "code"
+#   - sections: (prompts only) named sections within the file
+#   - description: what this target controls
+#   - priority: how aggressively to evolve (high/medium/low)
+#   - frozen: if true, never propose changes (safety rail)
+
+targets:
+  # --- Prompt Targets ---
+
+  data_agent_system_prompt:
+    path: "Data/data_agent/prompts/system.py"
+    type: prompt
+    description: "Data agent system prompt -- query strategy, Solr syntax, constraints"
+    priority: high
+    frozen: false
+    sections:
+      - name: "_STRATEGY"
+        description: "6-point query strategy guide"
+        line_range: [143, 177]
+      - name: "_PROBE_STRATEGY"
+        description: "Data reconnaissance instructions"
+        line_range: [179, 203]
+      - name: "_EFFICIENCY"
+        description: "Iteration budget and pipeline mode"
+        line_range: [205, 231]
+      - name: "_CONSTRAINTS"
+        description: "Hard limits (result count, batch size)"
+        line_range: [233, 245]
+      - name: "_QUERY_SYNTAX"
+        description: "Solr query syntax reference"
+        line_range: [27, 126]
+        # This is mostly factual reference -- lower priority for evolution
+        priority_override: low
+
+  routing_prompt:
+    path: "Orchestrator/orchestrator/router/prompts.py"
+    type: prompt
+    description: "Orchestrator routing system prompt"
+    priority: high
+    frozen: false
+    sections:
+      - name: "ROUTING_SYSTEM_PROMPT"
+        description: "Full routing decision prompt"
+        line_range: [11, 87]
+
+  synthesis_prompt:
+    path: "Orchestrator/orchestrator/synthesizer/prompts.py"
+    type: prompt
+    description: "Response synthesis prompt"
+    priority: medium
+    frozen: false
+    sections:
+      - name: "SYNTHESIS_SYSTEM_PROMPT"
+        description: "Synthesis role and rules"
+        line_range: [13, 38]
+
+  service_phase1_prompt:
+    path: "Service2/service_agent/prompts/phase1.py"
+    type: prompt
+    description: "Service agent workflow decomposition prompt"
+    priority: high
+    frozen: false
+    sections:
+      - name: "build_phase1_prompt"
+        description: "Full Phase 1 decomposition instructions"
+        line_range: [10, 113]
+
+  # --- Code Targets ---
+
+  data_agent_loop:
+    path: "Data/data_agent/agent.py"
+    type: code
+    description: "Data agent core loop -- iteration logic, duplicate detection, forced synthesis"
+    priority: medium
+    frozen: false
+
+  router_logic:
+    path: "Orchestrator/orchestrator/router/router.py"
+    type: code
+    description: "Router parsing, fallback keyword routing, fuzzy agent matching"
+    priority: medium
+    frozen: false
+
+  service_decompose:
+    path: "Service2/service_agent/phases/decompose.py"
+    type: code
+    description: "Phase 1 decomposition loop -- anti-loop, tool fingerprinting"
+    priority: medium
+    frozen: false
+
+  service_build:
+    path: "Service2/service_agent/phases/build.py"
+    type: code
+    description: "Phase 2 build loop -- per-step parameter resolution"
+    priority: medium
+    frozen: false
+
+  data_tool_registry:
+    path: "Data/data_agent/tool_registry.py"
+    type: code
+    description: "Data agent tool schemas -- search_data, facet_query, probe_data, etc."
+    priority: low
+    frozen: false
+
+  orchestrate_pipeline:
+    path: "Orchestrator/orchestrator/orchestrate.py"
+    type: code
+    description: "Main orchestration pipeline -- route/execute/synthesize wiring"
+    priority: low
+    frozen: true   # Core plumbing -- evolve with extreme caution
+
+  # --- Frozen / Reference-Only ---
+
+  collection_reference:
+    path: "Data/data_agent/prompts/collection_reference.py"
+    type: prompt
+    description: "Auto-generated field reference from data_types.xlsx"
+    priority: low
+    frozen: true   # Generated file -- regenerate from source, don't edit directly
+
+  agents_yaml:
+    path: "Orchestrator/config/agents.yaml"
+    type: prompt    # Agent descriptions are LLM-facing text
+    description: "Agent registry -- names, descriptions, capabilities"
+    priority: medium
+    frozen: false
+
+
+# ---------------------------------------------------------------------------
+# Scoring Rubric
+# ---------------------------------------------------------------------------
+# Dimensions the LLM judge evaluates for each traced interaction.
+# Weights must sum to 1.0.
+
+scoring:
+  dimensions:
+    routing_accuracy:
+      weight: 0.15
+      description: "Did the router select the correct agent for this query?"
+      scale: "1=wrong agent, 3=correct but suboptimal, 5=perfect routing"
+
+    answer_completeness:
+      weight: 0.25
+      description: "Does the response fully address the user's question?"
+      scale: "1=missing/wrong, 3=partial, 5=complete and thorough"
+
+    answer_correctness:
+      weight: 0.25
+      description: "Is the factual content accurate? Are numbers/data correct?"
+      scale: "1=fabricated/wrong data, 3=mostly correct, 5=verified accurate"
+
+    efficiency:
+      weight: 0.15
+      description: "How many tool calls/iterations were needed vs optimal?"
+      scale: "1=excessive looping, 3=reasonable, 5=optimal path"
+
+    response_quality:
+      weight: 0.10
+      description: "Is the response well-formatted, clear, and actionable?"
+      scale: "1=confusing/messy, 3=adequate, 5=excellent presentation"
+
+    error_handling:
+      weight: 0.10
+      description: "When errors occurred, were they handled gracefully?"
+      scale: "1=silent failure, 3=acknowledged, 5=recovered with alternatives"
+
+  # Thresholds for categorizing interactions
+  thresholds:
+    excellent: 4.5    # >= this -> store in successes
+    good: 3.5         # >= this -> acceptable, no action needed
+    needs_improvement: 2.5  # >= this -> flag for review
+    failure: 0.0      # below needs_improvement -> store in failures
+
+
+# ---------------------------------------------------------------------------
+# Experience Bank
+# ---------------------------------------------------------------------------
+experience_bank:
+  storage_dir: "self_evolving_agents/experience_bank"
+  max_entries_per_category: 500    # Prevent unbounded growth
+  retention_days: 90               # Auto-prune old entries
+
+  categories:
+    - routing
+    - data_agent
+    - service_agent
+    - workspace_agent
+    - synthesis
+    - pipeline
+
+
+# ---------------------------------------------------------------------------
+# Evolution Policy
+# ---------------------------------------------------------------------------
+evolution:
+  # How many failure traces to accumulate before triggering evolution
+  min_failures_to_evolve: 10
+
+  # How many success traces to include as positive examples
+  max_successes_for_context: 5
+
+  # Maximum number of pending proposals before blocking new evolution runs
+  max_pending_proposals: 5
+
+  # Whether to auto-run the benchmark after applying an approved proposal
+  auto_benchmark_after_apply: true
+
+  # Benchmark config (reuses bruce_questions infrastructure)
+  benchmark:
+    questions_path: "bruce_questions/results"  # Or path to questions JSON
+    max_questions: 20       # Subset for quick validation runs
+    timeout_per_question: 120
+
+
+# ---------------------------------------------------------------------------
+# Approval Policy
+# ---------------------------------------------------------------------------
+approval:
+  # "manual" = human must approve every proposal
+  # "auto_prompt" = auto-approve prompt changes if benchmark improves
+  # "auto_all" = auto-approve everything if benchmark improves (dangerous)
+  mode: "manual"
+
+  # Where proposals are stored
+  proposals_dir: "self_evolving_agents/proposals"
+
+  # Git integration -- if true, each applied proposal is committed
+  git_commit_on_apply: false
+
+  # Require benchmark improvement to allow approval
+  require_benchmark_improvement: true
+
+  # Minimum benchmark score improvement to auto-approve (only for auto modes)
+  min_improvement_threshold: 0.05   # 5% improvement required
+
+
+# ---------------------------------------------------------------------------
+# Trace Collection
+# ---------------------------------------------------------------------------
+tracing:
+  # Where interaction traces are persisted
+  storage_dir: "self_evolving_agents/traces"
+
+  # Whether trace collection is active (set false to disable without removing code)
+  enabled: true
+
+  # What to capture in each trace
+  capture:
+    - events           # Full event stream
+    - routing_decision # Router output
+    - tool_calls       # Agent tool calls with args and results
+    - timing           # Per-stage timing
+    - final_response   # The response text
+
+  # Maximum traces to keep before rotation
+  max_traces: 10000
+
+  # Whether to also trace benchmark runs (useful for before/after comparison)
+  trace_benchmarks: true

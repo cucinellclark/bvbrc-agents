@@ -1,0 +1,7 @@
+ Primary Key: family_id
+
+    date_inserted (date)
+    date_modified (date)
+    family_id (string)
+    family_product (string)
+    family_type (string)

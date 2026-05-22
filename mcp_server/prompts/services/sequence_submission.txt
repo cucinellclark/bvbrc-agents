@@ -1,0 +1,23 @@
+The parameters for the sequence submission app are:
+  - input_source: Input source type - id_list/fasta_data/fasta_file/genome_group (required)
+  - input_fasta_data: Input sequences in FASTA format (optional)
+  - input_fasta_file: Input FASTA file (optional)
+  - input_genome_group: Input genome group (optional)
+  - metadata: Metadata CSV file (required)
+  - affiliation: Submitter affiliation (optional)
+  - first_name: Submitter first name (required)
+  - last_name: Submitter last name (required)
+  - email: Submitter email (required)
+  - consortium: Submitter consortium (optional)
+  - country: Submitter country (optional)
+  - phoneNumber: Submitter phone number (optional)
+  - street: Submitter street address (optional)
+  - postal_code: Submitter postal code (optional)
+  - city: Submitter city (optional)
+  - state: Submitter state (optional)
+  - numberOfSequences: Number of sequences in submission (optional)
+  - output_path: Output directory (required)
+  - output_file: Output basename (required)
+
+At least one sequence input (input_fasta_data, input_fasta_file, or input_genome_group) must be provided.
+

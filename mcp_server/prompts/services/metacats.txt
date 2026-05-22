@@ -1,0 +1,14 @@
+The parameters for the metacats app are:
+  - output_path: Output directory (required)
+  - output_file: Output basename (required)
+  - p_value: P-value threshold for significance (default: 0.05)
+  - year_ranges: Year range filters (optional)
+  - metadata_group: Metadata group for analysis (optional)
+  - input_type: Input data type (optional)
+  - alphabet: Sequence alphabet - na (default: na)
+  - groups: Analysis groups (optional)
+  - alignment_file: Input alignment file (optional)
+  - group_file: Group definition file (optional)
+  - alignment_type: Alignment type (optional)
+  - auto_groups: Automatic group detection (optional)
+

@@ -1,0 +1,59 @@
+# =============================================================================
+# BV-BRC Workspace Agent Configuration
+# =============================================================================
+# This file contains all tunable parameters for the workspace exploration agent.
+# Edit this file to change model endpoints, context limits, or agent behavior
+# without modifying Python source code.
+#
+# To use a different config file, set the WORKSPACE_AGENT_CONFIG environment
+# variable to its path, or pass config_path to AgentConfig.from_yaml().
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# LLM Settings
+# ---------------------------------------------------------------------------
+# LLM defaults are now loaded from the shared config at:
+#   Agents/config/llm.yaml
+#
+# To override LLM settings for THIS agent only, uncomment the lines below.
+# Otherwise, all agents and the orchestrator share the same LLM endpoint.
+#
+# llm:
+#   base_url: "http://mango.cels.anl.gov:8004/v1"
+#   api_key: "not-needed"
+#   model: "RedHatAI/Llama-4-Scout-17B-16E-Instruct-FP8-dynamic"
+#   temperature: 0.0
+#   max_tokens: 4096
+
+# ---------------------------------------------------------------------------
+# Context Window Management
+# ---------------------------------------------------------------------------
+context:
+  # Maximum tokens to send to the model (should be below the model's actual
+  # context limit to leave room for output tokens and overhead).
+  # Llama-4-Scout has a 100K context window; we leave 10K headroom.
+  max_context_tokens: 90000
+
+  # Maximum characters for a single serialized tool result before truncation.
+  # Larger values preserve more detail per tool call but consume more context.
+  max_tool_result_chars: 8000
+
+# ---------------------------------------------------------------------------
+# Agent Behavior
+# ---------------------------------------------------------------------------
+agent:
+  # Maximum plan-execute-evaluate iterations before forcing a final answer
+  max_iterations: 8
+
+  # Timeout for individual tool executions (seconds)
+  tool_timeout_seconds: 30
+
+# ---------------------------------------------------------------------------
+# BV-BRC Workspace API
+# ---------------------------------------------------------------------------
+workspace:
+  # Workspace JSON-RPC endpoint
+  api_url: "https://p3.theseed.org/services/Workspace"
+
+  # Path to the MCP server directory (for importing workspace_functions)
+  mcp_server_path: "/home/ac.cucinell/bvbrc-dev/Copilot/Agents/Workspace/bvbrc-mcp-server"

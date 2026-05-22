@@ -1,0 +1,14 @@
+ Primary Key: id
+
+    date_inserted (date)
+    date_modified (date)
+    ec_description (string)
+    ec_number (string)
+    id (string)
+    map_location (array of strings)
+    map_name (string)
+    map_type (string)
+    occurrence (integer)
+    pathway_class (string)
+    pathway_id (string)
+    pathway_name (string)

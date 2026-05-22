@@ -1,0 +1,15 @@
+ Primary Key: id
+
+    class (string)
+    date_inserted (date)
+    date_modified (date)
+    description (string)
+    id (string)
+    notes (array of strings)
+    pmid (array of strings)
+    role_id (array of strings)
+    role_name (array of strings)
+    subclass (string)
+    subsystem_id (string)
+    subsystem_name (string)
+    superclass (string)

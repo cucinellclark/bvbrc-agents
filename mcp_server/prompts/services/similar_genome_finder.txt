@@ -1,0 +1,15 @@
+The parameters for the similar genome finder app are:
+  - selectedGenomeId: Reference genome ID (optional)
+  - fasta_file: FASTA file input (optional)
+  - max_pvalue: Maximum p-value threshold (optional)
+  - max_distance: Maximum distance threshold (optional)
+  - max_hits: Maximum number of hits (optional)
+  - include_reference: Include reference genomes (optional)
+  - include_representative: Include representative genomes (optional)
+  - include_bacterial: Include bacterial genomes (optional)
+  - include_viral: Include viral genomes (optional)
+  - output_path: Output directory (required)
+  - output_file: Output basename (required)
+
+At least one query input (selectedGenomeId or fasta_file) must be provided.
+

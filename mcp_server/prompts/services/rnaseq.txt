@@ -1,0 +1,19 @@
+The parameters for the RNA-seq app are:
+  - experimental_conditions: Experimental conditions for analysis (optional)
+  - contrasts: Statistical contrasts for comparison (optional)
+  - strand_specific: Strand-specific reads (default: True)
+  - paired_end_libs: Paired-end read libraries with sample IDs (optional)
+  - single_end_libs: Single-end read libraries with sample IDs (optional)
+  - srr_libs: SRA datasets with sample IDs (optional)
+  - reference_genome_id: Reference genome ID (required)
+  - genome_type: Genome type - bacteria/host (required)
+  - recipe: Analysis recipe - HTSeq-DESeq/cufflinks/Host (required, default: HTSeq-DESeq)
+  - host_ftp: Host FTP prefix for file access (optional)
+  - output_path: Output directory (required)
+  - output_file: Output basename (required)
+  - trimming: Run TrimGalore on reads (default: False)
+  - unit_test: Unit test JSON file path (optional)
+  - skip_sampling: Skip sampling step in alignment (optional)
+
+At least one input source (paired_end_libs, single_end_libs, or srr_libs) must be provided.
+

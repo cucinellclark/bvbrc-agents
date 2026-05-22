@@ -1,0 +1,23 @@
+The parameters for the SARS wastewater analysis app are:
+  - paired_end_libs: Paired-end read libraries with sample metadata (optional)
+  - single_end_libs: Single-end read libraries with sample metadata (optional)
+  - srr_libs: SRA datasets with sample metadata (optional)
+  - recipe: Assembly recipe - onecodex (default: auto)
+  - primers: Primer set - ARTIC/midnight/qiagen/swift/varskip/varskip-long (required, default: ARTIC)
+  - minimum_base_quality_score: Minimum base quality score (default: 20)
+  - minimum_genome_coverage: Minimum genome coverage (default: 60)
+  - agg_minimum_lineage_abundance: Minimum lineage abundance for plots (default: 0.01)
+  - minimum_coverage_depth: Minimum coverage depth (default: 0)
+  - confirmedonly: Exclude unconfirmed lineages (default: False)
+  - minimum_lineage_abundance: Minimum lineage abundance (default: 0.001)
+  - coverage_estimate: Coverage estimate value (default: 10)
+  - timeseries_plot_interval: Timeseries plot interval (default: 0)
+  - primer_version: Primer version number (optional)
+  - barcode_csv: Custom barcode path (optional)
+  - sample_metadata_csv: Sample metadata CSV (optional)
+  - keep_intermediates: Keep intermediate outputs (default: True)
+  - output_path: Output directory (required)
+  - output_file: Output basename (required)
+
+At least one input source (paired_end_libs, single_end_libs, or srr_libs) must be provided.
+

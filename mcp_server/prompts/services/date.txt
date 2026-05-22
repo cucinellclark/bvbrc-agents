@@ -1,0 +1,4 @@
+The parameters for the date app are:
+- output_path: The path for the output files (required)
+- output_file: The name of the output file (required)
+

@@ -1,0 +1,15 @@
+The parameters for the gene tree app are:
+  - sequences: Sequence data inputs (required)
+  - alignment_program: Alignment program - muscle/mafft (optional)
+  - trim_threshold: Alignment end-trimming threshold (optional)
+  - gap_threshold: Delete gappy sequences threshold (optional)
+  - alphabet: Sequence alphabet - DNA/Protein (required)
+  - substitution_model: Substitution model (optional)
+  - bootstrap: Number of bootstrap replicates (optional)
+  - recipe: Tree construction recipe - RAxML/PhyML/FastTree (default: RAxML)
+  - tree_type: Type of tree - viral_genome/gene (optional)
+  - feature_metadata_fields: Gene metadata fields (optional)
+  - genome_metadata_fields: Genome metadata fields (optional)
+  - output_path: Output directory (required)
+  - output_file: Output basename (required)
+

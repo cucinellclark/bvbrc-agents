@@ -1,0 +1,15 @@
+{
+    "mcpServers": {
+      "bvbrc-mcp": {
+        "command": "<path_to_mcp_env>/bin/python3",
+        "args": ["<path_to_bvbrc_mcp_server>/stdio_server.py"],
+        "env": {
+            "BVBRC_BASE_URL": "https://www.bv-brc.org/api-bulk",
+            "WORKSPACE_API_URL": "https://p3.theseed.org/services/Workspace",
+            "SERVICE_API_URL": "https://p3.theseed.org/services/app_service",
+            "SIMILAR_GENOME_FINDER_API_URL": "https://p3.theseed.org/services/minhash_service",
+            "KB_AUTH_TOKEN": ""
+        }
+      }
+    }
+  }

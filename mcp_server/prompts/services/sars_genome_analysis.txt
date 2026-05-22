@@ -1,0 +1,15 @@
+The parameters for the SARS genome analysis app are:
+  - paired_end_libs: Paired-end read libraries (optional)
+  - single_end_libs: Single-end read libraries (optional)
+  - srr_ids: SRA Run IDs (optional)
+  - recipe: Assembly recipe - auto (default: auto)
+  - primers: Primer set - ARTIC/midnight/qiagen/swift/varskip/varskip-long (required, default: ARTIC)
+  - primer_version: Primer version number (optional)
+  - min_depth: Minimum depth for consensus (default: 100)
+  - max_depth: Maximum depth for consensus (default: 8000)
+  - keep_intermediates: Keep intermediate outputs (default: 0)
+  - output_path: Output directory (required)
+  - output_file: Output basename (required)
+
+At least one input source (paired_end_libs, single_end_libs, or srr_ids) must be provided.
+

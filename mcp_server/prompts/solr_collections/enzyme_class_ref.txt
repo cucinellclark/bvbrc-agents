@@ -1,0 +1,7 @@
+ Primary Key: ec_number
+
+    date_inserted (date)
+    date_modified (date)
+    ec_description (string)
+    ec_number (string)
+    go (array of case insensitive strings)

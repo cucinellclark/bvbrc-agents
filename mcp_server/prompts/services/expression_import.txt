@@ -1,0 +1,7 @@
+The parameters for the expression import app are:
+  - xfile: Experiment data file with comparison values (required)
+  - mfile: Metadata template file (optional)
+  - ustring: User information JSON string (required)
+  - output_path: Output directory (optional)
+  - output_file: Output basename (optional)
+

@@ -1,0 +1,95 @@
+# BV-BRC Orchestrator — Agent Registry Configuration
+#
+# Each agent is an MCP server that the orchestrator discovers and delegates to.
+# The orchestrator connects to each agent's MCP endpoint at startup, discovers
+# its tools via tools/list, and uses agent descriptions for LLM-powered routing.
+#
+# AUTH: The BV-BRC MCP servers require authentication on ALL requests
+# (including tools/list). Auth is provided as a Bearer token containing
+# a raw PATRIC user token. You can provide it via:
+#   1. auth_token_env in the config (reads from an environment variable)
+#   2. --token flag on the CLI scripts
+#   3. BV_BRC_AUTH_TOKEN environment variable (global fallback)
+
+agents:
+  data:
+    name: "Data Agent"
+    description: >
+      Retrieves biological data from BV-BRC. Translates natural language
+      questions into Solr queries against genome, feature, AMR, pathway,
+      epitope, and other BV-BRC collections. Returns structured data results
+      including counts, facets, and tabular data.
+    endpoint: "http://localhost:8053"
+    protocol: "mcp"
+    capabilities:
+      - data_retrieval
+      - solr_query
+      - faceted_search
+      - collection_browsing
+    max_iterations: 5
+    timeout_seconds: 120
+    auth_token_env: "BV_BRC_AUTH_TOKEN"
+    chat_tool: "agent_chat"
+    mcp_server_name: "bvbrc_server"
+    chat_tool_params:
+      agent_type: "data"
+
+  service2:
+    name: "Service Agent"
+    description: >
+      Constructs BV-BRC bioinformatics service workflows. Takes natural
+      language descriptions of analyses and builds validated workflow plans
+      for genome assembly, annotation, BLAST, phylogenetics, and 30+ other
+      BV-BRC services. Returns workflow configurations for user review.
+      Handles multi-step pipelines with dependencies between services.
+    endpoint: "http://localhost:8053"
+    protocol: "mcp"
+    capabilities:
+      - workflow_planning
+      - service_configuration
+      - parameter_validation
+      - multi_step_pipelines
+    max_iterations: 10
+    timeout_seconds: 300
+    auth_token_env: "BV_BRC_AUTH_TOKEN"
+    chat_tool: "agent_chat"
+    mcp_server_name: "bvbrc_server"
+    chat_tool_params:
+      agent_type: "service"
+
+  workspace:
+    name: "Workspace Agent"
+    description: >
+      Explores the user's BV-BRC cloud workspace (personal file system).
+      Browses directories, searches for files by name/type/extension,
+      retrieves file metadata, and previews file contents. Returns both
+      a natural language summary and structured data (file listings,
+      metadata, UI grid payloads) for rich rendering. Read-only -- does
+      not create, modify, or delete files.
+    endpoint: "http://localhost:8053"
+    protocol: "mcp"
+    capabilities:
+      - workspace_browsing
+      - file_search
+      - file_metadata
+      - file_preview
+    max_iterations: 8
+    timeout_seconds: 120
+    auth_token_env: "BV_BRC_AUTH_TOKEN"
+    chat_tool: "agent_chat"
+    mcp_server_name: "bvbrc_server"
+    chat_tool_params:
+      agent_type: "workspace"
+
+# Orchestrator-level settings
+orchestrator:
+  mcp_connect_timeout: 10
+  mcp_request_timeout: 120
+  health_check_interval: 60
+  auto_discover: true
+
+  # Use a smaller/faster model for routing decisions.
+  # Routing is a simple JSON classification task — a smaller model
+  # reduces time-to-first-action significantly with remote endpoints.
+  # Set to null or omit to use the default LLM model for routing.
+  routing_model: "gpt41mini"

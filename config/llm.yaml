@@ -1,0 +1,35 @@
+# =============================================================================
+# Shared LLM Configuration
+# =============================================================================
+# Single source of truth for LLM endpoint settings used by the orchestrator
+# and all agents (Data, Service, Service2, Workspace).
+#
+# To change the model or endpoint, edit this file. All components will pick up
+# the new values on next restart.
+#
+# Override precedence (highest wins):
+#   1. Environment variables: LLM_BASE_URL, LLM_API_KEY, LLM_MODEL
+#   2. This YAML file (or custom path via LLM_CONFIG_PATH env var)
+#   3. Hardcoded Pydantic defaults (fallback if file is missing)
+# =============================================================================
+
+llm:
+  # OpenAI-compatible API endpoint (e.g. vLLM, TGI, OpenAI, Azure)
+  # base_url: "http://mango.cels.anl.gov:8004/v1"
+  base_url: "https://apps.inside.anl.gov/argoapi/v1"
+
+  # API key (use "not-needed" for local endpoints that don't require auth)
+  api_key: "cucinell"
+
+  # Model identifier (must match what the endpoint serves)
+  # model: "RedHatAI/Llama-4-Scout-17B-16E-Instruct-FP8-dynamic"
+  model: "gpt41"
+
+  # Sampling temperature (0.0 = deterministic)
+  temperature: 0.0
+
+  # Maximum tokens the model can generate per response
+  max_tokens: 4096
+
+  # Request timeout in seconds
+  timeout_seconds: 60

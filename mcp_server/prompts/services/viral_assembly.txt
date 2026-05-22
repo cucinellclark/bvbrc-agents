@@ -1,0 +1,12 @@
+The parameters for the viral assembly app are:
+  - paired_end_lib: Paired-end read library (optional)
+  - single_end_lib: Single-end read library (optional)
+  - srr_id: SRA Run ID (optional)
+  - recipe: Assembly strategy - auto/irma (default: auto)
+  - module: Virus module - FLU/CoV/RSV/EBOLA/FLU_AD (optional)
+  - viral_size: Estimated viral genome size (default: 5M)
+  - output_path: Output directory (required)
+  - output_file: Output basename (required)
+
+At least one input source (paired_end_lib, single_end_lib, or srr_id) must be provided.
+

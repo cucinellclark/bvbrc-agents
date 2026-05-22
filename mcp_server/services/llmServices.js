@@ -1,0 +1,541 @@
+// services/llmServices.js
+
+const { OpenAI } = require('openai');
+const fetch = require('node-fetch');
+const config = require('../config.json');
+
+// ========================================
+// Error Handling
+// ========================================
+
+class LLMServiceError extends Error {
+    constructor(message, originalError = null) {
+        super(message);
+        this.name = 'LLMServiceError';
+        this.originalError = originalError;
+    }
+}
+
+// ========================================
+// Utility Functions
+// ========================================
+
+async function postJson(url, data, apiKey = null) {
+    try {
+        if (!url || !data) {
+            throw new LLMServiceError('Missing required parameters for postJson');
+        }
+        const headers = { 'Content-Type': 'application/json' };
+        if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+
+        const res = await fetch(url, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(data)
+        });
+        if (!res.ok) {
+            let responseText = '';
+            try {
+                responseText = await res.text();
+            } catch (_error) {
+                responseText = '';
+            }
+            const snippet = responseText ? responseText.slice(0, 500) : '';
+            throw new LLMServiceError(`HTTP error: ${res.status} ${res.statusText}${snippet ? ` | body: ${snippet}` : ''}`);
+        }
+        const responseText = await res.text();
+        try {
+            return JSON.parse(responseText);
+        } catch (parseError) {
+            const snippet = responseText ? responseText.slice(0, 500) : '';
+            throw new LLMServiceError(`Failed to parse JSON response${snippet ? ` | body: ${snippet}` : ''}`, parseError);
+        }
+    } catch (error) {
+        if (error instanceof LLMServiceError) {
+            throw error;
+        }
+        throw new LLMServiceError('Failed to make POST request', error);
+    }
+}
+
+function toPreview(value, maxLen = 800) {
+    if (value === null || value === undefined) {
+        return '';
+    }
+    if (typeof value === 'string') {
+        return value.slice(0, maxLen);
+    }
+    try {
+        return JSON.stringify(value).slice(0, maxLen);
+    } catch (_error) {
+        return String(value).slice(0, maxLen);
+    }
+}
+
+async function count_tokens(query) {
+    try {
+        if (!query) {
+            throw new LLMServiceError('Missing query parameter for count_tokens');
+        }
+        const response = await postJson('http://0.0.0.0:5000/count_tokens', { query });
+        if (typeof response?.token_count !== 'number') {
+            throw new LLMServiceError('Invalid response format from token counting API');
+        }
+        return response.token_count;
+    } catch (error) {
+        throw new LLMServiceError('Failed to count tokens', error);
+    }
+}
+
+async function safe_count_tokens(query) {
+    try {
+        return await count_tokens(query);
+    } catch (error) {
+        return 0;
+    }
+}
+
+// ========================================
+// OpenAI Client Functions
+// ========================================
+
+function setupOpenaiClient(apiKey, baseURL) {
+    try {
+        if (!apiKey) {
+            throw new LLMServiceError('API key is required for OpenAI client setup');
+        }
+        return new OpenAI({ apiKey, baseURL });
+    } catch (error) {
+        throw new LLMServiceError('Failed to setup OpenAI client', error);
+    }
+}
+
+async function queryClient(client, model, messages) {
+    try {
+        if (!client || !model || !messages) {
+            throw new LLMServiceError('Missing required parameters for queryClient');
+        }
+        const res = await client.chat.completions.create({ model, messages });
+        if (!res?.choices?.[0]?.message?.content) {
+            throw new LLMServiceError('Invalid response format from OpenAI API');
+        }
+        return res.choices[0].message.content;
+    } catch (error) {
+        throw new LLMServiceError('Failed to query OpenAI client', error);
+    }
+}
+
+// ========================================
+// Chat API Functions
+// ========================================
+
+async function queryRequestChat(url, model, system_prompt, query) {
+    try {
+        if (!url || !model || !query) {
+            throw new LLMServiceError('Missing required parameters for queryRequestChat');
+        }
+        var payload = {
+            model, temperature: 1.0,
+            messages: [{ role: 'system', content: system_prompt }, { role: 'user', content: query }]
+        }
+        const res = await postJson(url, payload);
+        if (!res?.choices?.[0]?.message?.content) {
+            throw new LLMServiceError('Invalid response format from chat API');
+        }
+        return res.choices[0].message.content;
+    } catch (error) {
+        throw new LLMServiceError('Failed to query chat API', error);
+    }
+}
+
+async function queryRequestChatArgo(url, model, system_prompt, query) {
+    try {
+        if (!url || !model || !query) {
+            throw new LLMServiceError('Missing required parameters for queryRequestChatArgo');
+        }
+        console.log('[ArgoDebug] queryRequestChatArgo request', {
+            url,
+            model,
+            query_length: query.length,
+            system_prompt_length: (system_prompt || '').length
+        });
+        const res = await postJson(url, {
+            model,
+            prompt: [query],
+            system: system_prompt || '',
+            user: "cucinell",
+            temperature: 1.0
+        });
+        console.log('[ArgoDebug] queryRequestChatArgo response', {
+            url,
+            model,
+            response_keys: res && typeof res === 'object' ? Object.keys(res) : null,
+            has_response_field: !!res?.response,
+            response_type: typeof res?.response,
+            response_length: typeof res?.response === 'string' ? res.response.length : null,
+            response_preview: toPreview(res?.response),
+            raw_response_preview: toPreview(res)
+        });
+        if (!res?.response) {
+            throw new LLMServiceError('Invalid response format from Argo API');
+        }
+        return res.response;
+    } catch (error) {
+        console.error('[ArgoDebug] queryRequestChatArgo failed', {
+            url,
+            model,
+            error: error.message,
+            original_error: error.originalError?.message || null
+        });
+        throw new LLMServiceError('Failed to query Argo API', error);
+    }
+}
+
+async function queryChatOnly({ query, model, system_prompt = '', modelData }) {
+    try {
+        if (!query || !model || !modelData) {
+            throw new LLMServiceError('Missing required parameters for queryChatOnly');
+        }
+
+        const llmMessages = [];
+        if (system_prompt) {
+            llmMessages.push({ role: 'system', content: system_prompt });
+        }
+        llmMessages.push({ role: 'user', content: query });
+
+        let response;
+        if (modelData.queryType === 'client') {
+            const openai_client = setupOpenaiClient(modelData.apiKey, modelData.endpoint);
+            response = await queryClient(openai_client, model, llmMessages);
+        } else if (modelData.queryType === 'request') {
+            response = await queryRequestChat(modelData.endpoint, model, system_prompt || '', query);
+        } else if (modelData.queryType === 'argo') {
+            response = await queryRequestChatArgo(modelData.endpoint, model, system_prompt || '', query);
+        } else {
+            throw new LLMServiceError(`Invalid queryType: ${modelData.queryType}`);
+        }
+
+        return response;
+    } catch (error) {
+        if (error instanceof LLMServiceError) {
+            throw error;
+        }
+        throw new LLMServiceError('Failed to query chat', error);
+    }
+}
+
+async function queryChatImage({ url, model, system_prompt, query, image }) {
+    try {
+        // Parameter validation
+        if (!url || !model || !query || !image) {
+            const missingParams = [];
+            if (!url) missingParams.push('url');
+            if (!model) missingParams.push('model');
+            if (!query) missingParams.push('query');
+            if (!image) missingParams.push('image');
+            throw new LLMServiceError(`Missing required parameters for queryChatImage: ${missingParams.join(', ')}`);
+        }
+
+        const messagesForApi = [];
+        if (system_prompt && system_prompt.trim() !== '') {
+            messagesForApi.push({ role: 'system', content: system_prompt });
+        }
+
+        messagesForApi.push({
+            role: 'user',
+            content: [
+                { type: 'text', text: query },
+                {
+                    type: 'image_url',
+                    image_url: {
+                        url: image // Expects image to be a data URI (e.g., "data:image/jpeg;base64,...") or a public URL
+                    }
+                }
+            ]
+        });
+
+        // Make the POST request
+        const responseData = await postJson(url, {
+            model,
+            messages: messagesForApi,
+            temperature: 0.7, // Consistent with queryRequestChat
+            max_tokens: 1000, // Consistent with queryRequestChat
+            // max_tokens could be a parameter if needed, e.g., max_tokens: 4096
+        });
+
+        // Validate response and extract content
+        if (!responseData?.choices?.[0]?.message?.content) {
+            throw new LLMServiceError('Invalid response format from vision API: Missing content.');
+        }
+        return responseData.choices[0].message.content;
+
+    } catch (error) {
+        if (error instanceof LLMServiceError) {
+            throw error; // Re-throw if already our custom error
+        }
+        // Wrap other errors
+        throw new LLMServiceError(`Failed to query vision API for model ${model}`, error);
+    }
+}
+
+// ========================================
+// Embedding Functions
+// ========================================
+
+async function queryRequestEmbedding(url, model, apiKey, query) {
+    try {
+        if (!url || !model || !query) {
+            throw new LLMServiceError('Missing required parameters for queryRequestEmbedding');
+        }
+        const res = await postJson(url, { model, input: query }, apiKey);
+        if (!res?.data?.[0]?.embedding) {
+            throw new LLMServiceError('Invalid response format from embedding API');
+        }
+        return res.data[0].embedding;
+    } catch (error) {
+        throw new LLMServiceError('Failed to query embedding API', error);
+    }
+}
+
+async function queryRequestEmbeddingTfidf(query, vectorizer, endpoint) {
+    try {
+        if (!query || !vectorizer || !endpoint) {
+            throw new LLMServiceError('Missing required parameters for queryRequestEmbeddingTfidf');
+        }
+        const res = await postJson(endpoint, { query, vectorizer });
+        if (!res?.query_embedding?.[0]) {
+            throw new LLMServiceError('Invalid response format from TFIDF embedding API');
+        }
+        return res.query_embedding[0];
+    } catch (error) {
+        throw new LLMServiceError('Failed to query TFIDF embedding API', error);
+    }
+}
+
+// ========================================
+// Specialized Service Functions
+// ========================================
+
+async function queryRag(query, rag_db, user_id, model, num_docs, session_id) {
+    try {
+        if (!query || !rag_db) {
+            const missingParams = [];
+            if (!query) missingParams.push('query');
+            if (!rag_db) missingParams.push('rag_db');
+            throw new LLMServiceError(`Missing required parameters for queryRag: ${missingParams.join(', ')}`);
+        }
+
+        const ragApiBaseUrl = (process.env.RAG_API_URL || config.rag_api_url || 'http://0.0.0.0:8001').replace(/\/+$/, '');
+        const encodedDatabase = encodeURIComponent(rag_db);
+        const ragQueryUrl = `${ragApiBaseUrl}/query/${encodedDatabase}`;
+        const parsedTopK = Number.parseInt(num_docs, 10);
+        const requestPayload = {
+            query,
+            ...(Number.isInteger(parsedTopK) && parsedTopK > 0 ? { top_k: parsedTopK } : {})
+        };
+
+        const res = await postJson(ragQueryUrl, requestPayload);
+
+        if (!res) {
+            throw new LLMServiceError('Invalid response format from RAG API: No response received');
+        }
+        if (!Array.isArray(res.documents)) {
+            throw new LLMServiceError('Invalid response format from RAG API: documents must be an array');
+        }
+
+        // Keep a string array for backwards compatibility with existing prompt formatting code.
+        const documents = res.documents
+            .map((doc) => {
+                if (typeof doc === 'string') {
+                    return doc;
+                }
+                if (doc && typeof doc === 'object') {
+                    if (typeof doc.content === 'string') {
+                        return doc.content;
+                    }
+                    if (typeof doc.text === 'string') {
+                        return doc.text;
+                    }
+                }
+                return '';
+            })
+            .filter(Boolean);
+
+        return {
+            documents: documents.length > 0 ? documents : ['No documents found'],
+            document_results: res.documents,
+            embedding: res.embedding || null,
+            database: res.database || rag_db
+        };
+    } catch (error) {
+        if (error instanceof LLMServiceError) {
+            throw error;
+        }
+        throw new LLMServiceError('Failed to query RAG API', error);
+    }
+}
+
+async function queryLambdaModel(input, rag_flag) {
+    try {
+        if (!input) {
+            throw new LLMServiceError('Missing input parameter for queryLambdaModel');
+        }
+        const res = await postJson('http://lambda5.cels.anl.gov:8121/query', {
+            text: input,
+            rag_flag
+        });
+        if (!res?.answer) {
+            throw new LLMServiceError('Invalid response format from Lambda model API');
+        }
+        return res.answer;
+    } catch (error) {
+        throw new LLMServiceError('Failed to query Lambda model', error);
+    }
+}
+
+// ========================================
+// Streaming Utility (SSE-style)
+// ========================================
+
+/**
+ * Stream a JSON POST request and invoke a callback for each text chunk.
+ * This helper is designed for LLM endpoints that return Server-Sent-Events
+ * (e.g. lines beginning with "data: ") similar to the OpenAI streaming API.
+ *
+ * @param {string} url        – Endpoint to POST to
+ * @param {object} data       – JSON payload
+ * @param {function(string)} onChunk – Callback invoked with each text chunk
+ * @param {string|null} apiKey – Optional Bearer token
+ */
+async function postJsonStream(url, data, onChunk, apiKey = null) {
+    try {
+        if (!url || !data || !onChunk) {
+            throw new LLMServiceError('Missing required parameters for postJsonStream');
+        }
+
+        const headers = { 'Content-Type': 'application/json' };
+        if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+
+        const res = await fetch(url, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(data)
+        });
+
+        if (!res.ok) {
+            throw new LLMServiceError(`HTTP error: ${res.status} ${res.statusText}`);
+        }
+
+        return new Promise((resolve, reject) => {
+            let buffer = '';
+
+            const processPart = (rawPart) => {
+                let part = (rawPart || '').trim();
+                if (!part) return;
+
+                // Remove the SSE prefix if present (e.g., "data: ...")
+                if (part.startsWith('data:')) {
+                    part = part.slice(5).trim();
+                }
+
+                // Handle stream terminator
+                if (part === '[DONE]') {
+                    return;
+                }
+
+                // Try to parse JSON – fallback to raw text if parsing fails
+                let textChunk = '';
+                try {
+                    const parsed = JSON.parse(part);
+                    // Attempt to extract assistant text from common response formats
+                    textChunk =
+                        parsed.choices?.[0]?.delta?.content ||
+                        parsed.choices?.[0]?.message?.content ||
+                        parsed.response ||
+                        '';
+                } catch (_) {
+                    textChunk = part; // raw text
+                }
+
+                if (textChunk) {
+                    onChunk(textChunk);
+                }
+            };
+
+            // node-fetch returns a Node.js Readable stream
+            res.body.on('data', (chunk) => {
+                buffer += chunk.toString();
+
+                // Split on newlines – each SSE event is separated by a blank line
+                const parts = buffer.split(/\n/);
+                // Keep the last partial line in the buffer
+                buffer = parts.pop();
+
+                for (const part of parts) {
+                    try {
+                        processPart(part);
+                    } catch (cbErr) {
+                        // If the consumer throws, stop streaming
+                        res.body.destroy();
+                        reject(cbErr);
+                        return;
+                    }
+                }
+            });
+
+            res.body.on('end', () => {
+                // Process any trailing buffered content (e.g., single JSON response with no newline).
+                if (buffer && buffer.trim()) {
+                    try {
+                        processPart(buffer);
+                    } catch (cbErr) {
+                        reject(cbErr);
+                        return;
+                    }
+                }
+                resolve();
+            });
+            res.body.on('error', (err) => reject(new LLMServiceError('Stream read error', err)));
+        });
+    } catch (error) {
+        if (error instanceof LLMServiceError) {
+            throw error;
+        }
+        throw new LLMServiceError('Failed to perform streaming POST request', error);
+    }
+}
+
+// ========================================
+// Module Exports
+// ========================================
+
+module.exports = {
+    postJson,
+
+    // Error handling
+    LLMServiceError,
+
+    // Utility functions
+    count_tokens,
+    safe_count_tokens,
+    postJsonStream,
+
+    // OpenAI client functions
+    setupOpenaiClient,
+    queryClient,
+
+    // Chat API functions
+    queryRequestChat,
+    queryRequestChatArgo,
+    queryChatOnly,
+    queryChatImage,
+
+    // Embedding functions
+    queryRequestEmbedding,
+    queryRequestEmbeddingTfidf,
+
+    // Specialized service functions
+    queryRag,
+    queryLambdaModel
+};
+

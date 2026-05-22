@@ -1,0 +1,14 @@
+The parameters for the bacterial genome tree app are:
+  - output_path: Output directory (required)
+  - output_file: Output basename (required)
+  - genome_ids: Main genomes for analysis (optional)
+  - genome_groups: Main genome groups (optional)
+  - optional_genome_ids: Optional genomes (not penalized for missing genes) (optional)
+  - genome_metadata_fields: Genome metadata fields to retrieve (optional)
+  - number_of_genes: Desired number of genes for analysis (default: 20)
+  - bootstraps: Number of bootstrap replicates (default: 100)
+  - max_genomes_missing: Max main genomes missing from any PGFam (default: 0)
+  - max_allowed_dups: Max duplications allowed for main genomes (default: 0)
+
+At least one genome input (genome_ids or genome_groups) must be provided.
+

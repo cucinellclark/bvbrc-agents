@@ -1,0 +1,11 @@
+The parameters for the tnseq app are:
+  - experimental_conditions: Experimental conditions for analysis (optional)
+  - contrasts: Statistical contrasts for comparison (optional)
+  - read_files: Read file groups (optional)
+  - reference_genome_id: Reference genome ID (required)
+  - recipe: TnSeq analysis recipe - gumbel/griffin/tn5gaps/rankproduct/hmm/binomial/resampling (default: gumbel)
+  - protocol: TnSeq protocol - sassetti/tn5/mme1 (default: sassetti)
+  - primer: Primer DNA string for read trimming (optional)
+  - output_path: Output directory (required)
+  - output_file: Output basename (required)
+

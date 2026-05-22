@@ -1,0 +1,8 @@
+The parameters for the comparative systems app are:
+  - output_path: Output directory (required)
+  - output_file: Output basename (required)
+  - genome_ids: Genome IDs for comparison (optional)
+  - genome_groups: Genome groups for comparison (optional)
+
+At least one genome input (genome_ids or genome_groups) must be provided.
+

@@ -1,0 +1,36 @@
+{
+  "friendly_to_api": {
+    "date": "Date",
+    "genome_assembly": "GenomeAssembly2",
+    "genome_annotation": "GenomeAnnotation",
+    "comprehensive_genome_analysis": "ComprehensiveGenomeAnalysis",
+    "blast": "Homology",
+    "primer_design": "PrimerDesign",
+    "variation": "Variation",
+    "tnseq": "TnSeq",
+    "bacterial_genome_tree": "CodonTree",
+    "gene_tree": "GeneTree",
+    "core_genome_mlst": "CoreGenomeMLST",
+    "whole_genome_snp": "WholeGenomeSNPAnalysis",
+    "taxonomic_classification": "TaxonomicClassification",
+    "metagenomic_binning": "MetagenomeBinning",
+    "metagenomic_read_mapping": "MetagenomicReadMapping",
+    "rnaseq": "RNASeq",
+    "expression_import": "ExpressionImport",
+    "sars_wastewater_analysis": "SARSWastewaterAnalysis",
+    "sequence_submission": "SequenceSubmission",
+    "influenza_ha_subtype_conversion": "InfluenzaHASubtypeConversion",
+    "subspecies_classification": "SubspeciesClassification",
+    "viral_assembly": "ViralAssembly",
+    "genome_alignment": "GenomeAlignment",
+    "sars_genome_analysis": "SARS2Assembly",
+    "msa_snp_analysis": "MSA",
+    "metacats": "MetaCATS",
+    "proteome_comparison": "GenomeComparison",
+    "comparative_systems": "ComparativeSystems",
+    "docking": "Docking",
+    "similar_genome_finder": "SimilarGenomeFinder",
+    "fastqutils": "FastqUtils"
+  }
+}
+

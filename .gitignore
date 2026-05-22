@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+*.egg
+dist/
+build/
+
+# Virtual environments
+*_env/
+mcp_env/
+.venv/
+venv/
+
+# Auth tokens (secrets)
+auth_token.txt
+
+# Runtime
+logs/
+*.log
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# MCP server runtime data
+mcp_server/rag_data/
+
+# bvbrc-python-api (cloned dependency -- has its own repo)
+mcp_server/bvbrc-python-api/
+
+# Byte-compiled / cached
+*.pyc
+
+# Pytest
+.pytest_cache/
+
+# OpenCode
+.opencode/
+orchestrator/orchestrator_env

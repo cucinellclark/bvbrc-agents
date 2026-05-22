@@ -1,0 +1,13 @@
+The parameters for the whole genome SNP app are:
+  - input_genome_type: Input type - genome_group/genome_fasta (required)
+  - majority_threshold: Majority fraction for SNP inclusion (default: 0.5)
+  - min_mid_linkage: Minimum value for mid linkage (default: 10)
+  - max_mid_linkage: Maximum value for mid linkage (default: 40)
+  - analysis_type: Analysis type - Whole Genome SNP Analysis (required)
+  - input_genome_group: Genome group name (optional)
+  - input_genome_fasta: Genome FASTA data (optional)
+  - output_path: Output directory (required)
+  - output_file: Output basename (required)
+
+At least one genome input (input_genome_group or input_genome_fasta) must be provided.
+

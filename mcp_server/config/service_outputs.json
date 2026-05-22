@@ -1,0 +1,63 @@
+{
+  "GenomeAssembly2": {
+    "contigs_fasta": "${params.output_path}/.${params.output_file}/${params.output_file}_contigs.fasta",
+    "assembly_report": "${params.output_path}/.${params.output_file}/${params.output_file}_AssemblyReport.html"
+  },
+  "GenomeAnnotation": {
+    "genome_file": "${params.output_path}/.${params.output_file}/${params.output_file}.genome",
+    "genome_report": "${params.output_path}/.${params.output_file}/GenomeReport.html"
+  },
+  "ComparativeSystems": {
+    "pathways_table": "${params.output_path}/.${params.output_file}/${params.output_file}_pathways_tables.json",
+    "subsystems_table": "${params.output_path}/.${params.output_file}/${params.output_file}_subsystems_tables.json",
+    "proteinfams_table": "${params.output_path}/.${params.output_file}/${params.output_file}_proteinfams_tables.json"
+  },
+  "ComprehensiveGenomeAnalysis": {
+    "genome_report": "${params.output_path}/.${params.output_file}/FullGenomeReport.html",
+    "genome_file": "${params.output_path}/.${params.output_file}/annotated.genome"
+  },
+  "Homology": {
+    "blast_output": "${params.output_path}/.${params.output_file}/blast_out.txt",
+    "blast_json": "${params.output_path}/.${params.output_file}/blast_out.json"
+  },
+  "RNASeq": {
+    "multiqc_report": "${params.output_path}/.${params.output_file}/multiqc_report.html"
+  },
+  "TaxonomicClassification": {
+    "classification_report": "${params.output_path}/.${params.output_file}/Taxonomic-Classification-Service-BVBRC_multiqc_report.html"
+  },
+  "Variation": {
+    "variation_table": "${params.output_path}/.${params.output_file}/all.var.tsv"
+  },
+  "MetagenomeBinning": {
+    "bins_directory": "${params.output_path}/.${params.output_file}/BinningReport.html"
+  },
+  "MetagenomicReadMapping": {
+    "mapping_report": "${params.output_path}/.${params.output_file}/MetagenomicReadMappingReport.html"
+  },
+  "CodonTree": {
+    "tree_file": "${params.output_path}/.${params.output_file}/${params.output_file}_tree.nwk",
+    "tree_report": "${params.output_path}/.${params.output_file}/.${params.output_file}_report.html"
+  },
+  "GeneTree": {
+    "tree_file": "${params.output_path}/.${params.output_file}/${params.output_file}_raxml_rell_tree.nwk",
+    "alignment_file": "${params.output_path}/.${params.output_file}/${params.output_file}_aligned.fa",
+    "tree_report": "${params.output_path}/.${params.output_file}/${params.output_file}_tree_report.html"
+  },
+  "WholeGenomeSNPAnalysis": {
+    "report": "${params.output_path}/.${params.output_file}/WholeGenomeSNP_Report.html"
+  },
+  "ViralAssembly": {
+    "contigs_fasta": "${params.output_path}/${params.output_file}.contigs.fasta",
+    "assembly_report": "${params.output_path}/${params.output_file}.assembly_report.txt"
+  },
+  "SARS2Assembly": {
+    "consensus_fasta": "${params.output_path}/${params.output_file}.consensus.fasta",
+    "analysis_report": "${params.output_path}/${params.output_file}.analysis_report.txt"
+  },
+  "FastqUtils": {
+    "processed_reads": "${params.output_path}/${params.output_file}_processed",
+    "qc_report": "${params.output_path}/${params.output_file}.qc_report.txt"
+  }
+}
+

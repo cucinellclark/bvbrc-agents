@@ -1,0 +1,88 @@
+BLAST (Homology) - compact spec
+
+Goal: build valid `Homology` params with minimal ambiguity.
+
+Required
+- `input_type`: `dna` | `aa`
+- `input_source`: `fasta_data` | `fasta_file` | `feature_group` | `genome_group_features` | `genome_group_sequences`
+- `db_type`: `faa` | `ffn` | `frn` | `fna`
+- `db_source`: `precomputed_database` | `genome_list` | `genome_group` | `feature_group` | `taxon_list` | `fasta_file`
+- `output_path`, `output_file`
+
+Conditional Required
+- If `input_source=fasta_data` -> `input_fasta_data`
+- If `input_source=fasta_file` -> `input_fasta_file`
+- If `input_source=feature_group` -> `input_feature_group`
+- If `input_source in {genome_group_features, genome_group_sequences}` -> `input_genome_group`
+
+- If `db_source=precomputed_database` -> `db_precomputed_database` (non-empty)
+- If `db_source=genome_list` -> `db_genome_list` (array)
+- If `db_source=genome_group` -> `db_genome_group`
+- If `db_source=feature_group` -> `db_feature_group`
+- If `db_source=taxon_list` -> `db_taxon_list` (array, usually 1 taxon)
+- If `db_source=fasta_file` -> `db_fasta_file`
+
+Valid precomputed databases
+- `bacteria-archaea`
+- `viral-reference`
+
+Precomputed compatibility
+- `bacteria-archaea` and `viral-reference` support only: `faa`, `ffn`, `fna`
+- Do not use `frn` with precomputed databases
+
+Program compatibility (if `blast_program` provided)
+- `blastn`: input `dna`, db `fna|ffn|frn`
+- `blastp`: input `aa`,  db `faa`
+- `blastx`: input `dna`, db `faa`
+- `tblastn`: input `aa`, db `fna|ffn|frn`
+- `tblastx`: input `dna`, db `fna|ffn|frn`
+
+Program auto-pick (if omitted)
+- `dna` + `faa` -> `blastx`
+- `aa` + `faa` -> `blastp`
+- `aa` + `fna|ffn|frn` -> `tblastn`
+- `dna` + `fna|ffn|frn` -> `blastn`
+
+Defaults
+- `blast_evalue_cutoff`: `1e-5`
+- `blast_max_hits`: `300`
+
+Hard validation rules
+- List fields must be JSON arrays, not strings.
+- Never send empty/blank `db_precomputed_database` when `db_source=precomputed_database`.
+- For precomputed DBs, only use exact names above.
+- Always include `output_path` and `output_file`.
+
+Common failure to avoid
+- `db_source=precomputed_database` with missing/empty `db_precomputed_database` -> server error: "Unable to find database".
+
+Minimal examples
+
+1) Protein vs bacterial reference
+{
+  "input_type": "aa",
+  "input_source": "fasta_data",
+  "input_fasta_data": ">q\nMTEYK...",
+  "db_type": "faa",
+  "db_source": "precomputed_database",
+  "db_precomputed_database": "bacteria-archaea",
+  "blast_program": "blastp",
+  "output_path": "CopilotWorkflows",
+  "output_file": "blast_bact_ref"
+}
+
+2) DNA vs selected genomes
+{
+  "input_type": "dna",
+  "input_source": "fasta_data",
+  "input_fasta_data": ">q\nATGC...",
+  "db_type": "ffn",
+  "db_source": "genome_list",
+  "db_genome_list": ["83332.12", "1773.3"],
+  "blast_program": "blastn",
+  "output_path": "CopilotWorkflows",
+  "output_file": "blast_selected_genomes"
+}
+
+Path note
+- `output_path` is relative to user home in this MCP flow; do not prefix with `/` or `home`.

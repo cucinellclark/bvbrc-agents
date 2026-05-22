@@ -1,0 +1,14 @@
+The parameters for the proteome comparison app are:
+  - genome_ids: Reference genome IDs (optional)
+  - user_genomes: User-provided genome IDs (optional)
+  - user_feature_groups: User-provided feature groups (optional)
+  - reference_genome_index: Index of reference genome (default: 1)
+  - min_seq_cov: Minimum sequence coverage (default: 0.30)
+  - max_e_val: Maximum E-value threshold (default: 1e-5)
+  - min_ident: Minimum identity threshold (default: 0.1)
+  - min_positives: Minimum positives threshold (default: 0.2)
+  - output_path: Output directory (required)
+  - output_file: Output basename (required)
+
+At least one genome input (genome_ids, user_genomes, or user_feature_groups) must be provided.
+
