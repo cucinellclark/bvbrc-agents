@@ -31,8 +31,8 @@ bvbrc-agents/                    (this repo)
 │   ├── scripts/                 start_orchestrator.sh
 │   └── pyproject.toml
 ├── config/                      Shared LLM config (llm.yaml + llm_config.py)
-├── self_evolving_agents/        Plans and docs for the self-evolving feature
 ├── setup.sh                     One-step setup (clones MCP server, installs deps)
+├── STARTUP.md                   How to start the system
 └── AGENTS.md
 ```
 
@@ -81,7 +81,7 @@ The orchestrator's `orchestrator/config/agents.yaml` points all three agent entr
 
 ## Starting the system
 
-See `self_evolving_agents/STARTUP.md` for full instructions.
+See `STARTUP.md` for full instructions.
 
 ```bash
 # 1. MCP server
