@@ -4,15 +4,25 @@ How to start the core Copilot system for local testing. This covers the two esse
 
 All paths below are relative to the `bvbrc-agents/` repo root.
 
-## Prerequisites
+## First-time setup
 
-- Python 3.11 venvs exist for each component (see AGENTS.md for paths)
-- `BV_BRC_AUTH_TOKEN` is set in your environment, or `auth_token.txt` files are in place
-- Nothing else is already bound to ports 8053 or 9000
+```bash
+git clone git@github.com:cucinellclark/bvbrc-agents.git
+cd bvbrc-agents
+./setup.sh
+```
+
+This clones the MCP server repo into `mcp_server/`, clones `bvbrc-python-api`, and creates both virtual environments with all dependencies installed.
+
+You also need to provide a BV-BRC auth token. Either:
+- Set `BV_BRC_AUTH_TOKEN` in your environment, or
+- Place an `auth_token.txt` file in `orchestrator/` and/or `mcp_server/`
+
+You must also create `mcp_server/config/config.json` -- copy from `mcp_server/config/mcp_example.json` and fill in your endpoints.
 
 ## Startup order
 
-Each layer depends on the one before it. Start in two separate terminals.
+Each layer depends on the one before it. Start in two separate terminals from the repo root.
 
 ### 1. MCP Server (port 8053)
 
@@ -28,6 +38,7 @@ Wait for `Uvicorn running on http://0.0.0.0:8053` before continuing. This single
 
 ```bash
 cd orchestrator
+source orchestrator_env/bin/activate
 ./scripts/start_orchestrator.sh
 ```
 
