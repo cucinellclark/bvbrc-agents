@@ -155,10 +155,45 @@ self_evolving_agents/experience_bank/
 
 ### Phase 4: Prompt Evolver
 
+> **Implementation note (decided 2026-05-22):** Phases 4 and 5 will use
+> [GEPA](https://github.com/gepa-ai/gepa) (`pip install gepa`) instead of
+> a hand-rolled evolutionary loop. GEPA's `optimize_anything` API provides
+> reflective mutation, Pareto-efficient candidate selection, and merge
+> operations out of the box -- replacing what would otherwise be a custom
+> `PromptEvolver` / `CodeEvolver` class.
+>
+> The Phase 2 LLM Judge becomes GEPA's **evaluator function**: given a
+> candidate prompt/code, inject it into the agent, run benchmark traces,
+> score them with the judge, and return `(score, side_info_dict)`. GEPA
+> handles the reflect-mutate-select loop.
+>
+> **Why GEPA over custom code:**
+> - Pareto-aware selection across per-question scores (avoids regressions)
+> - Reflective mutation reads full execution traces ("Actionable Side
+>   Information") to diagnose *why* a candidate failed, not just *that* it
+>   failed
+> - Proven at scale (Databricks, Shopify, OpenAI Cookbook's self-evolving
+>   agents reference implementation)
+> - 100-500 evaluations to converge vs. thousands for RL
+>
+> **Cost consideration:** Each GEPA evaluation = one full benchmark run
+> (~20 questions x ~120s). Budget ~150 evaluations for a prompt target.
+> This is an offline batch process, not real-time.
+>
+> **What Phases 1-3 must provide for GEPA compatibility:**
+> - Trace format that can be summarized into ASI (Actionable Side
+>   Information) for the reflection LLM
+> - Judge scores as a float in [0, 1] with per-dimension breakdowns
+> - Experience bank organized so GEPA's evaluator can pull failures for
+>   context
+>
+> The interfaces built in Phases 1-2 (trace collector, judge, experience
+> bank) are designed to plug directly into a GEPA evaluator wrapper.
+
 **Goal:** Analyze failure patterns and propose targeted prompt edits.
 
 **What to build:**
-- A `PromptEvolver` class that:
+- A `PromptEvolver` class (or GEPA evaluator wrapper) that:
   1. Reads recent failures from the experience bank
   2. Reads the current prompt file
   3. Asks the `prompt_evolver` model to propose a specific edit
@@ -207,10 +242,15 @@ self_evolving_agents/experience_bank/
 
 ### Phase 5: Code Evolver
 
+> **Implementation note:** Like Phase 4, this will use GEPA's
+> `optimize_anything` API. The seed candidate is the full source file
+> (or a targeted section), and the evaluator runs the test suite +
+> benchmark. See the GEPA note in Phase 4 for details.
+
 **Goal:** Propose code modifications to agent logic, routing, tool handling, etc.
 
 **What to build:**
-- A `CodeEvolver` class similar to PromptEvolver but:
+- A `CodeEvolver` class (or GEPA evaluator wrapper) similar to PromptEvolver but:
   - Reads the full source file (not just a section)
   - Proposes a unified diff
   - Includes a test plan (what to verify the change doesn't break)
@@ -510,6 +550,9 @@ For the `self_evolving_agents/venv`:
 cd self_evolving_agents
 source venv/bin/activate
 pip install pyyaml openai pydantic aiohttp aiofiles
+
+# Phase 4-5 only (not needed for Phases 1-3):
+pip install gepa litellm
 ```
 
 - `pyyaml`: Parse `evolution_config.yaml`
@@ -517,5 +560,7 @@ pip install pyyaml openai pydantic aiohttp aiofiles
 - `pydantic`: Data models for traces, judgments, proposals
 - `aiohttp`: Async HTTP if needed
 - `aiofiles`: Async file I/O for trace persistence
+- `gepa`: Reflective evolutionary optimization for prompts/code (Phases 4-5)
+- `litellm`: Required by GEPA for multi-provider LLM routing
 
 You do NOT need the orchestrator's dependencies in this venv. The evolution system runs separately and reads trace files / source files from disk. It only shares the LLM config loader.
