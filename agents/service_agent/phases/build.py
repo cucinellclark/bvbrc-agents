@@ -9,8 +9,24 @@ from __future__ import annotations
 
 import json
 import logging
+import sys
 import time
+from pathlib import Path
 from typing import Any
+
+# Shared utilities -- deduplicated across all agents
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent / "shared"))
+from agent_utils import (
+    call_fingerprint,
+    parse_tool_calls as _parse_tool_calls_raw,
+    get_response_content,
+    build_tool_calls_message,
+    emit_progress,
+)
+from agent_messages import (
+    DUPLICATE_CALL_WARNING_SHORT,
+    STUCK_IN_LOOP_BUILD,
+)
 
 from service_agent.llm_client import chat_completion, create_client
 from service_agent.models import (
@@ -27,75 +43,9 @@ from service_agent.tools import execute_tool, truncate_result
 logger = logging.getLogger(__name__)
 
 
-def _normalize_arguments(args: dict[str, Any]) -> dict[str, Any]:
-    """Normalize LLM tool call arguments (string bools/ints -> proper types)."""
-    normalized = {}
-    for key, value in args.items():
-        if isinstance(value, str):
-            lower = value.lower()
-            if lower == "true":
-                normalized[key] = True
-            elif lower == "false":
-                normalized[key] = False
-            elif lower.isdigit() or (lower.startswith("-") and lower[1:].isdigit()):
-                normalized[key] = int(value)
-            else:
-                normalized[key] = value
-        else:
-            normalized[key] = value
-    return normalized
-
-
 def _parse_tool_calls(response: Any) -> list[ToolCall]:
     """Extract ToolCall objects from an OpenAI ChatCompletion response."""
-    choice = response.choices[0]
-    if not choice.message.tool_calls:
-        return []
-
-    calls = []
-    for tc in choice.message.tool_calls:
-        try:
-            args = json.loads(tc.function.arguments)
-        except (json.JSONDecodeError, TypeError):
-            logger.warning(
-                "Failed to parse tool call arguments as JSON for %s "
-                "(expected for non-strict tools like plan_service): %s",
-                tc.function.name,
-                tc.function.arguments[:200],
-            )
-            args = {"_raw": tc.function.arguments}
-
-        args = _normalize_arguments(args)
-
-        calls.append(
-            ToolCall(
-                id=tc.id,
-                name=tc.function.name,
-                arguments=args,
-            )
-        )
-    return calls
-
-
-def _get_response_content(response: Any) -> str | None:
-    """Extract text content from the response, if any."""
-    choice = response.choices[0]
-    return choice.message.content
-
-
-def _build_tool_calls_message(tool_calls: list[ToolCall]) -> list[dict[str, Any]]:
-    """Build the tool_calls list in OpenAI message format."""
-    return [
-        {
-            "id": tc.id,
-            "type": "function",
-            "function": {
-                "name": tc.name,
-                "arguments": json.dumps(tc.arguments),
-            },
-        }
-        for tc in tool_calls
-    ]
+    return _parse_tool_calls_raw(response, ToolCall)
 
 
 def _extract_validated_step(
@@ -113,15 +63,6 @@ def _extract_validated_step(
         auto_corrections=plan_service_result.get("auto_corrections", []),
         warnings=plan_service_result.get("warnings", []),
     )
-
-
-async def _emit(cb, progress: float, total: float | None, message: str) -> None:
-    """Fire progress callback if provided, swallowing errors."""
-    if cb is not None:
-        try:
-            await cb(progress, total, message)
-        except Exception:
-            pass
 
 
 async def build_step(
@@ -208,11 +149,7 @@ async def build_step(
     for iteration in range(config.max_iterations):
         # If stuck in a loop, force a text response
         if duplicate_count >= 3:
-            state.add_system_message(
-                "You are stuck in a loop. STOP calling tools. If you need "
-                "information from the user to complete this step, ask a "
-                "clear question in your text response."
-            )
+            state.add_system_message(STUCK_IN_LOOP_BUILD)
             try:
                 response = await chat_completion(
                     client=client,
@@ -221,7 +158,7 @@ async def build_step(
                     config=config,
                     tool_choice="none",
                 )
-                content = _get_response_content(response)
+                content = get_response_content(response)
                 if content:
                     state.status = "needs_input"
                     state.question = content
@@ -247,7 +184,7 @@ async def build_step(
         )
 
         tool_calls = _parse_tool_calls(response)
-        content = _get_response_content(response)
+        content = get_response_content(response)
 
         # No tool calls -> LLM produced a text response (question or error)
         if not tool_calls:
@@ -265,7 +202,7 @@ async def build_step(
         # Add assistant message with tool calls
         state.add_assistant_message(
             content=content,
-            tool_calls=_build_tool_calls_message(tool_calls),
+            tool_calls=build_tool_calls_message(tool_calls),
         )
 
         # Execute each tool call
@@ -280,9 +217,9 @@ async def build_step(
                 _tool_msg = f"Build '{step_id}': Browsing workspace for inputs..."
             elif tc.name in ("search_data", "get_genome_group", "get_feature_group"):
                 _tool_msg = f"Build '{step_id}': Querying BV-BRC data..."
-            await _emit(progress_callback, iteration, config.max_iterations, _tool_msg)
+            await emit_progress(progress_callback, iteration, config.max_iterations, _tool_msg)
 
-            fp = f"{tc.name}::{json.dumps(tc.arguments, sort_keys=True)}"
+            fp = call_fingerprint(tc)
 
             if fp in executed_fingerprints:
                 duplicate_count += 1
@@ -290,10 +227,7 @@ async def build_step(
                     tc.id,
                     json.dumps({
                         "_duplicate": True,
-                        "_message": (
-                            "DUPLICATE CALL DETECTED. Use the results you "
-                            "already have. Do NOT repeat this call."
-                        ),
+                        "_message": DUPLICATE_CALL_WARNING_SHORT,
                     }),
                 )
                 continue
@@ -329,7 +263,7 @@ async def build_step(
                 validated = _extract_validated_step(step_plan, result)
                 state.mark_step_complete(step_id, validated)
                 state.status = "in_progress"
-                await _emit(progress_callback, iteration + 1, config.max_iterations,
+                await emit_progress(progress_callback, iteration + 1, config.max_iterations,
                             f"Step '{step_id}' validated successfully.")
 
                 # Feed success back

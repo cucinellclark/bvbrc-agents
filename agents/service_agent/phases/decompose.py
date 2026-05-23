@@ -9,8 +9,24 @@ from __future__ import annotations
 
 import json
 import logging
+import sys
 import time
+from pathlib import Path
 from typing import Any
+
+# Shared utilities -- deduplicated across all agents
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent / "shared"))
+from agent_utils import (
+    call_fingerprint,
+    parse_tool_calls as _parse_tool_calls_raw,
+    get_response_content,
+    build_tool_calls_message,
+    emit_progress,
+)
+from agent_messages import (
+    DUPLICATE_CALL_WARNING_SERVICE,
+    STUCK_IN_LOOP_DECOMPOSE,
+)
 
 from service_agent.llm_client import chat_completion, create_client
 from service_agent.models import (
@@ -26,84 +42,9 @@ from service_agent.tools import execute_tool, truncate_result
 logger = logging.getLogger(__name__)
 
 
-def _normalize_arguments(args: dict[str, Any]) -> dict[str, Any]:
-    """Normalize LLM tool call arguments (string bools/ints -> proper types)."""
-    normalized = {}
-    for key, value in args.items():
-        if isinstance(value, str):
-            lower = value.lower()
-            if lower == "true":
-                normalized[key] = True
-            elif lower == "false":
-                normalized[key] = False
-            elif lower.isdigit() or (lower.startswith("-") and lower[1:].isdigit()):
-                normalized[key] = int(value)
-            else:
-                normalized[key] = value
-        else:
-            normalized[key] = value
-    return normalized
-
-
 def _parse_tool_calls(response: Any) -> list[ToolCall]:
     """Extract ToolCall objects from an OpenAI ChatCompletion response."""
-    choice = response.choices[0]
-    if not choice.message.tool_calls:
-        return []
-
-    calls = []
-    for tc in choice.message.tool_calls:
-        try:
-            args = json.loads(tc.function.arguments)
-        except (json.JSONDecodeError, TypeError):
-            logger.warning(
-                "Failed to parse tool call arguments as JSON for %s "
-                "(strict mode should prevent this for most tools): %s",
-                tc.function.name,
-                tc.function.arguments[:200],
-            )
-            args = {"_raw": tc.function.arguments}
-
-        args = _normalize_arguments(args)
-
-        calls.append(
-            ToolCall(
-                id=tc.id,
-                name=tc.function.name,
-                arguments=args,
-            )
-        )
-    return calls
-
-
-def _get_response_content(response: Any) -> str | None:
-    """Extract text content from the response, if any."""
-    choice = response.choices[0]
-    return choice.message.content
-
-
-def _build_tool_calls_message(tool_calls: list[ToolCall]) -> list[dict[str, Any]]:
-    """Build the tool_calls list in OpenAI message format."""
-    return [
-        {
-            "id": tc.id,
-            "type": "function",
-            "function": {
-                "name": tc.name,
-                "arguments": json.dumps(tc.arguments),
-            },
-        }
-        for tc in tool_calls
-    ]
-
-
-async def _emit(cb, progress: float, total: float | None, message: str) -> None:
-    """Fire progress callback if provided, swallowing errors."""
-    if cb is not None:
-        try:
-            await cb(progress, total, message)
-        except Exception:
-            pass
+    return _parse_tool_calls_raw(response, ToolCall)
 
 
 async def decompose(
@@ -157,12 +98,7 @@ async def decompose(
     for iteration in range(config.max_iterations):
         # If stuck in a loop, force a text response
         if duplicate_count >= 3 or consecutive_failures >= 5:
-            state.add_system_message(
-                "You are stuck in a loop. STOP calling tools. Instead, "
-                "provide your plan as a text response, explaining what "
-                "services are needed and their dependencies. If you need "
-                "information from the user, ask a clear question."
-            )
+            state.add_system_message(STUCK_IN_LOOP_DECOMPOSE)
             try:
                 response = await chat_completion(
                     client=client,
@@ -171,7 +107,7 @@ async def decompose(
                     config=config,
                     tool_choice="none",
                 )
-                content = _get_response_content(response)
+                content = get_response_content(response)
                 if content:
                     state.status = "needs_input"
                     state.question = content
@@ -196,7 +132,7 @@ async def decompose(
         )
 
         tool_calls = _parse_tool_calls(response)
-        content = _get_response_content(response)
+        content = get_response_content(response)
 
         # No tool calls -> LLM produced a text response
         if not tool_calls:
@@ -214,7 +150,7 @@ async def decompose(
         # Add assistant message with tool calls
         state.add_assistant_message(
             content=content,
-            tool_calls=_build_tool_calls_message(tool_calls),
+            tool_calls=build_tool_calls_message(tool_calls),
         )
 
         # Execute each tool call
@@ -229,8 +165,8 @@ async def decompose(
                 _tool_msg = "Submitting workflow for execution..."
             elif tc.name == "get_sra_metadata":
                 _tool_msg = "Retrieving SRA metadata..."
-            await _emit(progress_callback, iteration, config.max_iterations, _tool_msg)
-            fp = f"{tc.name}::{json.dumps(tc.arguments, sort_keys=True)}"
+            await emit_progress(progress_callback, iteration, config.max_iterations, _tool_msg)
+            fp = call_fingerprint(tc)
 
             if fp in executed_fingerprints:
                 duplicate_count += 1
@@ -238,11 +174,7 @@ async def decompose(
                     tc.id,
                     json.dumps({
                         "_duplicate": True,
-                        "_message": (
-                            "DUPLICATE CALL DETECTED: You already called this "
-                            "tool with these exact arguments. Use the results "
-                            "you already have. Do NOT repeat this call."
-                        ),
+                        "_message": DUPLICATE_CALL_WARNING_SERVICE,
                     }),
                 )
                 continue
@@ -283,7 +215,7 @@ async def decompose(
                 state.workflow_plan = plan
                 state.current_phase = "build"
                 state.status = "in_progress"
-                await _emit(
+                await emit_progress(
                     progress_callback, iteration + 1, config.max_iterations,
                     f"Workflow plan created with {len(plan.steps)} step(s).",
                 )

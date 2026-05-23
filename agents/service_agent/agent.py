@@ -15,7 +15,13 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import sys
+from pathlib import Path
 from typing import Any
+
+# Shared utilities -- deduplicated across all agents
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "shared"))
+from agent_utils import emit_progress
 
 from service_agent.models import AgentConfig, AgentResult, AgentState
 from service_agent.phases.decompose import decompose
@@ -25,15 +31,6 @@ from service_agent.phases.compose import compose_manifest
 logger = logging.getLogger(__name__)
 
 ProgressCallback = Any  # async (progress: float, total: float|None, message: str) -> None
-
-
-async def _emit(cb: Any, progress: float, total: float | None, message: str) -> None:
-    """Fire progress callback if provided, swallowing errors."""
-    if cb is not None:
-        try:
-            await cb(progress, total, message)
-        except Exception:
-            pass
 
 
 async def run_agent(
@@ -68,7 +65,7 @@ async def run_agent(
     # ------------------------------------------------------------------
     if not state.workflow_plan:
         state.current_phase = "decompose"
-        await _emit(progress_callback, 0, 3, "Phase 1: Analyzing request and identifying services...")
+        await emit_progress(progress_callback, 0, 3, "Phase 1: Analyzing request and identifying services...")
         state = await decompose(query, cfg, state, progress_callback=progress_callback)
 
         if state.status == "needs_input":
@@ -87,11 +84,11 @@ async def run_agent(
     # ------------------------------------------------------------------
     state.current_phase = "build"
     _total_steps = len(state.workflow_plan.steps) if state.workflow_plan else 0
-    await _emit(progress_callback, 1, 3, f"Phase 2: Building {_total_steps} service step(s)...")
+    await emit_progress(progress_callback, 1, 3, f"Phase 2: Building {_total_steps} service step(s)...")
 
     for batch in state.next_buildable_batches():
         if len(batch) == 1:
-            await _emit(progress_callback, 1, 3, f"Building step '{batch[0]}'...")
+            await emit_progress(progress_callback, 1, 3, f"Building step '{batch[0]}'...")
             # Sequential build for single-step batches
             state = await build_step(batch[0], cfg, state, progress_callback=progress_callback)
 
@@ -104,7 +101,7 @@ async def run_agent(
             # Parallel build for independent steps in the same batch
             # Create separate state snapshots for each parallel build,
             # then merge results back
-            await _emit(progress_callback, 1, 3, f"Building {len(batch)} steps in parallel: {', '.join(batch)}...")
+            await emit_progress(progress_callback, 1, 3, f"Building {len(batch)} steps in parallel: {', '.join(batch)}...")
             results = await asyncio.gather(
                 *[_build_step_isolated(step_id, cfg, state, progress_callback=progress_callback) for step_id in batch],
                 return_exceptions=True,
@@ -140,7 +137,7 @@ async def run_agent(
     # Phase 3: Compose (programmatic -- no LLM)
     # ------------------------------------------------------------------
     state.current_phase = "compose"
-    await _emit(progress_callback, 2, 3, "Phase 3: Composing workflow manifest...")
+    await emit_progress(progress_callback, 2, 3, "Phase 3: Composing workflow manifest...")
 
     manifest = compose_manifest(state, cfg)
 
@@ -153,12 +150,12 @@ async def run_agent(
     state.status = "completed"
     state.current_phase = "done"
 
-    await _emit(progress_callback, 2, 3, "Workflow manifest composed successfully.")
+    await emit_progress(progress_callback, 2, 3, "Workflow manifest composed successfully.")
 
     # ------------------------------------------------------------------
     # Persist manifest to the workflow engine to get a real workflow_id
     # ------------------------------------------------------------------
-    await _emit(progress_callback, 2, 3, "Persisting to workflow engine...")
+    await emit_progress(progress_callback, 2, 3, "Persisting to workflow engine...")
     try:
         from common.workflow_engine_client import WorkflowEngineClient
 
@@ -194,7 +191,7 @@ async def run_agent(
             type(e).__name__, e,
         )
 
-    await _emit(progress_callback, 3, 3, "Workflow planning complete.")
+    await emit_progress(progress_callback, 3, 3, "Workflow planning complete.")
     return state.to_result()
 
 

@@ -95,4 +95,4 @@ echo "To start the system:"
 echo "  Terminal 1:  cd mcp_server && source mcp_env/bin/activate && python3 http_server.py"
 echo "  Terminal 2:  cd orchestrator && ./scripts/start_orchestrator.sh"
 echo
-echo "See self_evolving_agents/STARTUP.md for details."
+echo "See STARTUP.md for details."
