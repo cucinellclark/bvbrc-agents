@@ -256,7 +256,7 @@ async def run_agent(
 
         await emit_progress(
             progress_callback, iteration, cfg.max_iterations,
-            f"Planning next step ({state.iteration}/{cfg.max_iterations})...",
+            "Planning next step...",
         )
 
         # 1. PLAN -- Ask the LLM what to do next
