@@ -89,6 +89,13 @@ class OrchestratorRequest(BaseModel):
     # Per-request LLM override (from gateway model lookup)
     llm_override: LLMOverride | None = None
 
+    # User preference for auto-submitting planned workflows:
+    # "always_review" (default), "auto_simple", or "auto_all"
+    auto_submit_preference: str | None = None
+
+    # User-attached text files (inline content from browser upload)
+    attached_files: list[dict[str, Any]] = Field(default_factory=list)
+
 
 class OrchestratorResponse(BaseModel):
     """Final response from the orchestrator to the gateway."""

@@ -1,20 +1,55 @@
-# AGENTS.md
+# AGENTS.md — Agent A: Backend Core
 
-## What this is
+## Your Role
 
-Multi-agent AI copilot for BV-BRC (Bacterial-Viral Bioinformatics Resource Center). An LLM-powered orchestrator routes user questions to specialized Python agents (Data, Service, Workspace) that query BV-BRC APIs via MCP protocol.
+You are **Agent A: Backend Core**. You own the Python agents (data, service, workspace), the orchestrator, and the MCP server. This is the brain of the BV-BRC Copilot.
 
-## Architecture & request flow
+## Multi-Agent Context
+
+You are one of 4 parallel OpenCode sessions working on the BV-BRC Copilot:
+
+| Agent | Scope | Directory |
+|---|---|---|
+| **A (you)** | Agents + Orchestrator + MCP Server | `bvbrc-agents/` |
+| **B** | Workflow Engine | `bvbrc-workflow-engine/` |
+| **C** | Node.js API Gateway | `BV-BRC-Copilot-API/` |
+| **D** | Frontend UI (Dojo 1.x) | `bvbrc_website/` |
+
+### Before you start any task:
+1. Read `/home/ac.cucinell/bvbrc-dev/Copilot/Agents/INTERFACE_SPEC.md` — the cross-component contract
+2. Read `/home/ac.cucinell/bvbrc-dev/Copilot/Agents/DECISIONS.md` — check for decisions that affect you
+3. If you change an interface that other agents depend on, update INTERFACE_SPEC.md and DECISIONS.md FIRST
+
+### What you own (can modify freely):
+- `agents/data_agent/`, `agents/service_agent/`, `agents/workspace_agent/`
+- `orchestrator/`
+- `mcp_server/` (tools, functions, common)
+- `config/`, `shared/`
+
+### What you must NOT modify:
+- `bvbrc-workflow-engine/` — Agent B's territory
+- `BV-BRC-Copilot-API/` — Agent C's territory
+- `bvbrc_website/` — Agent D's territory
+
+### Your interfaces with other agents:
+- **You → Agent B**: You consume the Workflow Engine REST API via `mcp_server/common/workflow_engine_client.py`. See INTERFACE_SPEC.md §4.
+- **You → Agent C**: You expose the orchestrator's `/orchestrate/stream` SSE endpoint. See INTERFACE_SPEC.md §2.
+- **Agent C → You**: The Gateway calls your orchestrator. You define the contract.
+- **Agent D → You** (indirect): Frontend events flow through Agent C to you.
+
+---
+
+## Architecture
 
 ```
 Orchestrator (Python/FastAPI, port 9000)
-     → Consolidated MCP Server (port 8053)  [separate repo]
+     → Consolidated MCP Server (port 8053)
           → agent_chat(agent_type="data")      → Data Agent
           → agent_chat(agent_type="service")   → Service Agent
           → agent_chat(agent_type="workspace") → Workspace Agent
 ```
 
-The orchestrator uses a cheap routing LLM (`gpt41mini`) to classify requests, then delegates to the appropriate agent via the unified `agent_chat` MCP tool with an `agent_type` parameter. The single MCP server imports and runs each agent's internal LLM loop directly.
+The orchestrator uses a routing LLM (`gpt41mini`) to classify requests, then delegates to the appropriate agent via the unified `agent_chat` MCP tool with an `agent_type` parameter.
 
 ## Repository layout
 
@@ -22,66 +57,83 @@ The orchestrator uses a cheap routing LLM (`gpt41mini`) to classify requests, th
 bvbrc-agents/                    (this repo)
 ├── agents/
 │   ├── data_agent/              Data retrieval agent (Solr queries)
-│   ├── service_agent/           Service agent v2 — 3-phase workflow builder
-│   └── workspace_agent/         Workspace browsing agent (read-only)
+│   ├── service_agent/           Service agent — 3-phase workflow builder (Decompose→Build→Compose)
+│   └── workspace_agent/         Workspace browsing agent (read-only, dual output)
 ├── orchestrator/
 │   ├── orchestrator/            Python FastAPI orchestrator package
-│   ├── config/                  agents.yaml
-│   ├── tests/                   pytest suite (117 tests)
-│   ├── scripts/                 start_orchestrator.sh
-│   └── pyproject.toml
-├── config/                      Shared LLM config (llm.yaml + llm_config.py)
+│   │   ├── server.py            FastAPI HTTP server (port 9000)
+│   │   ├── orchestrate.py       Core pipeline: route → execute → synthesize
+│   │   ├── router/              LLM-powered routing + keyword fallback
+│   │   ├── executor/            Plan executor (sequential/parallel via depends_on)
+│   │   ├── synthesizer/         Response synthesis
+│   │   ├── mcp/                 MCP client (FastMCP HTTP)
+│   │   ├── registry/            Agent discovery + health checks
+│   │   ├── llm/                 LLM client wrapper
+│   │   ├── events/              Event types for SSE streaming
+│   │   ├── session/             (placeholder — not yet implemented)
+│   │   └── models.py            OrchestratorRequest/Response
+│   ├── config/agents.yaml       Agent registry (all 3 agents @ localhost:8053)
+│   ├── tests/                   pytest suite (11 test files)
+│   └── scripts/                 start_orchestrator.sh
+├── mcp_server/                  Consolidated FastMCP HTTP server (cloned via setup.sh, gitignored)
+│   ├── http_server.py           Main server entry point
+│   ├── tools/
+│   │   ├── agent_chat_tool.py   THE BRIDGE: dispatches to agent run_agent() by agent_type
+│   │   ├── data_tools.py        Data MCP tools
+│   │   ├── service_tools.py     Service MCP tools
+│   │   ├── workspace_tools.py   Workspace MCP tools
+│   │   └── ...                  group, SRA, RAG tools
+│   ├── functions/
+│   │   ├── data_functions.py          Solr query/facet backend
+│   │   ├── service_functions.py       Service API
+│   │   ├── workflow_functions.py      Workflow engine interaction
+│   │   ├── workflow_composition_functions.py  Manifest composition
+│   │   ├── workspace_functions.py     Workspace JSON-RPC
+│   │   └── ...
+│   ├── common/
+│   │   ├── workflow_engine_client.py  REST client for workflow engine (port 12008)
+│   │   ├── auth.py, config.py, json_rpc.py, token_provider.py
+│   │   └── ...
+│   └── config/
+│       ├── config.json, service_mapping.json, manifest_template.json
+│       └── ...
+├── config/
+│   ├── llm.yaml                 Single source of truth for LLM settings
+│   └── llm_config.py            Python loader with model-specific quirks
+├── shared/
+│   ├── agent_utils.py           Tool-call parsing, argument normalization, fingerprinting
+│   └── agent_messages.py        LLM-facing injection messages
+├── self_evolving_agents/        Plan-only (PLAN.md + evolution_config.yaml, no code yet)
 ├── setup.sh                     One-step setup (clones MCP server, installs deps)
-├── STARTUP.md                   How to start the system
-└── AGENTS.md
+└── STARTUP.md                   How to start the system
 ```
 
-After running `./setup.sh`, the following is cloned into this directory (gitignored):
+## Key conventions
+
+- **`agent_chat` is the bridge**: The orchestrator calls the `agent_chat` MCP tool with `agent_type` parameter. The MCP server's `agent_chat_tool.py` imports and runs the agent's `run_agent()`.
+- **Shared LLM config**: All agents import `config/llm_config.py` via `sys.path` manipulation in their `models.py`.
+- **Model quirks**: `MODEL_PARAM_EXCLUSIONS` in `llm_config.py` — gpt5/o3/o4-mini need `max_tokens` and `temperature` stripped. Check before adding models.
+- **`mcp_server_path`**: Each agent's `AgentConfig.mcp_server_path` is computed via `Path(__file__)` to import MCP server functions.
+- **Workspace agent dual output**: Returns both text and structured data (items, grids, metadata, previews).
+- **Service agent 3 phases**: Decompose (LLM → DAG plan) → Build (LLM per-step → validated params) → Compose (programmatic → manifest JSON).
+- **LLM backend**: Argo Gateway API at `https://apps.inside.anl.gov/argoapi/v1` (OpenAI-compatible).
+- **No .env files**: YAML/JSON + optional env var overrides only.
+
+## Service Agent Workflow Flow (your most complex component)
 
 ```
-├── mcp_server/                  Consolidated FastMCP HTTP server
-│   ├── tools/                   MCP tool registrations + agent_chat_tool.py
-│   ├── functions/               Solr query, service plan, workspace functions
-│   ├── common/                  Shared utilities (auth, config, LLM client)
-│   ├── config/                  config.json
-│   └── bvbrc-python-api/        BV-BRC Solr Python API (also cloned)
+User request
+  → classifier.py (gpt41mini): classify intent → plan|submit|status|cancel
+  → if plan:
+      Phase 1 (decompose.py): LLM loop → WorkflowPlan DAG
+      Phase 2 (build.py): Per-step LLM loop → ValidatedStep params
+      Phase 3 (compose.py): Programmatic → workflow manifest JSON
+      → workflow_engine_client.plan_workflow(manifest) → workflow_id
+  → if submit/status/cancel:
+      handlers/ → direct workflow engine API calls
 ```
-
-The MCP server has its own repo: `git@github.com:cucinellclark/bvbrc-mcp-server.git`
-
-## Setup
-
-```bash
-git clone git@github.com:cucinellclark/bvbrc-agents.git
-cd bvbrc-agents
-./setup.sh
-```
-
-This clones the MCP server, creates virtual environments, and installs all dependencies.
-
-## Shared config: `config/llm.yaml`
-
-Single source of truth for LLM settings. All agents import `config/llm_config.py` via `sys.path` manipulation — every agent's `models.py` does:
-```python
-_CONFIG_DIR = str(Path(__file__).resolve().parent.parent.parent / "config")
-sys.path.insert(0, _CONFIG_DIR)
-from llm_config import load_llm_defaults
-```
-
-The config loader has model-specific quirks in `MODEL_PARAM_EXCLUSIONS` — certain models (gpt5, o3, o4-mini) need parameters stripped or renamed (e.g., `max_tokens` → `max_completion_tokens`). Check `llm_config.py` before adding new models.
-
-## Port mapping
-
-| Component | Port |
-|---|---|
-| MCP Server | 8053 |
-| Orchestrator | 9000 |
-
-The orchestrator's `orchestrator/config/agents.yaml` points all three agent entries at `http://localhost:8053` and uses `chat_tool_params.agent_type` to distinguish between agents.
 
 ## Starting the system
-
-See `STARTUP.md` for full instructions.
 
 ```bash
 # 1. MCP server
@@ -91,33 +143,15 @@ cd mcp_server && source mcp_env/bin/activate && python3 http_server.py
 cd orchestrator && ./scripts/start_orchestrator.sh
 ```
 
-## Environment variables
-
-| Variable | Purpose |
-|---|---|
-| `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL` | Override `config/llm.yaml` for all agents |
-| `LLM_TEMPERATURE`, `LLM_MAX_TOKENS`, `LLM_TIMEOUT_SECONDS` | Additional LLM overrides |
-| `BV_BRC_AUTH_TOKEN` | BV-BRC auth token (also read from `auth_token.txt` files per component) |
-| `ORCH_AUTO_SUBMIT` | Set `"true"` to skip user confirmation on workflow submission |
-
 ## Running tests
 
 ```bash
-# Orchestrator — formal pytest suite (117 tests, async auto-mode)
 cd orchestrator && source orchestrator_env/bin/activate && pytest
 ```
 
-## Python environments
+## Ports
 
-| Component | Venv path |
+| Component | Port |
 |---|---|
-| Orchestrator | `orchestrator/orchestrator_env/` |
-| MCP server | `mcp_server/mcp_env/` |
-
-## Non-obvious conventions
-
-- **`agent_chat` is the bridge**: The orchestrator never calls agent Python code directly. It calls the `agent_chat` MCP tool on the consolidated server with an `agent_type` parameter, which internally imports and runs the appropriate agent's `run_agent()` function.
-- **`mcp_server_path` in agent configs**: Each agent's `AgentConfig.mcp_server_path` is computed dynamically via `Path(__file__)` to point at `mcp_server/`. This lets agents import `functions.*` modules from the MCP server.
-- **Workspace agent returns dual output**: Both natural language text and structured data (items, grids, metadata, previews) for rich UI rendering.
-- **No .env files**: All config is YAML/JSON files + optional env var overrides. No dotenv pattern.
-- **LLM backend is Argo Gateway API** (Argonne National Lab) — not direct OpenAI/Anthropic. Base URL: `https://apps.inside.anl.gov/argoapi/v1`.
+| MCP Server | 8053 |
+| Orchestrator | 9000 |

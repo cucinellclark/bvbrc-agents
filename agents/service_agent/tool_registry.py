@@ -480,7 +480,10 @@ PHASE_1_TOOLS: list[dict] = [
     CREATE_WORKFLOW_PLAN,
     LIST_SERVICES,
     GET_SRA_METADATA,
-    SUBMIT_WORKFLOW,
+    # NOTE: SUBMIT_WORKFLOW was removed from Phase 1 tools.  Submit requests
+    # are now handled by the intent classifier + handlers/submit.py before
+    # the 3-phase pipeline runs.  The SUBMIT_WORKFLOW schema is retained
+    # below for reference and for the TOOL_DISPATCH table.
 ]
 
 PHASE_2_TOOLS: list[dict] = [

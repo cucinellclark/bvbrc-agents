@@ -50,6 +50,13 @@ class AgentConfig(BaseModel):
     temperature: float = _LLM_DEFAULTS["temperature"]
     max_tokens: int = _LLM_DEFAULTS["max_tokens"]
 
+    # Optional lightweight model for intent classification.
+    # When set, the service agent uses this cheaper/faster model to
+    # classify requests (plan vs submit vs status vs cancel) before
+    # running the full planning pipeline.  When None, falls back to
+    # llm_model for classification.
+    classifier_model: str | None = _LLM_DEFAULTS.get("classifier_model")
+
     # Agent behavior
     max_iterations: int = 10          # Max LLM calls per phase sub-loop
     tool_timeout_seconds: int = 30
@@ -72,6 +79,11 @@ class AgentConfig(BaseModel):
     singularity_container_path: str = (
         "/vol/patric3/production/containers/ubuntu-027-11.sif"
     )
+
+    # User preference for auto-submitting planned workflows.
+    # "always_review" (default) | "auto_simple" | "auto_all"
+    # Flows from the frontend via Gateway -> Orchestrator -> MCP -> here.
+    auto_submit_preference: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -223,6 +235,26 @@ class ValidatedStep(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Intent classification (pre-dispatch before 3-phase pipeline)
+# ---------------------------------------------------------------------------
+
+class Intent(BaseModel):
+    """Result of the lightweight intent classifier.
+
+    Determines whether the user wants to plan a new workflow or perform
+    a lifecycle operation (submit, status, cancel, modify) on an existing one.
+    """
+
+    action: Literal[
+        "plan", "submit", "status", "cancel", "modify", "unknown"
+    ] = "plan"
+    workflow_id: str | None = None        # Resolved from context if not explicit
+    confidence: float = 1.0               # Classifier confidence (0.0-1.0)
+    reasoning: str = ""                   # Brief explanation for logging/debugging
+    submit_after_plan: bool = False       # True when user says "plan AND submit/run/execute"
+
+
+# ---------------------------------------------------------------------------
 # Information request (structured question for the user)
 # ---------------------------------------------------------------------------
 
@@ -275,6 +307,13 @@ class AgentState(BaseModel):
     ] = "in_progress"
     question: str | None = None              # Set when status is "needs_input"
     error_message: str | None = None         # Set when status is "error"
+
+    # Lifecycle operation output (non-planning paths)
+    operation_message: str | None = None
+    auto_submitted: bool = False
+
+    # Intent from classifier (stored so post-planning logic can check it)
+    classified_intent: Intent | None = None
 
     # Tracking
     tool_executions: list[ToolExecution] = Field(default_factory=list)
@@ -432,6 +471,8 @@ class AgentState(BaseModel):
             elapsed_seconds=round(elapsed, 2),
             workflow_id=self.workflow_id,
             persisted=self.persisted,
+            operation_message=self.operation_message,
+            auto_submitted=self.auto_submitted,
         )
 
 
@@ -475,9 +516,20 @@ class AgentResult(BaseModel):
     workflow_id: str | None = None
     persisted: bool = False
 
+    # Lifecycle operation output (submit, status, cancel — non-planning paths)
+    operation_message: str | None = None
+    auto_submitted: bool = False
+
     def pretty(self) -> str:
         """Human-readable summary for CLI output."""
         import json
+
+        # Lifecycle operations (submit/status/cancel) return a concise message
+        if self.operation_message:
+            lines = [self.operation_message]
+            if self.auto_submitted:
+                lines.append("(auto-submitted)")
+            return "\n".join(lines)
 
         lines = [
             f"Status: {self.status}",

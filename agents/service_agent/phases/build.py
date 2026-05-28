@@ -99,6 +99,9 @@ async def build_step(
 
     state.current_step_id = step_id
 
+    # Extract attached files from context (if user uploaded text files)
+    attached_files = state.context.get("attached_files", []) if state.context else []
+
     # Build step-specific system prompt
     system_prompt = build_phase2_prompt(
         step_id=step_plan.step_id,
@@ -107,6 +110,7 @@ async def build_step(
         depends_on=step_plan.depends_on,
         input_sources=step_plan.input_sources,
         upstream_outputs=upstream_outputs,
+        attached_files=attached_files,
     )
 
     # Add context about the overall plan and user's original query

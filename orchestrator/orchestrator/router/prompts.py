@@ -55,13 +55,20 @@ your reasoning.
 respond directly.
 
 ## Workflow Submission Routing
-- When a user asks to "submit", "run", or "execute" a planned workflow, \
-route to the **service2** agent with a task that includes the workflow_id. \
+- When a user asks to plan/build a service AND also submit/run/execute \
+it in the same request (e.g. "assemble genome X and submit the job"), \
+route as a **single agent** call to **service2** — NOT a pipeline. \
+The service agent handles the full lifecycle (plan + submit) internally. \
+Creating a separate pipeline step for submission will cause errors.
+- When a user asks to "submit", "run", or "execute" an already-planned \
+workflow from a previous turn, route to the **service2** agent with a \
+task that includes the workflow_id. \
 Example: {{"decision": "agent", "agent_key": "service2", \
 "task": "Submit workflow wf_abc123"}}
 - The workflow_id is visible in the conversation context as \
 [workflow: wf_abc123 | ...]. Use the id from that context.
-- NEVER route a submission without the user explicitly requesting it.
+- NEVER create a pipeline with separate "plan" and "submit" steps \
+for the same service request. Always use a single agent call.
 - If there are multiple planned workflows and the user is ambiguous, \
 use decision "direct" to ask which one to submit.
 - If no planned workflows exist in the context, use decision "direct" \

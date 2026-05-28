@@ -35,6 +35,7 @@ _FALLBACK_DEFAULTS: dict[str, Any] = {
     "temperature": 0.0,
     "max_tokens": 4096,
     "timeout_seconds": 60,
+    "classifier_model": None,
 }
 
 # Mapping from environment variable names to config keys
@@ -45,6 +46,7 @@ _ENV_VAR_MAP: dict[str, str] = {
     "LLM_TEMPERATURE": "temperature",
     "LLM_MAX_TOKENS": "max_tokens",
     "LLM_TIMEOUT_SECONDS": "timeout_seconds",
+    "LLM_CLASSIFIER_MODEL": "classifier_model",
 }
 
 # Type coercion for numeric fields

@@ -78,6 +78,14 @@ async def execute_agent_step(
     if request.selected_items:
         context_data["selected_items"] = request.selected_items
 
+    # Pass session_id so agents can thread it to the workflow engine
+    if request.session_id:
+        context_data["session_id"] = request.session_id
+
+    # Pass auto-submit preference so the service agent can auto-submit
+    if request.auto_submit_preference:
+        context_data["auto_submit_preference"] = request.auto_submit_preference
+
     # Thread upstream results into context for pipeline steps
     if upstream_results:
         context_data["upstream_results"] = upstream_results
@@ -89,6 +97,10 @@ async def execute_agent_step(
             "api_key": request.llm_override.api_key,
             "model": request.llm_override.model,
         }
+
+    # Forward attached files so agents can use file content
+    if request.attached_files:
+        context_data["attached_files"] = request.attached_files
 
     if context_data:
         arguments["context"] = json.dumps(context_data)

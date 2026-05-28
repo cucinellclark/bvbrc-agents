@@ -33,3 +33,10 @@ llm:
 
   # Request timeout in seconds
   timeout_seconds: 60
+
+  # Optional lightweight model for internal agent routing/classification.
+  # Used by the service agent to classify intent (plan vs submit vs status)
+  # before running the full planning pipeline.  A smaller model like
+  # gpt41mini reduces latency for non-planning requests.
+  # Set to null or omit to reuse the main model for classification.
+  classifier_model: "gpt41mini"

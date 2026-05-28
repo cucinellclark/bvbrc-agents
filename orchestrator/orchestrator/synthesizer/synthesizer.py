@@ -47,10 +47,12 @@ async def synthesize(
     )
 
     # --- Pass-through for single successful agent result ---
+    # Also pass through "needs_input" so the agent's clarification
+    # question reaches the user verbatim (no LLM reformulation).
     if (
         not force_llm
         and len(agent_results) == 1
-        and agent_results[0].get("status") in ("completed", "max_iterations")
+        and agent_results[0].get("status") in ("completed", "max_iterations", "needs_input")
         and agent_results[0].get("answer")
     ):
         answer = agent_results[0]["answer"]

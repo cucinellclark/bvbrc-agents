@@ -20,6 +20,7 @@ from orchestrator.executor.executor import execute_plan
 from orchestrator.llm.client import LLMClient
 from orchestrator.models import OrchestratorRequest, OrchestratorResponse
 from orchestrator.registry.agent_registry import AgentRegistry
+from orchestrator.router.models import Step
 from orchestrator.router.router import route
 from orchestrator.synthesizer.synthesizer import synthesize
 
@@ -130,6 +131,45 @@ async def orchestrate(
             )
             return
 
+        # When auto-submit is enabled, prune any pipeline steps that
+        # are purely "submit the planned workflow" — those would call
+        # agent_chat which re-runs the full planning pipeline and fails.
+        # Auto-submit (§3b below) already handles submission directly.
+        auto_submit = getattr(registry._config, "auto_submit", False)
+        if auto_submit and len(decision.plan.steps) > 1:
+            _SUBMIT_KEYWORDS = {"submit", "execute", "run the"}
+            kept: list[Step] = []
+            for step in decision.plan.steps:
+                task_lower = step.task.lower()
+                if any(kw in task_lower for kw in _SUBMIT_KEYWORDS) and \
+                        "assemble" not in task_lower and \
+                        "annotate" not in task_lower and \
+                        "build" not in task_lower and \
+                        "plan" not in task_lower and \
+                        "analyze" not in task_lower:
+                    logger.info(
+                        "Pruning redundant submit step from pipeline "
+                        "(auto-submit is enabled): %r",
+                        step.task,
+                    )
+                else:
+                    kept.append(step)
+            if kept and len(kept) < len(decision.plan.steps):
+                # Build mapping from old step indices to new indices
+                old_to_new: dict[int, int] = {}
+                new_idx = 0
+                for old_idx, step in enumerate(decision.plan.steps):
+                    if step in kept:
+                        old_to_new[old_idx] = new_idx
+                        new_idx += 1
+                for s in kept:
+                    s.depends_on = [
+                        old_to_new[d]
+                        for d in s.depends_on
+                        if d in old_to_new
+                    ]
+                decision.plan.steps = kept
+
         # Collect agent results from execution events
         agent_results: list[dict[str, Any]] = []
         agents_used: list[str] = []
@@ -156,6 +196,25 @@ async def orchestrate(
                     "answer": event.data.get("error", "Unknown error"),
                     "status": "error",
                 })
+
+        # ------------------------------------------------------------------
+        # 3a. NEEDS_INPUT — emit a dedicated event so the gateway can
+        #     forward the agent's clarification question to the frontend.
+        # ------------------------------------------------------------------
+        for ar in agent_results:
+            if ar.get("status") == "needs_input":
+                question = ar.get("question") or ar.get("answer", "")
+                if question:
+                    yield Event(
+                        type=EventType.NEEDS_INPUT,
+                        agent_name=ar.get("agent"),
+                        data={
+                            "agent": ar.get("agent"),
+                            "question": question,
+                            "message": question,
+                            "options": ar.get("options"),
+                        },
+                    )
 
         # ------------------------------------------------------------------
         # 3b. AUTO-SUBMIT (when ORCH_AUTO_SUBMIT is enabled)

@@ -17,6 +17,7 @@ def build_phase2_prompt(
     depends_on: list[str],
     input_sources: dict[str, str],
     upstream_outputs: dict[str, dict[str, str]],
+    attached_files: list[dict] | None = None,
 ) -> str:
     """Build the Phase 2 system prompt for building a single step.
 
@@ -46,6 +47,16 @@ def build_phase2_prompt(
             lines.append(f"  {param}: {source}")
         sources_section = "\n".join(lines)
 
+    # Format attached files section
+    files_section = "None"
+    if attached_files:
+        lines = []
+        for f in attached_files:
+            name = f.get("name", "unnamed")
+            size = f.get("size", 0)
+            lines.append(f"  - {name} ({size} bytes)")
+        files_section = "\n".join(lines)
+
     return f"""\
 You are building step "{step_id}" of a workflow plan.
 
@@ -60,6 +71,18 @@ You are building step "{step_id}" of a workflow plan.
 
 == INPUT SOURCES (from plan) ==
 {sources_section}
+
+== USER-ATTACHED FILES ==
+{files_section}
+
+If the user attached files, their content is included in the query text above
+(delimited by [Attached file: ...] and [End of file: ...] markers). Use this
+content directly:
+- For BLAST/Homology: if a FASTA file is attached, set input_source="fasta_data"
+  and input_fasta_data=<the full FASTA content from the attached file>.
+  Auto-detect input_type: if sequences contain only A/T/G/C/N characters, use
+  "dna"; if they contain amino acid letters (M/F/W/Y/P/etc.), use "aa".
+- For other services: use file content as appropriate for the service parameters.
 
 == INSTRUCTIONS ==
 1. Call get_service_schema("{service_name}") to get the parameter requirements \

@@ -18,7 +18,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 VENV_DIR="$PROJECT_DIR/orchestrator_env"
-LOG_DIR="$PROJECT_DIR/logs"
+LOG_DIR="$(cd "$PROJECT_DIR/../../.." && pwd)/DevEnvironment/logs/agents"
 PID_FILE="$PROJECT_DIR/orchestrator.pid"
 LOG_FILE="$LOG_DIR/orchestrator.log"
 CONFIG_FILE="$PROJECT_DIR/config/agents.yaml"

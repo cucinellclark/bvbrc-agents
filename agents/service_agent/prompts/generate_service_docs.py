@@ -146,6 +146,12 @@ def generate_reference(config_dir: str) -> str:
             if req_one:
                 lines.append(f"    Required (at least one): {' | '.join(req_one)}")
 
+            # Optional params (with descriptions)
+            optional = config.get("optional_params", {})
+            if optional:
+                opt_strs = [f"{k} ({v})" for k, v in optional.items()]
+                lines.append(f"    Optional: {', '.join(opt_strs)}")
+
             # Defaults
             defaults = config.get("defaults", {})
             if defaults:

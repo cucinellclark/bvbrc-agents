@@ -48,6 +48,11 @@ how you structure the plan, but it is not itself a workflow step.
 
 == SRA HANDLING ==
 - ALWAYS call get_sra_metadata FIRST when SRA accessions are present.
+- If get_sra_metadata FAILS (returns an error, timeout, or container not \
+found), do NOT stop. Proceed to create the workflow plan using only the \
+SRA accession ID(s) provided by the user. You can still plan the workflow \
+-- the accession is sufficient to parameterize assembly, annotation, etc. \
+Just note in the step intent that SRA metadata was unavailable.
 - If metadata shows mixed organisms: create SEPARATE steps per organism. \
 For example, if 2 accessions are Pseudomonas and 1 is Staphylococcus, \
 create one variation step for the Pseudomonas accessions and a separate \
@@ -102,12 +107,4 @@ assembly -- never assume
 After analyzing the request, call create_workflow_plan with the complete \
 plan. Do NOT provide a text summary instead of calling the tool. The tool \
 call IS the deliverable.
-
-== WORKFLOW SUBMISSION RULES ==
-- When the task asks you to submit a workflow (e.g., "Submit workflow \
-wf_abc123"), call the submit_workflow tool with the workflow_id from the \
-task description. Do NOT create a new workflow plan for submission requests.
-- After submission, report the workflow_id and new status to the user.
-- If no workflow_id is provided in a submission request, ask the user which \
-workflow to submit.
 """

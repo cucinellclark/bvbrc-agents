@@ -23,6 +23,7 @@ Total services: 31
     Description: Annotate assembled genomes with gene predictions and functional annotations
     Required: contigs, scientific_name, code, domain
     Required (at least one): contigs
+    Optional: taxonomy_id (NCBI Taxonomy ID (positive integer). Recommended when known — improves annotation accuracy.), recipe (Annotation recipe. Leave unset for automatic selection.)
     Defaults: code=0, domain=auto, public=False, queue_nowait=False, skip_indexing=False, skip_workspace_output=False
     Enum code: 0, 1, 4, 11, 25
     Enum domain: Bacteria, Archaea, Viruses, auto
@@ -172,6 +173,7 @@ Total services: 31
     Enum db_type: faa, ffn, frn, fna
     Enum db_source: id_list, fasta_data, fasta_file, genome_list, feature_group, genome_group, taxon_list, precomputed_database
     Enum blast_program: blastp, blastn, blastx, tblastn, tblastx
+    Enum db_precomputed_database: bacteria-archaea, viral-reference
     When db_source=precomputed_database: requires db_precomputed_database
     When input_source=id_list: requires input_id_list
     When db_source=id_list: requires db_id_list
