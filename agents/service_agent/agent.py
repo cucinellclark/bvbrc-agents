@@ -238,35 +238,45 @@ async def _run_planning_pipeline(
     await emit_progress(progress_callback, 2, 3, "Workflow manifest composed successfully.")
 
     # ------------------------------------------------------------------
-    # Persist manifest to the workflow engine to get a real workflow_id
+    # Persist CWL workflow to GoWe to get a real workflow_id
     # ------------------------------------------------------------------
-    await emit_progress(progress_callback, 2, 3, "Persisting to workflow engine...")
+    await emit_progress(progress_callback, 2, 3, "Registering CWL workflow with GoWe...")
     try:
-        from common.workflow_engine_client import WorkflowEngineClient
+        _ensure_mcp_path(config)
+        from common.gowe_client import GoWeClient
 
-        client = WorkflowEngineClient(base_url=config.workflow_engine_url)
-        engine_payload = manifest
-        if isinstance(manifest, dict) and isinstance(manifest.get("manifest"), dict):
-            engine_payload = manifest["manifest"]
-        _session_id = state.context.get("session_id")
-        engine_result = await client.plan_workflow(
-            engine_payload, config.bvbrc_auth_token or "",
-            session_id=_session_id,
-        )
-        state.workflow_id = engine_result.get("workflow_id")
-        state.persisted = True
-        if state.workflow_id and isinstance(state.manifest, dict):
-            state.manifest["workflow_id"] = state.workflow_id
-        logger.info(
-            "Manifest persisted to workflow engine: workflow_id=%s",
-            state.workflow_id,
-        )
+        client = GoWeClient(base_url=config.gowe_url)
+
+        # The manifest from compose now has cwl_document and submission_inputs
+        cwl_doc = manifest.get("cwl_document") if isinstance(manifest, dict) else None
+        submission_inputs = manifest.get("submission_inputs") if isinstance(manifest, dict) else None
+
+        if cwl_doc:
+            engine_result = await client.register_workflow(
+                cwl_doc, config.bvbrc_auth_token or "",
+                name=state.workflow_plan.workflow_name if state.workflow_plan else None,
+            )
+            state.workflow_id = engine_result.get("id")
+            state.cwl_document = cwl_doc
+            state.submission_inputs = submission_inputs
+            state.persisted = True
+            if state.workflow_id and isinstance(state.manifest, dict):
+                state.manifest["workflow_id"] = state.workflow_id
+            logger.info(
+                "CWL workflow registered with GoWe: workflow_id=%s",
+                state.workflow_id,
+            )
+        else:
+            state.persisted = False
+            logger.warning(
+                "No CWL document in compose output; skipping GoWe registration."
+            )
     except Exception as e:
         state.persisted = False
         if isinstance(state.manifest, dict) and "workflow_id" in state.manifest:
             state.manifest.pop("workflow_id", None)
         logger.warning(
-            "Failed to persist manifest to workflow engine: %s: %s",
+            "Failed to register CWL workflow with GoWe: %s: %s",
             type(e).__name__, e,
         )
 
@@ -359,3 +369,10 @@ async def _build_step_isolated(
     )
 
     return await build_step(step_id, config, isolated_state, progress_callback=progress_callback)
+
+
+def _ensure_mcp_path(config: AgentConfig) -> None:
+    """Add the MCP server path to sys.path if needed."""
+    mcp_path = config.mcp_server_path
+    if mcp_path and mcp_path not in sys.path:
+        sys.path.insert(0, mcp_path)

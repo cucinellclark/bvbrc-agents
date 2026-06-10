@@ -1,4 +1,4 @@
-"""Submit handler -- submits a planned workflow for execution."""
+"""Submit handler -- submits a planned workflow for execution via GoWe."""
 
 from __future__ import annotations
 
@@ -24,13 +24,15 @@ async def handle_submit(
     state: AgentState,
     progress_callback: ProgressCallback | None = None,
 ) -> AgentResult:
-    """Submit an already-planned workflow to the workflow engine.
+    """Submit an already-planned workflow to GoWe for execution.
 
-    Direct engine call -- no LLM involved.
+    Creates a GoWe submission using the workflow_id (from registration)
+    and the submission_inputs (from Phase 3 compose). Direct engine call
+    -- no LLM involved.
 
     Args:
-        workflow_id: The engine-issued workflow ID to submit.
-        config: Agent configuration (provides auth token and engine URL).
+        workflow_id: The GoWe-issued workflow ID to submit.
+        config: Agent configuration (provides auth token and GoWe URL).
         state: Current agent state (will be mutated).
         progress_callback: Optional progress callback.
 
@@ -48,26 +50,39 @@ async def handle_submit(
         return state.to_result()
 
     try:
-        # Lazy import to avoid circular deps and to use the agent's
-        # configured mcp_server_path for the workflow engine client
         _ensure_mcp_path(config)
-        from common.workflow_engine_client import WorkflowEngineClient
+        from common.gowe_client import GoWeClient
 
-        client = WorkflowEngineClient(base_url=config.workflow_engine_url)
-        result = await client.submit_planned_workflow(
-            workflow_id, config.bvbrc_auth_token,
+        client = GoWeClient(base_url=config.gowe_url)
+
+        # Get submission inputs -- prefer state, fall back to regenerating
+        inputs = state.submission_inputs
+        if not inputs and state.completed_steps:
+            from service_agent.cwl.generator import generate_submission_inputs
+            inputs = generate_submission_inputs(state.completed_steps)
+
+        result = await client.create_submission(
+            workflow_id=workflow_id,
+            inputs=inputs or {},
+            auth_token=config.bvbrc_auth_token,
         )
 
-        status = result.get("status", "pending")
+        submission_id = result.get("id", "")
+        status = result.get("state", "PENDING")
         state.workflow_id = workflow_id
+        state.submission_id = submission_id
         state.status = "completed"
         state.current_phase = "done"
         state.operation_message = (
             f"Workflow **{workflow_id}** has been submitted for execution. "
-            f"Current status: **{status}**."
+            f"Submission ID: **{submission_id}**. "
+            f"Current state: **{status}**."
         )
 
-        logger.info("Workflow %s submitted: status=%s", workflow_id, status)
+        logger.info(
+            "Workflow %s submitted: submission_id=%s, state=%s",
+            workflow_id, submission_id, status,
+        )
 
     except Exception as e:
         logger.error("Failed to submit workflow %s: %s", workflow_id, e)

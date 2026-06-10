@@ -1,4 +1,4 @@
-"""Cancel handler -- cancels a running or pending workflow."""
+"""Cancel handler -- cancels a running or pending submission via GoWe."""
 
 from __future__ import annotations
 
@@ -24,12 +24,16 @@ async def handle_cancel(
     state: AgentState,
     progress_callback: ProgressCallback | None = None,
 ) -> AgentResult:
-    """Cancel a running or pending workflow via the workflow engine.
+    """Cancel a running or pending submission via GoWe.
+
+    Same submission_id vs workflow_id logic as the status handler:
+    if state has a submission_id, use it; otherwise fall back to
+    workflow_id.
 
     Direct engine call -- no LLM involved.
 
     Args:
-        workflow_id: The engine-issued workflow ID to cancel.
+        workflow_id: The workflow or submission ID to cancel.
         config: Agent configuration.
         state: Current agent state (will be mutated).
         progress_callback: Optional progress callback.
@@ -37,41 +41,45 @@ async def handle_cancel(
     Returns:
         AgentResult with status and operation_message.
     """
-    await emit_progress(progress_callback, 0, 1, f"Cancelling workflow {workflow_id}...")
+    # Try submission_id first, fall back to workflow_id
+    sub_id = state.submission_id or workflow_id
+
+    await emit_progress(progress_callback, 0, 1, f"Cancelling submission {sub_id}...")
 
     if not config.bvbrc_auth_token:
         state.status = "error"
         state.error_message = (
-            "Authentication required to cancel workflows. "
+            "Authentication required to cancel submissions. "
             "Please log in and try again."
         )
         return state.to_result()
 
     try:
         _ensure_mcp_path(config)
-        from common.workflow_engine_client import WorkflowEngineClient
+        from common.gowe_client import GoWeClient
 
-        client = WorkflowEngineClient(base_url=config.workflow_engine_url)
+        client = GoWeClient(base_url=config.gowe_url)
+        result = await client.cancel_submission(
+            sub_id, auth_token=config.bvbrc_auth_token,
+        )
 
-        # The cancel endpoint: POST /workflows/{id}/cancel
-        result = await client.cancel_workflow(workflow_id, config.bvbrc_auth_token)
-
-        new_status = result.get("status", "cancelled")
+        new_state = result.get("state", "CANCELLED")
         state.workflow_id = workflow_id
+        state.submission_id = result.get("id", sub_id)
         state.status = "completed"
         state.current_phase = "done"
         state.operation_message = (
-            f"Workflow **{workflow_id}** has been cancelled. "
-            f"Status: **{new_status}**."
+            f"Submission **{sub_id}** has been cancelled. "
+            f"State: **{new_state}**."
         )
 
-        logger.info("Workflow %s cancelled: status=%s", workflow_id, new_status)
+        logger.info("Submission %s cancelled: state=%s", sub_id, new_state)
 
     except Exception as e:
-        logger.error("Failed to cancel workflow %s: %s", workflow_id, e)
+        logger.error("Failed to cancel submission %s: %s", sub_id, e)
         state.status = "error"
         state.error_message = (
-            f"Failed to cancel workflow {workflow_id}: "
+            f"Failed to cancel submission {sub_id}: "
             f"{type(e).__name__}: {e}"
         )
 
