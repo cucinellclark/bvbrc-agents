@@ -18,6 +18,12 @@ def _make_llm_client(response: str = "Synthesized response") -> LLMClient:
     """Create a mock LLM client."""
     client = MagicMock(spec=LLMClient)
     client.complete = AsyncMock(return_value=response)
+
+    # The synthesizer uses complete_stream (async generator), not complete.
+    async def _mock_stream(**kwargs):
+        yield response
+
+    client.complete_stream = MagicMock(side_effect=lambda **kw: _mock_stream(**kw))
     return client
 
 
@@ -145,7 +151,7 @@ class TestSynthesize:
         done_event = next(e for e in events if e.type == EventType.SYNTHESIS_DONE)
         assert done_event.data["method"] == "llm_synthesis"
         assert "sorry" in done_event.data["response_text"].lower()
-        llm.complete.assert_called_once()
+        llm.complete_stream.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_llm_synthesis_for_empty_answer(self):
@@ -182,13 +188,18 @@ class TestSynthesize:
 
         done_event = next(e for e in events if e.type == EventType.SYNTHESIS_DONE)
         assert done_event.data["method"] == "llm_synthesis"
-        llm.complete.assert_called_once()
+        llm.complete_stream.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_llm_synthesis_failure_fallback(self):
         """Test fallback when synthesis LLM call fails."""
         llm = _make_llm_client()
-        llm.complete = AsyncMock(side_effect=Exception("LLM down"))
+
+        async def _failing_stream(**kwargs):
+            raise Exception("LLM down")
+            yield  # noqa: unreachable — makes this an async generator
+
+        llm.complete_stream = MagicMock(side_effect=lambda **kw: _failing_stream(**kw))
         request = _make_request()
         agent_results = [{
             "agent": "data",
