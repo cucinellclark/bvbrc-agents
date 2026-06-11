@@ -61,13 +61,24 @@ async def synthesize(
             f"preview={answer[:80]!r}"
         )
 
-        # Append workflow manifest JSON if the agent produced one
+        # Append workflow manifest if the agent produced one.
+        # If the manifest contains a cwl_document, format it as YAML
+        # (idiomatic for CWL v1.2).  Otherwise fall back to JSON.
         manifest = agent_results[0].get("manifest")
         if manifest:
-            answer += (
-                "\n\n### Workflow Manifest\n"
-                f"```json\n{json.dumps(manifest, indent=2, default=str)}\n```"
-            )
+            cwl_doc = manifest.get("cwl_document") if isinstance(manifest, dict) else None
+            if cwl_doc:
+                import yaml
+                answer += (
+                    "\n\n### CWL Workflow\n```yaml\n"
+                    + yaml.dump(cwl_doc, default_flow_style=False, sort_keys=False)
+                    + "```"
+                )
+            else:
+                answer += (
+                    "\n\n### Workflow Manifest\n"
+                    f"```json\n{json.dumps(manifest, indent=2, default=str)}\n```"
+                )
 
         # Emit the answer as a single synthesis chunk so the gateway
         # always receives a synthesis_chunk -> final_response mapping.

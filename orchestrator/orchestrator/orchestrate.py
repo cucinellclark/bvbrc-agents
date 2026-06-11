@@ -260,9 +260,14 @@ async def orchestrate(
                                 ar["submission_status"] = submit_data.get(
                                     "status", "pending"
                                 )
+                                # Capture GoWe submission_id if returned
+                                if submit_data.get("submission_id"):
+                                    ar["submission_id"] = submit_data["submission_id"]
                                 logger.info(
-                                    "Auto-submitted workflow %s: status=%s",
+                                    "Auto-submitted workflow %s: status=%s, "
+                                    "submission_id=%s",
                                     wf_id, submit_data.get("status"),
+                                    submit_data.get("submission_id"),
                                 )
                         else:
                             logger.warning(
