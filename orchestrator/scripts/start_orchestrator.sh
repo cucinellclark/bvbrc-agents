@@ -26,7 +26,7 @@ AUTH_TOKEN_FILE="$PROJECT_DIR/auth_token.txt"
 
 # ── Defaults ──────────────────────────────────────────────────────────
 HOST="0.0.0.0"
-PORT=9000
+PORT=9100
 LOG_LEVEL="info"
 BACKGROUND=false
 STOP=false

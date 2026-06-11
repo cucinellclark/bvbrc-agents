@@ -102,6 +102,10 @@ async def execute_agent_step(
     if request.attached_files:
         context_data["attached_files"] = request.attached_files
 
+    # Forward workflow context for the analysis agent
+    if request.workflow_context:
+        context_data["workflow_context"] = request.workflow_context
+
     if context_data:
         arguments["context"] = json.dumps(context_data)
 

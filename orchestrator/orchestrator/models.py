@@ -96,6 +96,10 @@ class OrchestratorRequest(BaseModel):
     # User-attached text files (inline content from browser upload)
     attached_files: list[dict[str, Any]] = Field(default_factory=list)
 
+    # Workflow context from completion webhook (for analysis agent)
+    # Contains workflow_id, workflow_name, status, steps, output_paths
+    workflow_context: dict[str, Any] | None = None
+
 
 class OrchestratorResponse(BaseModel):
     """Final response from the orchestrator to the gateway."""

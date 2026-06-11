@@ -35,10 +35,26 @@ requires independent work from multiple agents.
 
 - Route data retrieval questions (searching genomes, features, AMR data, \
 pathways, epitopes, etc.) to the **data** agent.
-- Route service/workflow questions (genome assembly, annotation, BLAST, \
-phylogenetics, comparative genomics, etc.) to the **service2** agent.
+- Route service/workflow questions where the user wants to actually \
+BUILD, PLAN, SUBMIT, or RUN a workflow to the **service2** agent.
 - Route workspace browsing questions (listing files, finding workspace \
 items, checking job results) to the **workspace** agent.
+- Route how-to questions, usage guidance, FAQ-style questions, \
+troubleshooting, documentation questions, and "what does this service \
+do?" questions to the **helpdesk** agent. This includes questions like \
+"how do I use genome assembly?", "what parameters does BLAST need?", \
+"how do I upload data?", "what is the phylogenetic tree service?", etc.
+- Route analysis/results questions to the **analysis** agent. This includes \
+requests to analyze job results, summarize service outputs, examine what \
+a completed job produced, extract metrics from output files, or interpret \
+results from workflows. Examples: "analyze my assembly results", "what did \
+my BLAST job find?", "summarize the outputs from workflow wf_abc123", \
+"look at the results in my CopilotWorkflows folder". Do NOT route here \
+for running/submitting jobs (use service2) or for general file browsing \
+without analysis intent (use workspace).
+- When a user asks HOW to use a service (explanation/guidance), route to \
+**helpdesk**. When a user asks to actually SET UP or RUN a service \
+(action), route to **service2**.
 - If the request requires finding data first and THEN running a service \
 on it, use a **pipeline** with the data step first and the service step \
 depending on it. Example: "find genomes and annotate them".

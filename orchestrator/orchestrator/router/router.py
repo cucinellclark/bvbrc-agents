@@ -262,6 +262,15 @@ def _fallback_routing(
     """
     q = query.lower()
 
+    # Helpdesk-related keywords (checked first — how-to questions)
+    helpdesk_keywords = [
+        "how to", "how do i", "how does", "how can i",
+        "what is", "what are", "what does",
+        "explain", "help", "tutorial", "guide", "documentation",
+        "faq", "troubleshoot", "usage", "getting started",
+        "steps to", "instructions", "walkthrough",
+    ]
+
     # Data-related keywords
     data_keywords = [
         "genome", "genomes", "feature", "features", "gene", "genes",
@@ -273,17 +282,51 @@ def _fallback_routing(
         "surveillance", "serology", "sequence",
     ]
 
-    # Service-related keywords
+    # Service-related keywords (action-oriented)
     service_keywords = [
         "assemble", "assembly", "annotate", "annotation", "blast",
         "align", "alignment", "phylogen", "tree", "workflow",
-        "service", "submit", "run", "job", "analysis", "analyze",
+        "submit", "run", "job",
         "pipeline", "comparative", "variation", "snp", "tn-seq",
         "rna-seq", "expression", "proteome", "metabol",
     ]
 
+    # Analysis-related keywords (post-hoc output inspection)
+    analysis_keywords = [
+        "analyze results", "analyze my", "analyze the results",
+        "summarize results", "summarize the output", "summarize outputs",
+        "what did my", "what were the results",
+        "examine results", "examine the output",
+        "interpret results", "output files", "output analysis",
+        "job results", "job output", "n50", "metrics",
+    ]
+
+    helpdesk_score = sum(1 for kw in helpdesk_keywords if kw in q)
     data_score = sum(1 for kw in data_keywords if kw in q)
     service_score = sum(1 for kw in service_keywords if kw in q)
+    analysis_score = sum(1 for kw in analysis_keywords if kw in q)
+
+    # Analysis gets priority when results/output phrases are present
+    if analysis_score > 0 and analysis_score >= service_score and "analysis" in registry.agents:
+        return RoutingDecision(
+            decision="agent",
+            plan=Plan(
+                reasoning="Fallback keyword routing: analysis/results query.",
+                steps=[Step(agent_key="analysis", task=query)],
+            ),
+            confidence=0.5,
+        )
+
+    # Helpdesk gets priority when how-to phrases are present
+    if helpdesk_score > 0 and helpdesk_score >= data_score and helpdesk_score >= service_score and "helpdesk" in registry.agents:
+        return RoutingDecision(
+            decision="agent",
+            plan=Plan(
+                reasoning="Fallback keyword routing: helpdesk/how-to query.",
+                steps=[Step(agent_key="helpdesk", task=query)],
+            ),
+            confidence=0.5,
+        )
 
     if data_score > service_score and "data" in registry.agents:
         return RoutingDecision(
@@ -321,8 +364,9 @@ def _fallback_routing(
         decision="direct",
         direct_response=(
             "I'm not sure how to help with that request. "
-            "I can help you search BV-BRC biological data or "
-            "set up bioinformatics service workflows. "
+            "I can help you search BV-BRC biological data, "
+            "set up bioinformatics service workflows, or "
+            "answer questions about how to use BV-BRC. "
             "Could you rephrase your question?"
         ),
         confidence=0.3,
