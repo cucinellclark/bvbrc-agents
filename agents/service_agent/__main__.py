@@ -108,7 +108,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--engine-url",
         default=None,
-        help="Workflow engine API URL (default: http://140.221.78.67:12008/api/v1).",
+        help="GoWe workflow engine URL (default: https://gowe.software-smithy.org).",
     )
 
     return parser.parse_args()
@@ -151,7 +151,7 @@ def build_config(args: argparse.Namespace) -> AgentConfig:
         overrides["bvbrc_auth_token"] = token
 
     if args.engine_url:
-        overrides["workflow_engine_url"] = args.engine_url
+        overrides["gowe_url"] = args.engine_url
 
     return AgentConfig(**overrides)
 
@@ -169,7 +169,7 @@ async def run_query(
     print(f"Model: {config.llm_model}")
     print(f"Endpoint: {config.llm_base_url}")
     if do_submit or do_validate:
-        print(f"Engine: {config.workflow_engine_url}")
+        print(f"Engine: {config.gowe_url}")
     print(f"{'=' * 60}\n")
 
     try:
@@ -238,7 +238,7 @@ async def validate_file(path: str, config: AgentConfig, json_output: bool) -> No
         elif isinstance(inner, dict) and "steps" in inner:
             workflow_json = inner
 
-    print(f"Validating {path} against {config.workflow_engine_url} ...")
+    print(f"Validating {path} against {config.gowe_url} ...")
     validation = await validate_workflow_json(workflow_json, config)
     _print_validation_result(validation, json_output)
 
@@ -252,7 +252,7 @@ async def interactive_loop(
     print("BV-BRC Service Agent v2 (interactive mode)")
     print(f"Model: {config.llm_model} @ {config.llm_base_url}")
     if do_submit:
-        print(f"Auto-submit: ON  (engine: {config.workflow_engine_url})")
+        print(f"Auto-submit: ON  (engine: {config.gowe_url})")
     print("Type 'quit' or 'exit' to stop. Type 'json' to toggle JSON output.")
     print("Type 'submit' to toggle auto-submission.\n")
 
