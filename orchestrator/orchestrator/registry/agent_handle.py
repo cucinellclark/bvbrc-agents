@@ -38,7 +38,7 @@ class AgentHandle:
     """
 
     def __init__(self, key: str, config: AgentConfig):
-        self.key = key  # Short identifier, e.g. "data", "service2"
+        self.key = key  # Short identifier, e.g. "data", "service"
         self.config = config
         self.name = config.name
         self.description = config.description

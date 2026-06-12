@@ -40,7 +40,7 @@ def _make_mock_registry() -> AgentRegistry:
                 endpoint="http://localhost:12009",
                 capabilities=["data_retrieval"],
             ),
-            "service2": AgentConfig(
+            "service": AgentConfig(
                 name="Service Agent",
                 description="Plans service workflows.",
                 endpoint="http://localhost:8053",
@@ -51,7 +51,7 @@ def _make_mock_registry() -> AgentRegistry:
     )
     registry = AgentRegistry(config)
 
-    for key in ["data", "service2"]:
+    for key in ["data", "service"]:
         handle = AgentHandle(key, config.agents[key])
         handle._healthy = True
         handle._last_latency_ms = 42.0
@@ -109,7 +109,7 @@ def _setup_ready_state(
                 endpoint="http://localhost:12009",
                 capabilities=["data_retrieval"],
             ),
-            "service2": AgentConfig(
+            "service": AgentConfig(
                 name="Service Agent",
                 description="Plans service workflows.",
                 endpoint="http://localhost:8053",
@@ -199,7 +199,7 @@ class TestHealthEndpoint:
         assert body["agents"]["total"] == 2
         assert body["agents"]["healthy"] == 2
         assert "data" in body["agents"]["details"]
-        assert "service2" in body["agents"]["details"]
+        assert "service" in body["agents"]["details"]
         assert body["agents"]["details"]["data"]["healthy"] is True
 
     def test_health_when_not_ready(self, unready_client):
@@ -247,7 +247,7 @@ class TestAgentsEndpoint:
         assert len(agents) == 2
         keys = [a["key"] for a in agents]
         assert "data" in keys
-        assert "service2" in keys
+        assert "service" in keys
 
     def test_agents_includes_details(self, ready_client):
         resp = ready_client.get("/agents")
@@ -394,7 +394,7 @@ class TestOrchestrateEndpoint:
     def test_with_target_agent_override(self, app):
         """Forced routing via target_agent."""
         registry = _make_mock_registry()
-        service_agent = registry.get("service2")
+        service_agent = registry.get("service")
         service_agent.call_tool = AsyncMock(
             return_value=_make_agent_result("Workflow ready.", "completed")
         )
@@ -409,12 +409,12 @@ class TestOrchestrateEndpoint:
 
         resp = client.post(
             "/orchestrate",
-            json={"query": "Assemble genome", "target_agent": "service2"},
+            json={"query": "Assemble genome", "target_agent": "service"},
         )
         assert resp.status_code == 200
         body = resp.json()
         assert "Workflow ready" in body["response_text"]
-        assert "service2" in body["agents_used"]
+        assert "service" in body["agents_used"]
 
         _teardown_state()
 

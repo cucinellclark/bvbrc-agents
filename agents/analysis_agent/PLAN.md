@@ -424,7 +424,7 @@ Add the analysis agent to the routing LLM's agent catalog in `orchestrator/orche
 - analysis: Analyzes output files from completed BV-BRC service jobs.
   Routes here when the user asks about job results, output analysis,
   or service output interpretation. Also receives workflow completion
-  triggers. Do NOT route here for running/submitting jobs (use service2)
+  triggers. Do NOT route here for running/submitting jobs (use service)
   or for general file browsing (use workspace).
 ```
 

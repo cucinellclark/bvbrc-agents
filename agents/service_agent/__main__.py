@@ -87,7 +87,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--auth-token-file",
         default=None,
-        help="Path to auth token file (default: Service2/auth_token.txt).",
+        help="Path to auth token file (default: auth_token.txt in agent directory).",
     )
     parser.add_argument(
         "--submit",
@@ -119,7 +119,7 @@ def _load_auth_token(token_file: str | None = None) -> str | None:
     candidates = []
     if token_file:
         candidates.append(token_file)
-    # Default: look for auth_token.txt in Service2 directory
+    # Default: look for auth_token.txt in the agent's parent directory
     service_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     candidates.append(os.path.join(service_dir, "auth_token.txt"))
 

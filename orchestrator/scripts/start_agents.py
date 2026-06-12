@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Start all agent MCP servers and tear them down on exit.
 
-Launches the Data, Service2, and Workspace agent MCP HTTP servers as
+Launches the Data, Service, and Workspace agent MCP HTTP servers as
 subprocesses.  All output is prefixed with the agent name for easy
 reading.  When this script is interrupted (Ctrl-C) or terminated, it
 sends SIGTERM to every child, waits briefly, then SIGKILL if needed.
 
 Usage:
     python scripts/start_agents.py
-    python scripts/start_agents.py --agents data service2
+    python scripts/start_agents.py --agents data service
     python scripts/start_agents.py --verbose
 
 Prerequisites:
@@ -53,8 +53,8 @@ AGENT_DEFS: list[AgentDef] = [
         port_override=False,  # config.json already has port=12009
     ),
     AgentDef(
-        key="service2",
-        label="Service2",
+        key="service",
+        label="Service",
         workdir=AGENTS_DIR / "Service2" / "bvbrc-mcp-server",
         venv_python=AGENTS_DIR / "Service2" / "bvbrc-mcp-server" / "mcp_env" / "bin" / "python3",
         script="http_server.py",
@@ -68,7 +68,7 @@ AGENT_DEFS: list[AgentDef] = [
         venv_python=AGENTS_DIR / "Workspace" / "bvbrc-mcp-server" / "mcp_env" / "bin" / "python3",
         script="http_server.py",
         port=8054,
-        port_override=True,  # config.json says 8053; override to 8054 to avoid conflict with Service2
+        port_override=True,  # config.json says 8053; override to 8054
     ),
 ]
 
@@ -76,7 +76,7 @@ AGENT_DEFS: list[AgentDef] = [
 
 COLOURS = {
     "data":      "\033[36m",   # cyan
-    "service2":  "\033[33m",   # yellow
+    "service":   "\033[33m",   # yellow
     "workspace": "\033[35m",   # magenta
 }
 RESET = "\033[0m"
@@ -212,7 +212,7 @@ async def main() -> None:
         nargs="+",
         choices=[a.key for a in AGENT_DEFS],
         default=None,
-        help="Only start specific agents (default: all). E.g. --agents data service2",
+        help="Only start specific agents (default: all). E.g. --agents data service",
     )
     parser.add_argument(
         "--verbose", "-v",

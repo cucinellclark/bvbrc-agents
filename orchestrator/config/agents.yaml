@@ -34,7 +34,7 @@ agents:
     chat_tool_params:
       agent_type: "data"
 
-  service2:
+  service:
     name: "Service Agent"
     description: >
       Constructs BV-BRC bioinformatics service workflows. Takes natural

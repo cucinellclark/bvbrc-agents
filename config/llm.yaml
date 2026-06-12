@@ -2,7 +2,7 @@
 # Shared LLM Configuration
 # =============================================================================
 # Single source of truth for LLM endpoint settings used by the orchestrator
-# and all agents (Data, Service, Service2, Workspace).
+# and all agents (Data, Service, Workspace).
 #
 # To change the model or endpoint, edit this file. All components will pick up
 # the new values on next restart.

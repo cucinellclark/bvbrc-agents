@@ -217,7 +217,7 @@ async def execute_agent_step(
             "mcp_server_name": agent.config.mcp_server_name,
         }
 
-        # Preserve agent-specific fields (e.g., Service2's manifest,
+        # Preserve agent-specific fields (e.g., service agent's manifest,
         # workflow_plan, question) so they are available downstream
         # in the pipeline and in the synthesizer.
         _STANDARD_KEYS = {

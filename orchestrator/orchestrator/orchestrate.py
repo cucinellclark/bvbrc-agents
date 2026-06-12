@@ -229,10 +229,10 @@ async def orchestrate(
                         "Auto-submit enabled: submitting workflow %s", wf_id
                     )
                     try:
-                        # Find the service2 agent and call submit_workflow
-                        service2 = registry.get("service2")
-                        if service2 and "submit_workflow" in service2.tool_names:
-                            submit_result = await service2.call_tool(
+                        # Find the service agent and call submit_workflow
+                        service_agent = registry.get("service")
+                        if service_agent and "submit_workflow" in service_agent.tool_names:
+                            submit_result = await service_agent.call_tool(
                                 "submit_workflow",
                                 {
                                     "workflow_id": wf_id,
@@ -271,7 +271,7 @@ async def orchestrate(
                                 )
                         else:
                             logger.warning(
-                                "Auto-submit: service2 agent not found or "
+                                "Auto-submit: service agent not found or "
                                 "missing submit_workflow tool"
                             )
                     except Exception as e:

@@ -30,7 +30,7 @@ def _make_registry_with_agents() -> AgentRegistry:
                 endpoint="http://localhost:12009",
                 capabilities=["data_retrieval", "solr_query"],
             ),
-            "service2": AgentConfig(
+            "service": AgentConfig(
                 name="Service Agent",
                 description="Constructs BV-BRC service workflows.",
                 endpoint="http://localhost:8053",
@@ -205,7 +205,7 @@ class TestFallbackRouting:
         registry = _make_registry_with_agents()
         result = _fallback_routing("run blast alignment and build a phylogenetic tree", registry)
         assert result.decision == "agent"
-        assert result.plan.steps[0].agent_key == "service2"
+        assert result.plan.steps[0].agent_key == "service"
 
     def test_ambiguous_defaults_to_data(self):
         registry = _make_registry_with_agents()

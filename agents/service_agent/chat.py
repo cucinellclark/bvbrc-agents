@@ -5,7 +5,7 @@ Interactive chat for testing the BV-BRC Service Agent v2.
 Runs the full three-phase agent loop (Decompose -> Build -> Compose)
 against the real BV-BRC APIs and shows what the agent does at each step.
 
-Usage (from Service2/ directory):
+Usage (from the agents/service_agent/ directory):
     python chat.py
 
 Commands:
@@ -32,7 +32,7 @@ from service_agent.models import AgentConfig, AgentResult
 # ---------------------------------------------------------------------------
 
 def _load_auth_token() -> str | None:
-    """Load auth token from auth_token.txt in the Service2 directory."""
+    """Load auth token from auth_token.txt in the service agent directory."""
     token_path = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "auth_token.txt"
     )

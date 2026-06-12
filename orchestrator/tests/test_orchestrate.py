@@ -30,7 +30,7 @@ def _make_registry() -> AgentRegistry:
                 endpoint="http://localhost:12009",
                 capabilities=["data_retrieval"],
             ),
-            "service2": AgentConfig(
+            "service": AgentConfig(
                 name="Service Agent",
                 description="Plans service workflows.",
                 endpoint="http://localhost:8053",
@@ -41,7 +41,7 @@ def _make_registry() -> AgentRegistry:
     )
     registry = AgentRegistry(config)
 
-    for key in ["data", "service2"]:
+    for key in ["data", "service"]:
         handle = AgentHandle(key, config.agents[key])
         handle._healthy = True
         handle._tools = [
@@ -188,7 +188,7 @@ class TestOrchestrate:
         """Test flow with target_agent override."""
         registry = _make_registry()
 
-        service_agent = registry.get("service2")
+        service_agent = registry.get("service")
         service_agent.call_tool = AsyncMock(
             return_value=_make_agent_result("Workflow planned.", "completed")
         )
@@ -198,7 +198,7 @@ class TestOrchestrate:
 
         request = OrchestratorRequest(
             query="Assemble this genome",
-            target_agent="service2",
+            target_agent="service",
         )
 
         events = await collect_events(orchestrate(request, registry, llm))
@@ -208,7 +208,7 @@ class TestOrchestrate:
         routing_decision = next(
             e for e in events if e.type == EventType.ROUTING_DECISION
         )
-        assert routing_decision.data["agent_key"] == "service2"
+        assert routing_decision.data["agent_key"] == "service"
 
         done_event = next(e for e in events if e.type == EventType.ORCHESTRATOR_DONE)
         assert "Workflow planned" in done_event.data["response_text"]

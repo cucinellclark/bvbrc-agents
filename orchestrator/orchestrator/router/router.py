@@ -338,12 +338,12 @@ def _fallback_routing(
             confidence=0.5,
         )
 
-    if service_score > data_score and "service2" in registry.agents:
+    if service_score > data_score and "service" in registry.agents:
         return RoutingDecision(
             decision="agent",
             plan=Plan(
                 reasoning="Fallback keyword routing: service-related query.",
-                steps=[Step(agent_key="service2", task=query)],
+                steps=[Step(agent_key="service", task=query)],
             ),
             confidence=0.5,
         )

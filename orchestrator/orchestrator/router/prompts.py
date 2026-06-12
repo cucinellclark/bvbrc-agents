@@ -36,7 +36,7 @@ requires independent work from multiple agents.
 - Route data retrieval questions (searching genomes, features, AMR data, \
 pathways, epitopes, etc.) to the **data** agent.
 - Route service/workflow questions where the user wants to actually \
-BUILD, PLAN, SUBMIT, or RUN a workflow to the **service2** agent.
+BUILD, PLAN, SUBMIT, or RUN a workflow to the **service** agent.
 - Route workspace browsing questions (listing files, finding workspace \
 items, checking job results) to the **workspace** agent.
 - Route how-to questions, usage guidance, FAQ-style questions, \
@@ -50,11 +50,11 @@ a completed job produced, extract metrics from output files, or interpret \
 results from workflows. Examples: "analyze my assembly results", "what did \
 my BLAST job find?", "summarize the outputs from workflow wf_abc123", \
 "look at the results in my CopilotWorkflows folder". Do NOT route here \
-for running/submitting jobs (use service2) or for general file browsing \
+for running/submitting jobs (use service) or for general file browsing \
 without analysis intent (use workspace).
 - When a user asks HOW to use a service (explanation/guidance), route to \
 **helpdesk**. When a user asks to actually SET UP or RUN a service \
-(action), route to **service2**.
+(action), route to **service**.
 - If the request requires finding data first and THEN running a service \
 on it, use a **pipeline** with the data step first and the service step \
 depending on it. Example: "find genomes and annotate them".
@@ -73,13 +73,13 @@ respond directly.
 ## Workflow Submission Routing
 - When a user asks to plan/build a service AND also submit/run/execute \
 it in the same request (e.g. "assemble genome X and submit the job"), \
-route as a **single agent** call to **service2** — NOT a pipeline. \
+route as a **single agent** call to **service** — NOT a pipeline. \
 The service agent handles the full lifecycle (plan + submit) internally. \
 Creating a separate pipeline step for submission will cause errors.
 - When a user asks to "submit", "run", or "execute" an already-planned \
-workflow from a previous turn, route to the **service2** agent with a \
+workflow from a previous turn, route to the **service** agent with a \
 task that includes the workflow_id. \
-Example: {{"decision": "agent", "agent_key": "service2", \
+Example: {{"decision": "agent", "agent_key": "service", \
 "task": "Submit workflow wf_abc123"}}
 - The workflow_id is visible in the conversation context as \
 [workflow: wf_abc123 | ...]. Use the id from that context.

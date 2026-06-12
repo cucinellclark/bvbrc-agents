@@ -72,14 +72,14 @@ class TestSynthesisPrompts:
                     "status": "completed",
                 },
                 {
-                    "agent": "service2",
+                    "agent": "service",
                     "answer": "Planned workflow.",
                     "status": "completed",
                 },
             ],
         )
         assert "data" in user
-        assert "service2" in user
+        assert "service" in user
         assert "Found data" in user
         assert "Planned workflow" in user
 

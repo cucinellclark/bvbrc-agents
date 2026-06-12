@@ -18,7 +18,7 @@ class Step(BaseModel):
     The pipeline placeholder is here for Phase 4.
     """
 
-    agent_key: str  # Registry key, e.g. "data", "service2"
+    agent_key: str  # Registry key, e.g. "data", "service"
     task: str  # Focused task description passed to the agent
     depends_on: list[int] = Field(default_factory=list)  # Step indices
 

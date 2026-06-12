@@ -292,7 +292,7 @@ async def cmd_ask(
             iters = result_ui.get("iterations_used")
             secs = result_ui.get("elapsed_seconds", "?")
             # Show iterations only if the agent reports them (Data agent
-            # does; Service2 uses a three-phase model without this field)
+            # does; service agent uses a three-phase model without this field)
             iter_str = f"iterations={iters}, " if iters else ""
             console.print(
                 f"  [{color}]agent_result[/] [{event.agent_name}] "
