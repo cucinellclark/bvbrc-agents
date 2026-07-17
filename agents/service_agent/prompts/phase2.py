@@ -64,7 +64,7 @@ You are building step "{step_id}" of a workflow plan.
 - Step ID: {step_id}
 - Service: {service_name}
 - Intent: {intent}
-- Dependencies: {', '.join(depends_on) if depends_on else 'none (root step)'}
+- Dependencies: {", ".join(depends_on) if depends_on else "none (root step)"}
 
 == AVAILABLE UPSTREAM OUTPUTS ==
 {upstream_section}
@@ -111,4 +111,34 @@ string "output_of:<step_id>:<output_key>" as the parameter value. These \
 will be resolved to concrete paths during composition.
 - output_path and output_file will be auto-generated if not provided -- \
 you do not need to specify them unless the user has a preference.
+
+== COMPLEX PARAMETER STRUCTURES ==
+Some services have complex array/group parameters (like paired_end_libs, \
+single_end_libs). When the schema response includes a "param_structure" \
+section, follow its structure exactly.
+
+IMPORTANT: All file paths inside these structures must be PLAIN workspace \
+path strings (e.g., "/user@bvbrc/home/reads/R1.fastq.gz"). Do NOT wrap \
+them as CWL File objects. Do NOT add "ws://" or "workspace:" prefixes.
+
+- **paired_end_libs**: An array of objects. Each object must include: \
+"read1" (forward reads path), "read2" (reverse reads path), \
+"interleaved" (boolean, default false), \
+"read_orientation_outward" (boolean, default false), \
+and "platform" (string, use "infer" if unknown). Example: \
+[{{"read1": "/user@bvbrc/home/reads/R1.fastq.gz", \
+"read2": "/user@bvbrc/home/reads/R2.fastq.gz", \
+"interleaved": false, "read_orientation_outward": false, \
+"platform": "infer"}}]
+
+- **single_end_libs**: An array of objects. Each object must include: \
+"read" (reads file path) and "platform" (string, use "infer" if unknown). \
+Example: \
+[{{"read": "/user@bvbrc/home/reads/sample.fastq.gz", \
+"platform": "infer"}}]
+
+When the user specifies a folder containing reads, use workspace_browse \
+to list the folder and identify the FASTQ files. Then determine whether \
+they are paired-end (look for matching R1/R2, _1/_2, .1/.2 patterns in \
+filenames) or single-end reads, and construct the appropriate parameter.
 """

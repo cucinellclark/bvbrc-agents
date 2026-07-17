@@ -49,12 +49,13 @@ from service_agent.models import (
     WorkflowPlan,
     StepPlan,
 )
-from service_agent.phases.compose import compose_manifest
+from service_agent.phases.compose import compose_from_cwl, compose_from_registry
 
 
 # ---------------------------------------------------------------------------
 # Fixtures — reusable test data
 # ---------------------------------------------------------------------------
+
 
 def _make_config(**overrides: Any) -> AgentConfig:
     """Create an AgentConfig with test defaults."""
@@ -177,6 +178,7 @@ def _make_multi_step_state() -> AgentState:
 # Test 1: compose_manifest produces CWL
 # ===================================================================
 
+
 class TestComposeManifest:
     """Tests for compose_manifest() producing CWL documents."""
 
@@ -185,7 +187,7 @@ class TestComposeManifest:
         state = _make_single_step_state()
         config = _make_config()
 
-        result = compose_manifest(state, config)
+        result = compose_from_cwl(state, config)
 
         assert "error" not in result, f"Compose failed: {result.get('error')}"
         assert "cwl_document" in result
@@ -199,7 +201,7 @@ class TestComposeManifest:
         state = _make_single_step_state()
         config = _make_config()
 
-        result = compose_manifest(state, config)
+        result = compose_from_cwl(state, config)
         cwl_doc = result["cwl_document"]
 
         assert cwl_doc["cwlVersion"] == "v1.2"
@@ -212,7 +214,7 @@ class TestComposeManifest:
         state = _make_single_step_state()
         config = _make_config()
 
-        result = compose_manifest(state, config)
+        result = compose_from_cwl(state, config)
         graph = result["cwl_document"]["$graph"]
 
         classes = [entry.get("class") for entry in graph]
@@ -231,7 +233,7 @@ class TestComposeManifest:
         state = _make_single_step_state()
         config = _make_config()
 
-        result = compose_manifest(state, config)
+        result = compose_from_cwl(state, config)
         inputs = result["submission_inputs"]
 
         assert isinstance(inputs, dict)
@@ -242,7 +244,7 @@ class TestComposeManifest:
         state = _make_multi_step_state()
         config = _make_config()
 
-        result = compose_manifest(state, config)
+        result = compose_from_cwl(state, config)
 
         assert "error" not in result
         cwl_doc = result["cwl_document"]
@@ -261,14 +263,14 @@ class TestComposeManifest:
             bvbrc_auth_token="un=scientist@bvbrc|tokenid=xyz",
         )
 
-        result = compose_manifest(state, config)
+        result = compose_from_cwl(state, config)
         # Should not error
         assert "error" not in result
 
     def test_missing_plan_returns_error(self):
         """compose_manifest returns error dict if no workflow plan."""
         state = AgentState(query="test")
-        result = compose_manifest(state)
+        result = compose_from_cwl(state)
         assert "error" in result
         assert "No workflow plan" in result["error"]
 
@@ -276,7 +278,7 @@ class TestComposeManifest:
         """compose_manifest returns error dict if no completed steps."""
         state = _make_single_step_state()
         state.completed_steps = {}
-        result = compose_manifest(state)
+        result = compose_from_cwl(state)
         assert "error" in result
         assert "No completed steps" in result["error"]
 
@@ -285,7 +287,7 @@ class TestComposeManifest:
         state = _make_multi_step_state()
         # Remove one completed step
         del state.completed_steps["annotate"]
-        result = compose_manifest(state)
+        result = compose_from_cwl(state)
         assert "error" in result
         assert "annotate" in result["error"]
 
@@ -293,6 +295,7 @@ class TestComposeManifest:
 # ===================================================================
 # Test 2: handle_submit uses GoWe
 # ===================================================================
+
 
 class TestHandleSubmit:
     """Tests for handle_submit() using GoWeClient."""
@@ -349,7 +352,10 @@ class TestHandleSubmit:
         assert result.status == "completed"
         # Verify create_submission was called with regenerated inputs
         call_kwargs = mock_client.create_submission.call_args
-        assert call_kwargs.kwargs.get("inputs") is not None or call_kwargs[1].get("inputs") is not None
+        assert (
+            call_kwargs.kwargs.get("inputs") is not None
+            or call_kwargs[1].get("inputs") is not None
+        )
 
     @pytest.mark.asyncio
     async def test_submit_requires_auth(self):
@@ -388,6 +394,7 @@ class TestHandleSubmit:
 # ===================================================================
 # Test 3: handle_status uses GoWe with three-level hierarchy
 # ===================================================================
+
 
 class TestHandleStatus:
     """Tests for handle_status() using GoWeClient."""
@@ -462,7 +469,8 @@ class TestHandleStatus:
 
         # Should query with submission_id, not workflow_id
         mock_client.get_submission.assert_called_once_with(
-            "sub_from_state", auth_token=config.bvbrc_auth_token,
+            "sub_from_state",
+            auth_token=config.bvbrc_auth_token,
         )
 
     @pytest.mark.asyncio
@@ -489,6 +497,7 @@ class TestHandleStatus:
 # ===================================================================
 # Test 4: handle_cancel uses GoWe
 # ===================================================================
+
 
 class TestHandleCancel:
     """Tests for handle_cancel() using GoWeClient."""
@@ -539,7 +548,8 @@ class TestHandleCancel:
             result = await handle_cancel("wf_old", config, state)
 
         mock_client.cancel_submission.assert_called_once_with(
-            "sub_state_id", auth_token=config.bvbrc_auth_token,
+            "sub_state_id",
+            auth_token=config.bvbrc_auth_token,
         )
 
     @pytest.mark.asyncio
@@ -580,12 +590,17 @@ class TestHandleCancel:
 # Test 5: _run_planning_pipeline registers CWL with GoWe
 # ===================================================================
 
+
 class TestPipelinePersistence:
-    """Tests for GoWe registration in _run_planning_pipeline()."""
+    """Tests for GoWe workflow lookup/registration in _run_planning_pipeline().
+
+    Single-step workflows use compose_from_registry (pre-registered lookup).
+    Multi-step workflows use compose_from_cwl (CWL generation + registration).
+    """
 
     @pytest.mark.asyncio
-    async def test_pipeline_registers_cwl_with_gowe(self):
-        """After compose, the pipeline registers the CWL document with GoWe."""
+    async def test_pipeline_uses_preregistered_workflow(self):
+        """Single-step workflows look up a pre-registered GoWe workflow."""
         from service_agent.agent import _run_planning_pipeline
 
         config = _make_config()
@@ -594,9 +609,133 @@ class TestPipelinePersistence:
         state.current_phase = "compose"
 
         mock_client = AsyncMock()
-        mock_client.register_workflow.return_value = {
+        # find_workflow_by_name returns a registered workflow
+        mock_client.find_workflow_by_name.return_value = {
             "id": "wf_gowe_123",
-            "name": "test_assembly",
+            "name": "GenomeAssembly",
+        }
+        # get_workflow returns the workflow detail with input schema
+        mock_client.get_workflow.return_value = {
+            "id": "wf_gowe_123",
+            "name": "GenomeAssembly",
+            "inputs": [
+                {
+                    "id": "paired_end_libs",
+                    "type": "record:paired_end_lib[]?",
+                    "required": False,
+                },
+                {
+                    "id": "recipe",
+                    "type": "string?",
+                    "required": False,
+                    "default": "auto",
+                },
+                {"id": "output_path", "type": "string", "required": True},
+                {"id": "output_file", "type": "string", "required": True},
+            ],
+        }
+
+        with patch(
+            "common.gowe_client.GoWeClient",
+            return_value=mock_client,
+        ):
+            result = await _run_planning_pipeline(
+                "assemble genome",
+                config,
+                state,
+            )
+
+        assert result.workflow_id == "wf_gowe_123"
+        assert result.persisted is True
+        mock_client.find_workflow_by_name.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_pipeline_stores_submission_inputs_in_state(self):
+        """After pre-registered lookup, state has submission_inputs."""
+        from service_agent.agent import _run_planning_pipeline
+
+        config = _make_config()
+        state = _make_single_step_state()
+
+        mock_client = AsyncMock()
+        mock_client.find_workflow_by_name.return_value = {
+            "id": "wf_xyz",
+            "name": "GenomeAssembly",
+        }
+        mock_client.get_workflow.return_value = {
+            "id": "wf_xyz",
+            "name": "GenomeAssembly",
+            "inputs": [
+                {
+                    "id": "paired_end_libs",
+                    "type": "record:paired_end_lib[]?",
+                    "required": False,
+                },
+                {
+                    "id": "recipe",
+                    "type": "string?",
+                    "required": False,
+                    "default": "auto",
+                },
+                {"id": "output_path", "type": "string", "required": True},
+                {"id": "output_file", "type": "string", "required": True},
+            ],
+        }
+
+        with patch(
+            "common.gowe_client.GoWeClient",
+            return_value=mock_client,
+        ):
+            result = await _run_planning_pipeline(
+                "assemble",
+                config,
+                state,
+            )
+
+        # Check the manifest contains pre-registered workflow data
+        manifest = result.manifest
+        assert manifest is not None
+        assert manifest.get("source") == "pre_registered"
+        assert "submission_inputs" in manifest
+
+    @pytest.mark.asyncio
+    async def test_pipeline_handles_gowe_failure_gracefully(self):
+        """If GoWe workflow lookup fails, error status is returned."""
+        from service_agent.agent import _run_planning_pipeline
+
+        config = _make_config()
+        state = _make_single_step_state()
+
+        mock_client = AsyncMock()
+        mock_client.find_workflow_by_name.return_value = None
+
+        with patch(
+            "common.gowe_client.GoWeClient",
+            return_value=mock_client,
+        ):
+            result = await _run_planning_pipeline(
+                "assemble",
+                config,
+                state,
+            )
+
+        # Should return error since no pre-registered workflow was found
+        assert result.status == "error"
+        assert "No pre-registered workflow found" in (result.error_message or "")
+
+    @pytest.mark.asyncio
+    async def test_multistep_pipeline_registers_cwl_with_gowe(self):
+        """Multi-step workflows generate CWL and register with GoWe."""
+        from service_agent.agent import _run_planning_pipeline
+
+        config = _make_config()
+        state = _make_multi_step_state()
+        state.current_phase = "compose"
+
+        mock_client = AsyncMock()
+        mock_client.register_workflow.return_value = {
+            "id": "wf_gowe_multi",
+            "name": "assembly_annotation_pipeline",
             "class": "Workflow",
         }
 
@@ -605,68 +744,21 @@ class TestPipelinePersistence:
             return_value=mock_client,
         ):
             result = await _run_planning_pipeline(
-                "assemble genome", config, state,
+                "assemble and annotate genome",
+                config,
+                state,
             )
 
-        assert result.workflow_id == "wf_gowe_123"
+        assert result.workflow_id == "wf_gowe_multi"
         assert result.persisted is True
         assert result.cwl_document is not None
-        assert result.cwl_document.get("cwlVersion") == "v1.2"
         mock_client.register_workflow.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_pipeline_stores_cwl_and_inputs_in_state(self):
-        """After GoWe registration, state has cwl_document and submission_inputs."""
-        from service_agent.agent import _run_planning_pipeline
-
-        config = _make_config()
-        state = _make_single_step_state()
-
-        mock_client = AsyncMock()
-        mock_client.register_workflow.return_value = {"id": "wf_xyz"}
-
-        with patch(
-            "common.gowe_client.GoWeClient",
-            return_value=mock_client,
-        ):
-            result = await _run_planning_pipeline(
-                "assemble", config, state,
-            )
-
-        # Check the manifest contains CWL data
-        manifest = result.manifest
-        assert manifest is not None
-        assert "cwl_document" in manifest
-        assert "submission_inputs" in manifest
-
-    @pytest.mark.asyncio
-    async def test_pipeline_handles_gowe_failure_gracefully(self):
-        """If GoWe registration fails, persisted=False but no error status."""
-        from service_agent.agent import _run_planning_pipeline
-
-        config = _make_config()
-        state = _make_single_step_state()
-
-        mock_client = AsyncMock()
-        mock_client.register_workflow.side_effect = Exception("GoWe timeout")
-
-        with patch(
-            "common.gowe_client.GoWeClient",
-            return_value=mock_client,
-        ):
-            result = await _run_planning_pipeline(
-                "assemble", config, state,
-            )
-
-        # Should complete but with persisted=False
-        assert result.status == "completed"
-        assert result.persisted is False
-        assert result.workflow_id is None
 
 
 # ===================================================================
 # Test 6: submission.py public functions
 # ===================================================================
+
 
 class TestSubmissionModule:
     """Tests for submission.py public functions."""
@@ -754,13 +846,15 @@ class TestSubmissionModule:
 # Test 7: Model changes — GoWe fields on AgentState and AgentResult
 # ===================================================================
 
+
 class TestModelChanges:
     """Tests for GoWe-specific fields on models."""
 
     def test_agent_config_has_gowe_url(self):
         """AgentConfig has gowe_url with default."""
         config = AgentConfig()
-        assert config.gowe_url == "https://gowe.software-smithy.org"
+        # Default GoWe URL points to the development server
+        assert config.gowe_url == "http://140.221.78.67:12009"
 
     def test_agent_state_has_gowe_fields(self):
         """AgentState has submission_id, cwl_document, submission_inputs."""

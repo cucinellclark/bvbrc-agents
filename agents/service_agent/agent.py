@@ -30,13 +30,18 @@ from agent_utils import emit_progress
 from service_agent.classifier import classify_intent
 from service_agent.handlers import handle_submit, handle_status, handle_cancel
 from service_agent.models import AgentConfig, AgentResult, AgentState
+from service_agent.phases.populate import populate_and_submit
+
+# Legacy 3-phase imports (kept for reference, not used in primary flow)
 from service_agent.phases.decompose import decompose
 from service_agent.phases.build import build_step
-from service_agent.phases.compose import compose_manifest
+from service_agent.phases.compose import compose_from_registry, compose_from_cwl
 
 logger = logging.getLogger(__name__)
 
-ProgressCallback = Any  # async (progress: float, total: float|None, message: str) -> None
+ProgressCallback = (
+    Any  # async (progress: float, total: float|None, message: str) -> None
+)
 
 
 async def run_agent(
@@ -73,9 +78,10 @@ async def run_agent(
     state.classified_intent = intent
 
     logger.info(
-        "Intent: action=%s, workflow_id=%s, confidence=%.2f, "
-        "submit_after_plan=%s",
-        intent.action, intent.workflow_id, intent.confidence,
+        "Intent: action=%s, workflow_id=%s, confidence=%.2f, submit_after_plan=%s",
+        intent.action,
+        intent.workflow_id,
+        intent.confidence,
         intent.submit_after_plan,
     )
 
@@ -86,19 +92,28 @@ async def run_agent(
     # Submit: direct engine call, no LLM
     if intent.action == "submit" and intent.workflow_id:
         return await handle_submit(
-            intent.workflow_id, cfg, state, progress_callback,
+            intent.workflow_id,
+            cfg,
+            state,
+            progress_callback,
         )
 
     # Status: direct engine call, no LLM
     if intent.action == "status" and intent.workflow_id:
         return await handle_status(
-            intent.workflow_id, cfg, state, progress_callback,
+            intent.workflow_id,
+            cfg,
+            state,
+            progress_callback,
         )
 
     # Cancel: direct engine call, no LLM
     if intent.action == "cancel" and intent.workflow_id:
         return await handle_cancel(
-            intent.workflow_id, cfg, state, progress_callback,
+            intent.workflow_id,
+            cfg,
+            state,
+            progress_callback,
         )
 
     # Unknown with no workflow_id: probably ambiguous, ask for clarification
@@ -121,13 +136,49 @@ async def run_agent(
         )
         return state.to_result()
 
-    # Plan (or modify/fallback): run the full 3-phase pipeline
-    return await _run_planning_pipeline(query, cfg, state, progress_callback)
+    # Plan (or modify/fallback): GoWe-first workflow populate + submit.
+    # The LLM discovers workflows from GoWe, selects one, populates
+    # its inputs, and submits the job in a single loop.
+    return await _run_gowe_flow(query, cfg, state, progress_callback)
 
 
 # ======================================================================
-# 3-Phase Planning Pipeline
+# GoWe-first workflow flow (primary)
 # ======================================================================
+
+
+async def _run_gowe_flow(
+    query: str,
+    config: AgentConfig,
+    state: AgentState,
+    progress_callback: ProgressCallback | None = None,
+) -> AgentResult:
+    """GoWe-first workflow: discover, select, populate, submit.
+
+    The LLM queries GoWe for available workflows, picks one, gets its
+    input schema, populates the inputs using workspace/data tools, and
+    submits the job.  All in a single LLM loop.
+    """
+    await emit_progress(
+        progress_callback, 0, 1,
+        "Discovering workflows and preparing job...",
+    )
+
+    state = await populate_and_submit(
+        query, config, state, progress_callback=progress_callback,
+    )
+
+    if state.status in ("needs_input", "error"):
+        return state.to_result()
+
+    await emit_progress(progress_callback, 1, 1, "Done.")
+    return state.to_result()
+
+
+# ======================================================================
+# 3-Phase Planning Pipeline (legacy -- kept for reference)
+# ======================================================================
+
 
 async def _run_planning_pipeline(
     query: str,
@@ -146,8 +197,15 @@ async def _run_planning_pipeline(
     # ------------------------------------------------------------------
     if not state.workflow_plan:
         state.current_phase = "decompose"
-        await emit_progress(progress_callback, 0, 3, "Phase 1: Analyzing request and identifying services...")
-        state = await decompose(query, config, state, progress_callback=progress_callback)
+        await emit_progress(
+            progress_callback,
+            0,
+            3,
+            "Phase 1: Analyzing request and identifying services...",
+        )
+        state = await decompose(
+            query, config, state, progress_callback=progress_callback
+        )
 
         if state.status == "needs_input":
             return state.to_result()
@@ -173,13 +231,19 @@ async def _run_planning_pipeline(
     # ------------------------------------------------------------------
     state.current_phase = "build"
     _total_steps = len(state.workflow_plan.steps) if state.workflow_plan else 0
-    await emit_progress(progress_callback, 1, 3, f"Phase 2: Building {_total_steps} service step(s)...")
+    await emit_progress(
+        progress_callback, 1, 3, f"Phase 2: Building {_total_steps} service step(s)..."
+    )
 
     for batch in state.next_buildable_batches():
         if len(batch) == 1:
-            await emit_progress(progress_callback, 1, 3, f"Building step '{batch[0]}'...")
+            await emit_progress(
+                progress_callback, 1, 3, f"Building step '{batch[0]}'..."
+            )
             # Sequential build for single-step batches
-            state = await build_step(batch[0], config, state, progress_callback=progress_callback)
+            state = await build_step(
+                batch[0], config, state, progress_callback=progress_callback
+            )
 
             if state.status == "needs_input":
                 return state.to_result()
@@ -188,9 +252,19 @@ async def _run_planning_pipeline(
                 return state.to_result()
         else:
             # Parallel build for independent steps in the same batch
-            await emit_progress(progress_callback, 1, 3, f"Building {len(batch)} steps in parallel: {', '.join(batch)}...")
+            await emit_progress(
+                progress_callback,
+                1,
+                3,
+                f"Building {len(batch)} steps in parallel: {', '.join(batch)}...",
+            )
             results = await asyncio.gather(
-                *[_build_step_isolated(step_id, config, state, progress_callback=progress_callback) for step_id in batch],
+                *[
+                    _build_step_isolated(
+                        step_id, config, state, progress_callback=progress_callback
+                    )
+                    for step_id in batch
+                ],
                 return_exceptions=True,
             )
 
@@ -222,9 +296,16 @@ async def _run_planning_pipeline(
     # Phase 3: Compose (programmatic -- no LLM)
     # ------------------------------------------------------------------
     state.current_phase = "compose"
-    await emit_progress(progress_callback, 2, 3, "Phase 3: Composing workflow manifest...")
+    await emit_progress(
+        progress_callback, 2, 3, "Phase 3: Composing workflow manifest..."
+    )
 
-    manifest = compose_manifest(state, config)
+    # Use pre-registered workflow path for single-step, CWL generation
+    # for multi-step.  These are independent paths -- no fallback.
+    if len(state.completed_steps) == 1:
+        manifest = await compose_from_registry(state, config)
+    else:
+        manifest = compose_from_cwl(state, config)
 
     if isinstance(manifest, dict) and "error" in manifest:
         state.status = "error"
@@ -235,50 +316,66 @@ async def _run_planning_pipeline(
     state.status = "completed"
     state.current_phase = "done"
 
-    await emit_progress(progress_callback, 2, 3, "Workflow manifest composed successfully.")
+    source = manifest.get("source")
 
-    # ------------------------------------------------------------------
-    # Persist CWL workflow to GoWe to get a real workflow_id
-    # ------------------------------------------------------------------
-    await emit_progress(progress_callback, 2, 3, "Registering CWL workflow with GoWe...")
-    try:
-        _ensure_mcp_path(config)
-        from common.gowe_client import GoWeClient
-
-        client = GoWeClient(base_url=config.gowe_url)
-
-        # The manifest from compose now has cwl_document and submission_inputs
-        cwl_doc = manifest.get("cwl_document") if isinstance(manifest, dict) else None
-        submission_inputs = manifest.get("submission_inputs") if isinstance(manifest, dict) else None
-
-        if cwl_doc:
-            engine_result = await client.register_workflow(
-                cwl_doc, config.bvbrc_auth_token or "",
-                name=state.workflow_plan.workflow_name if state.workflow_plan else None,
-            )
-            state.workflow_id = engine_result.get("id")
-            state.cwl_document = cwl_doc
-            state.submission_inputs = submission_inputs
-            state.persisted = True
-            if state.workflow_id and isinstance(state.manifest, dict):
-                state.manifest["workflow_id"] = state.workflow_id
-            logger.info(
-                "CWL workflow registered with GoWe: workflow_id=%s",
-                state.workflow_id,
-            )
-        else:
-            state.persisted = False
-            logger.warning(
-                "No CWL document in compose output; skipping GoWe registration."
-            )
-    except Exception as e:
-        state.persisted = False
-        if isinstance(state.manifest, dict) and "workflow_id" in state.manifest:
-            state.manifest.pop("workflow_id", None)
-        logger.warning(
-            "Failed to register CWL workflow with GoWe: %s: %s",
-            type(e).__name__, e,
+    if source == "pre_registered":
+        # Workflow already exists in GoWe -- use it directly
+        state.workflow_id = manifest["workflow_id"]
+        state.submission_inputs = manifest["submission_inputs"]
+        state.persisted = True
+        logger.info(
+            "Using pre-registered GoWe workflow: workflow_id=%s",
+            state.workflow_id,
         )
+    elif source == "generated":
+        # CWL was generated -- register it with GoWe to get a workflow_id
+        await emit_progress(
+            progress_callback, 2, 3, "Registering CWL workflow with GoWe..."
+        )
+        try:
+            _ensure_mcp_path(config)
+            from common.gowe_client import GoWeClient
+
+            client = GoWeClient(base_url=config.gowe_url)
+            cwl_doc = manifest.get("cwl_document")
+            submission_inputs = manifest.get("submission_inputs")
+
+            if cwl_doc:
+                engine_result = await client.register_workflow(
+                    cwl_doc,
+                    config.bvbrc_auth_token or "",
+                    name=state.workflow_plan.workflow_name
+                    if state.workflow_plan
+                    else None,
+                )
+                state.workflow_id = engine_result.get("id")
+                state.cwl_document = cwl_doc
+                state.submission_inputs = submission_inputs
+                state.persisted = True
+                if state.workflow_id and isinstance(state.manifest, dict):
+                    state.manifest["workflow_id"] = state.workflow_id
+                logger.info(
+                    "Generated CWL registered with GoWe: workflow_id=%s",
+                    state.workflow_id,
+                )
+            else:
+                state.persisted = False
+                logger.warning(
+                    "No CWL document in compose output; skipping GoWe registration."
+                )
+        except Exception as e:
+            state.persisted = False
+            if isinstance(state.manifest, dict):
+                state.manifest.pop("workflow_id", None)
+            logger.warning(
+                "Failed to register CWL with GoWe: %s: %s",
+                type(e).__name__,
+                e,
+            )
+
+    await emit_progress(
+        progress_callback, 2, 3, "Workflow manifest composed successfully."
+    )
 
     # ------------------------------------------------------------------
     # Auto-submit (based on user preference in context)
@@ -288,23 +385,23 @@ async def _run_planning_pipeline(
         or getattr(config, "auto_submit_preference", None)
         or "always_review"
     )
-    if (
-        preference != "always_review"
-        and state.workflow_id
-        and state.persisted
-    ):
+    if preference != "always_review" and state.workflow_id and state.persisted:
         complexity = _assess_complexity(state)
-        should_submit = (
-            preference == "auto_all"
-            or (preference == "auto_simple" and complexity == "simple")
+        should_submit = preference == "auto_all" or (
+            preference == "auto_simple" and complexity == "simple"
         )
         if should_submit:
             logger.info(
                 "Auto-submitting workflow %s (preference=%s, complexity=%s)",
-                state.workflow_id, preference, complexity,
+                state.workflow_id,
+                preference,
+                complexity,
             )
             await handle_submit(
-                state.workflow_id, config, state, progress_callback,
+                state.workflow_id,
+                config,
+                state,
+                progress_callback,
             )
             # The submit handler mutated state; mark as auto-submitted
             state.auto_submitted = True
@@ -325,7 +422,10 @@ async def _run_planning_pipeline(
             state.workflow_id,
         )
         await handle_submit(
-            state.workflow_id, config, state, progress_callback,
+            state.workflow_id,
+            config,
+            state,
+            progress_callback,
         )
         state.auto_submitted = True
         return state.to_result()
@@ -368,7 +468,9 @@ async def _build_step_isolated(
         start_time=parent_state.start_time,
     )
 
-    return await build_step(step_id, config, isolated_state, progress_callback=progress_callback)
+    return await build_step(
+        step_id, config, isolated_state, progress_callback=progress_callback
+    )
 
 
 def _ensure_mcp_path(config: AgentConfig) -> None:

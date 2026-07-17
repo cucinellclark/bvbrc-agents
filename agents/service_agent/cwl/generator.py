@@ -49,6 +49,7 @@ _OUTPUT_OF_PATTERN = re.compile(r"^output_of:(\w+):(\w+)$")
 # Tool definition generation
 # ---------------------------------------------------------------------------
 
+
 def generate_tool_definition(step: Any) -> dict[str, Any]:
     """Generate a CWL CommandLineTool dict for a single validated step.
 
@@ -79,7 +80,6 @@ def generate_tool_definition(step: Any) -> dict[str, Any]:
         "hints": {
             "gowe:Execution": {
                 "bvbrc_app_id": step.api_name,
-                "executor": "bvbrc",
             },
         },
         "baseCommand": [step.api_name],
@@ -119,6 +119,11 @@ def _build_tool_outputs(
 
     If output_patterns is empty or has only generic patterns, use the
     standard BV-BRC generic output pattern.
+
+    Patterns from service_outputs.json use shell-style interpolation
+    (``${params.output_path}``, ``${params.output_file}``).  CWL requires
+    ``$(inputs.<id>)`` syntax for parameter references in glob expressions.
+    This function translates between the two.
     """
     if not output_patterns:
         # Generic BV-BRC output pattern (matches all files produced by the app)
@@ -126,7 +131,7 @@ def _build_tool_outputs(
             "result": {
                 "type": "File[]",
                 "outputBinding": {
-                    "glob": "$(inputs.output_path.location)/$(inputs.output_file)*",
+                    "glob": "$(inputs.output_path)/$(inputs.output_file)*",
                 },
             },
         }
@@ -144,7 +149,7 @@ def _build_tool_outputs(
             else:
                 glob_pattern = f"{basename}*"
         else:
-            glob_pattern = pattern
+            glob_pattern = _translate_pattern_to_cwl(pattern)
 
         outputs[output_name] = {
             "type": "File",
@@ -154,9 +159,35 @@ def _build_tool_outputs(
     return outputs
 
 
+# Regex matching ${params.<name>} shell-style interpolation tokens
+_SHELL_PARAM_RE = re.compile(r"\$\{params\.(\w+)\}")
+
+
+def _translate_pattern_to_cwl(pattern: str) -> str:
+    """Translate shell-style ``${params.xxx}`` refs to CWL ``$(inputs.xxx)``.
+
+    The output_path parameter is a CWL Directory, so its value must be
+    All parameters (including ``output_path``) are plain scalars and are
+    referenced directly as ``$(inputs.<name>)``.
+
+    Examples::
+
+        ${params.output_path}/.${params.output_file}/${params.output_file}.genome
+        ->
+        $(inputs.output_path)/.$(inputs.output_file)/$(inputs.output_file).genome
+    """
+
+    def _replace(m: re.Match) -> str:
+        param_name = m.group(1)
+        return f"$(inputs.{param_name})"
+
+    return _SHELL_PARAM_RE.sub(_replace, pattern)
+
+
 # ---------------------------------------------------------------------------
 # Step input wiring
 # ---------------------------------------------------------------------------
+
 
 def wire_step_inputs(
     step: Any,
@@ -221,7 +252,9 @@ def _resolve_param_source(
                 if match:
                     upstream_step_id = match.group(1)
                     output_key = match.group(2)
-                    upstream_cwl_step_id = _step_id_to_workflow_step_id(upstream_step_id)
+                    upstream_cwl_step_id = _step_id_to_workflow_step_id(
+                        upstream_step_id
+                    )
                     sources.append(f"{upstream_cwl_step_id}/{output_key}")
                 else:
                     # Mixed list — just use workflow input
@@ -239,6 +272,7 @@ def _resolve_param_source(
 # ---------------------------------------------------------------------------
 # Workflow generation
 # ---------------------------------------------------------------------------
+
 
 def generate_cwl_workflow(
     workflow_plan: Any,
@@ -370,6 +404,7 @@ def generate_cwl_workflow(
 # Submission inputs generation
 # ---------------------------------------------------------------------------
 
+
 def generate_submission_inputs(
     completed_steps: dict[str, Any],
     user_id: str | None = None,
@@ -397,8 +432,7 @@ def generate_submission_inputs(
             if isinstance(value, str) and _OUTPUT_OF_PATTERN.match(value):
                 continue
             if isinstance(value, list) and any(
-                isinstance(v, str) and _OUTPUT_OF_PATTERN.match(v)
-                for v in value
+                isinstance(v, str) and _OUTPUT_OF_PATTERN.match(v) for v in value
             ):
                 continue
 
@@ -412,6 +446,7 @@ def generate_submission_inputs(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _step_id_to_tool_id(step_id: str) -> str:
     """Convert a step_id to a CWL tool ID.

@@ -35,6 +35,7 @@ _LLM_DEFAULTS = load_llm_defaults()
 # Agent configuration
 # ---------------------------------------------------------------------------
 
+
 class AgentConfig(BaseModel):
     """Configuration for the service agent. Supports any OpenAI-compatible endpoint.
 
@@ -58,7 +59,7 @@ class AgentConfig(BaseModel):
     classifier_model: str | None = _LLM_DEFAULTS.get("classifier_model")
 
     # Agent behavior
-    max_iterations: int = 10          # Max LLM calls per phase sub-loop
+    max_iterations: int = 10  # Max LLM calls per phase sub-loop
     tool_timeout_seconds: int = 30
 
     # BV-BRC API
@@ -76,7 +77,7 @@ class AgentConfig(BaseModel):
     workflow_engine_timeout: int = 30
 
     # GoWe workflow engine (CWL v1.2)
-    gowe_url: str = "https://gowe.software-smithy.org"
+    gowe_url: str = "http://140.221.78.67:12009"
 
     # SRA tools
     singularity_container_path: str = (
@@ -92,6 +93,7 @@ class AgentConfig(BaseModel):
 # ---------------------------------------------------------------------------
 # LLM tool call tracking (reused from v1)
 # ---------------------------------------------------------------------------
+
 
 class ToolCall(BaseModel):
     """A single tool call as requested by the LLM."""
@@ -115,12 +117,13 @@ class ToolExecution(BaseModel):
 # Phase 1 models: WorkflowPlan (abstract DAG)
 # ---------------------------------------------------------------------------
 
+
 class StepPlan(BaseModel):
     """A single step in the abstract workflow plan (Phase 1 output)."""
 
-    step_id: str                              # Unique identifier within workflow
-    service_name: str                         # BV-BRC service name
-    intent: str                               # What this step accomplishes
+    step_id: str  # Unique identifier within workflow
+    service_name: str  # BV-BRC service name
+    intent: str  # What this step accomplishes
     depends_on: list[str] = Field(default_factory=list)
     input_sources: dict[str, Any] = Field(default_factory=dict)
     # param_name -> source description (typically a string, but may be a list
@@ -161,9 +164,7 @@ class WorkflowPlan(BaseModel):
                 in_degree[step.step_id] += 1
 
         # Start with zero in-degree nodes
-        queue = deque(
-            sid for sid, deg in in_degree.items() if deg == 0
-        )
+        queue = deque(sid for sid, deg in in_degree.items() if deg == 0)
         order: list[str] = []
 
         while queue:
@@ -224,6 +225,7 @@ class WorkflowPlan(BaseModel):
 # Phase 2 models: ValidatedStep (concrete params)
 # ---------------------------------------------------------------------------
 
+
 class ValidatedStep(BaseModel):
     """Phase 2 output: a fully validated service step with concrete parameters."""
 
@@ -241,6 +243,7 @@ class ValidatedStep(BaseModel):
 # Intent classification (pre-dispatch before 3-phase pipeline)
 # ---------------------------------------------------------------------------
 
+
 class Intent(BaseModel):
     """Result of the lightweight intent classifier.
 
@@ -248,32 +251,32 @@ class Intent(BaseModel):
     a lifecycle operation (submit, status, cancel, modify) on an existing one.
     """
 
-    action: Literal[
-        "plan", "submit", "status", "cancel", "modify", "unknown"
-    ] = "plan"
-    workflow_id: str | None = None        # Resolved from context if not explicit
-    confidence: float = 1.0               # Classifier confidence (0.0-1.0)
-    reasoning: str = ""                   # Brief explanation for logging/debugging
-    submit_after_plan: bool = False       # True when user says "plan AND submit/run/execute"
+    action: Literal["plan", "submit", "status", "cancel", "modify", "unknown"] = "plan"
+    workflow_id: str | None = None  # Resolved from context if not explicit
+    confidence: float = 1.0  # Classifier confidence (0.0-1.0)
+    reasoning: str = ""  # Brief explanation for logging/debugging
+    submit_after_plan: bool = False  # True when user says "plan AND submit/run/execute"
 
 
 # ---------------------------------------------------------------------------
 # Information request (structured question for the user)
 # ---------------------------------------------------------------------------
 
+
 class InformationRequest(BaseModel):
     """Structured request for user input. Returned when the agent needs more info."""
 
     status: str = "needs_input"
-    question: str                            # Natural language question
-    context: str = ""                        # Why this information is needed
-    options: list[str] | None = None         # Suggested options
-    partial_state: dict | None = None        # Serialized state for resumption
+    question: str  # Natural language question
+    context: str = ""  # Why this information is needed
+    options: list[str] | None = None  # Suggested options
+    partial_state: dict | None = None  # Serialized state for resumption
 
 
 # ---------------------------------------------------------------------------
 # Agent state (serializable for pause/resume)
 # ---------------------------------------------------------------------------
+
 
 class AgentState(BaseModel):
     """Tracks the full state of a three-phase agent execution.
@@ -305,16 +308,14 @@ class AgentState(BaseModel):
     persisted: bool = False
 
     # GoWe-specific state
-    submission_id: str | None = None       # GoWe submission ID (separate from workflow_id)
-    cwl_document: dict | None = None       # Generated CWL document
-    submission_inputs: dict | None = None   # Resolved submission inputs
+    submission_id: str | None = None  # GoWe submission ID (separate from workflow_id)
+    cwl_document: dict | None = None  # Generated CWL document
+    submission_inputs: dict | None = None  # Resolved submission inputs
 
     # Agent result status
-    status: Literal[
-        "in_progress", "needs_input", "completed", "error"
-    ] = "in_progress"
-    question: str | None = None              # Set when status is "needs_input"
-    error_message: str | None = None         # Set when status is "error"
+    status: Literal["in_progress", "needs_input", "completed", "error"] = "in_progress"
+    question: str | None = None  # Set when status is "needs_input"
+    error_message: str | None = None  # Set when status is "error"
 
     # Lifecycle operation output (non-planning paths)
     operation_message: str | None = None
@@ -392,7 +393,8 @@ class AgentState(BaseModel):
         if not self.workflow_plan:
             return []
         return [
-            s for s in self.workflow_plan.topological_order
+            s
+            for s in self.workflow_plan.topological_order
             if s not in self.completed_steps
         ]
 
@@ -412,10 +414,10 @@ class AgentState(BaseModel):
 
         while remaining:
             batch = [
-                s for s in remaining
+                s
+                for s in remaining
                 if all(
-                    d in completed
-                    for d in self.workflow_plan.get_step(s).depends_on
+                    d in completed for d in self.workflow_plan.get_step(s).depends_on
                 )
             ]
             if not batch:
@@ -469,8 +471,7 @@ class AgentState(BaseModel):
                 self.workflow_plan.model_dump() if self.workflow_plan else None
             ),
             completed_steps={
-                sid: vs.model_dump()
-                for sid, vs in self.completed_steps.items()
+                sid: vs.model_dump() for sid, vs in self.completed_steps.items()
             },
             question=self.question,
             error_message=self.error_message,
@@ -490,12 +491,13 @@ class AgentState(BaseModel):
 # Submission result (returned after workflow engine submission)
 # ---------------------------------------------------------------------------
 
+
 class SubmissionResult(BaseModel):
     """Tracks the outcome of submitting a manifest to the workflow engine."""
 
     workflow_id: str
-    submission_id: str | None = None         # GoWe submission ID
-    status: str                              # "pending", "planned", "PENDING", "RUNNING", etc.
+    submission_id: str | None = None  # GoWe submission ID
+    status: str  # "pending", "planned", "PENDING", "RUNNING", etc.
     engine_url: str
     status_url: str
     error: str | None = None
@@ -504,6 +506,7 @@ class SubmissionResult(BaseModel):
 # ---------------------------------------------------------------------------
 # Agent result (returned to caller / orchestrator)
 # ---------------------------------------------------------------------------
+
 
 class AgentResult(BaseModel):
     """Returned by run_agent(). Clean interface for consumers.
@@ -588,9 +591,7 @@ class AgentResult(BaseModel):
                         f"{', '.join(step_data['auto_corrections'])}"
                     )
                 if step_data.get("warnings"):
-                    lines.append(
-                        f"    Warnings: {', '.join(step_data['warnings'])}"
-                    )
+                    lines.append(f"    Warnings: {', '.join(step_data['warnings'])}")
                 params = step_data.get("params", {})
                 params_str = json.dumps(params, indent=6, default=str)
                 if len(params_str) > 500:
@@ -623,10 +624,12 @@ class AgentResult(BaseModel):
                 lines.append(f"  Error: {self.submission.error}")
 
         if self.tool_trace:
-            lines.extend([
-                "",
-                f"--- TOOL EXECUTIONS ({len(self.tool_trace)}) ---",
-            ])
+            lines.extend(
+                [
+                    "",
+                    f"--- TOOL EXECUTIONS ({len(self.tool_trace)}) ---",
+                ]
+            )
             for i, ex in enumerate(self.tool_trace, 1):
                 tc = ex.tool_call
                 duration = f" ({ex.duration_ms:.0f}ms)" if ex.duration_ms else ""

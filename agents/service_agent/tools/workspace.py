@@ -19,6 +19,7 @@ from service_agent.models import AgentConfig
 # ---------------------------------------------------------------------------
 
 _workspace_functions: Optional[ModuleType] = None
+_json_rpc_caller_cls: Optional[type] = None
 _path_added: bool = False
 
 
@@ -38,8 +39,37 @@ def _get_workspace_functions(config: AgentConfig | None = None) -> ModuleType:
     if _workspace_functions is None:
         _ensure_path(config)
         from functions import workspace_functions
+
         _workspace_functions = workspace_functions
     return _workspace_functions
+
+
+def _get_json_rpc_caller(config: AgentConfig | None = None) -> type:
+    """Import and cache the JsonRpcCaller class from the MCP server."""
+    global _json_rpc_caller_cls
+    if _json_rpc_caller_cls is None:
+        _ensure_path(config)
+        from common.json_rpc import JsonRpcCaller
+
+        _json_rpc_caller_cls = JsonRpcCaller
+    return _json_rpc_caller_cls
+
+
+# Cache JsonRpcCaller instances per URL to avoid re-creating on every call
+_api_cache: Dict[str, Any] = {}
+
+
+def _get_workspace_api(config: AgentConfig) -> Any:
+    """Get or create a JsonRpcCaller instance for the workspace URL.
+
+    workspace_functions expects a JsonRpcCaller instance (with .acall()),
+    not a raw URL string. This creates one from config.bvbrc_workspace_url.
+    """
+    url = config.bvbrc_workspace_url
+    if url not in _api_cache:
+        JsonRpcCaller = _get_json_rpc_caller(config)
+        _api_cache[url] = JsonRpcCaller(url, timeout=120.0)
+    return _api_cache[url]
 
 
 def _extract_token(headers: Optional[Dict[str, str]]) -> Optional[str]:
@@ -66,6 +96,7 @@ def _extract_user_id(headers: Optional[Dict[str, str]]) -> str:
 # Tool implementations
 # ---------------------------------------------------------------------------
 
+
 async def workspace_browse(
     path: Optional[str] = None,
     type_filter: Optional[str] = None,
@@ -89,11 +120,14 @@ async def workspace_browse(
     """
     cfg = config or AgentConfig()
     ws_fn = _get_workspace_functions(config)
+    api = _get_workspace_api(cfg)
     token = _extract_token(headers)
     user_id = _extract_user_id(headers)
 
     if not token:
-        return {"error": "Authentication required for workspace operations. No auth token provided."}
+        return {
+            "error": "Authentication required for workspace operations. No auth token provided."
+        }
 
     # Default path to user's home directory
     if not path:
@@ -109,7 +143,7 @@ async def workspace_browse(
             filename_search_terms = [search]
 
         result = await ws_fn.workspace_browse(
-            api=cfg.bvbrc_workspace_url,
+            api=api,
             token=token,
             path=path,
             search=search,
@@ -146,6 +180,7 @@ async def read_file_info(
     """
     cfg = config or AgentConfig()
     ws_fn = _get_workspace_functions(config)
+    api = _get_workspace_api(cfg)
     token = _extract_token(headers)
 
     if not token:
@@ -153,7 +188,7 @@ async def read_file_info(
 
     try:
         result = await ws_fn.workspace_get_file_metadata(
-            api=cfg.bvbrc_workspace_url,
+            api=api,
             path=path,
             token=token,
         )

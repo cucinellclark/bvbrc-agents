@@ -64,7 +64,9 @@ class AgentConfig(BaseModel):
     )
 
     @classmethod
-    def from_yaml(cls, config_path: str | Path | None = None, **overrides: Any) -> "AgentConfig":
+    def from_yaml(
+        cls, config_path: str | Path | None = None, **overrides: Any
+    ) -> "AgentConfig":
         """Load configuration from a YAML file, with optional overrides.
 
         Resolution order:
@@ -76,7 +78,11 @@ class AgentConfig(BaseModel):
         """
         import yaml
 
-        path = config_path or os.environ.get("WORKSPACE_AGENT_CONFIG") or _DEFAULT_CONFIG_PATH
+        path = (
+            config_path
+            or os.environ.get("WORKSPACE_AGENT_CONFIG")
+            or _DEFAULT_CONFIG_PATH
+        )
         path = Path(path)
 
         file_values: dict[str, Any] = {}
@@ -207,6 +213,31 @@ class AgentState(BaseModel):
         if isinstance(result, dict) and not result.get("error"):
             self._extract_structured_data(tc.name, result)
 
+    @staticmethod
+    def _meta_array_to_dict(meta_array: list) -> dict[str, Any]:
+        """Convert a BV-BRC workspace metadata positional array to a named dict.
+
+        The Workspace.ls JSON-RPC API returns each item as a 12-element list:
+          [name, type, path, creation_time, id, owner_id, size,
+           userMeta, autoMeta, user_permissions, global_permission, link_reference]
+        """
+        if not isinstance(meta_array, list) or len(meta_array) < 12:
+            return {"raw": meta_array}
+        return {
+            "name": meta_array[0],
+            "type": meta_array[1],
+            "path": meta_array[2],
+            "creation_time": meta_array[3],
+            "id": meta_array[4],
+            "owner_id": meta_array[5],
+            "size": meta_array[6],
+            "userMeta": meta_array[7],
+            "autoMeta": meta_array[8],
+            "user_permissions": meta_array[9],
+            "global_permission": meta_array[10],
+            "link_reference": meta_array[11],
+        }
+
     def _extract_structured_data(self, tool_name: str, result: dict) -> None:
         """Extract file listings, metadata, and ui_grids from tool results."""
         # workspace_browse returns nested result envelope
@@ -215,7 +246,11 @@ class AgentState(BaseModel):
         if tool_name in ("workspace_browse", "workspace_search"):
             items = inner.get("items", [])
             if items:
-                self.collected_items.extend(items)
+                # Convert positional arrays from the BV-BRC API to named dicts
+                self.collected_items.extend(
+                    self._meta_array_to_dict(item) if isinstance(item, list) else item
+                    for item in items
+                )
             ui_grid = inner.get("ui_grid")
             if ui_grid:
                 self.collected_ui_grids.append(ui_grid)

@@ -20,12 +20,21 @@ from service_agent.tools.groups import get_genome_group, get_feature_group
 from service_agent.tools.workflow import compose_workflow, submit_workflow
 from service_agent.tools.sra import get_sra_metadata
 from service_agent.tools.plan_tools import create_workflow_plan
+from service_agent.tools.gowe import (
+    list_gowe_workflows,
+    get_workflow_inputs,
+    submit_gowe_job,
+)
 
 # ---------------------------------------------------------------------------
 # Dispatch table: tool name -> async callable
 # ---------------------------------------------------------------------------
 TOOL_DISPATCH: Dict[str, Any] = {
-    # Phase 1 tools
+    # GoWe workflow tools (primary flow)
+    "list_gowe_workflows": list_gowe_workflows,
+    "get_workflow_inputs": get_workflow_inputs,
+    "submit_gowe_job": submit_gowe_job,
+    # Phase 1 tools (legacy 3-phase flow)
     "create_workflow_plan": create_workflow_plan,
     "list_services": list_services,
     "get_sra_metadata": get_sra_metadata,
@@ -75,7 +84,7 @@ async def execute_tool(
     auth_tools = {
         "plan_service", "compose_workflow", "workspace_browse",
         "read_file_info", "search_data", "get_genome_group",
-        "get_feature_group", "submit_workflow",
+        "get_feature_group", "submit_workflow", "submit_gowe_job",
     }
     if tool_name in auth_tools and headers is not None:
         if "headers" not in arguments:
@@ -93,8 +102,7 @@ async def execute_tool(
             "error": f"Tool '{tool_name}' timed out after {timeout_seconds}s",
             "tool": tool_name,
             "arguments": {
-                k: v for k, v in arguments.items()
-                if k not in ("config", "headers")
+                k: v for k, v in arguments.items() if k not in ("config", "headers")
             },
         }
 
@@ -103,8 +111,7 @@ async def execute_tool(
             "error": f"Invalid arguments for tool '{tool_name}': {str(e)}",
             "tool": tool_name,
             "arguments": {
-                k: v for k, v in arguments.items()
-                if k not in ("config", "headers")
+                k: v for k, v in arguments.items() if k not in ("config", "headers")
             },
         }
 
@@ -113,8 +120,7 @@ async def execute_tool(
             "error": f"Tool '{tool_name}' failed: {type(e).__name__}: {str(e)}",
             "tool": tool_name,
             "arguments": {
-                k: v for k, v in arguments.items()
-                if k not in ("config", "headers")
+                k: v for k, v in arguments.items() if k not in ("config", "headers")
             },
             "traceback": traceback.format_exc(),
         }

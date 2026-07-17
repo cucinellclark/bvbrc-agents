@@ -74,14 +74,16 @@ async def orchestrate(
         routing_event_data: dict[str, Any] = {
             "decision": decision.decision,
             "confidence": decision.confidence,
-            "reasoning": (
-                decision.plan.reasoning if decision.plan else None
-            ),
+            "reasoning": (decision.plan.reasoning if decision.plan else None),
         }
         if decision.plan and decision.plan.steps:
             if decision.decision == "pipeline":
                 routing_event_data["steps"] = [
-                    {"agent_key": s.agent_key, "task": s.task, "depends_on": s.depends_on}
+                    {
+                        "agent_key": s.agent_key,
+                        "task": s.task,
+                        "depends_on": s.depends_on,
+                    }
                     for s in decision.plan.steps
                 ]
             else:
@@ -141,12 +143,14 @@ async def orchestrate(
             kept: list[Step] = []
             for step in decision.plan.steps:
                 task_lower = step.task.lower()
-                if any(kw in task_lower for kw in _SUBMIT_KEYWORDS) and \
-                        "assemble" not in task_lower and \
-                        "annotate" not in task_lower and \
-                        "build" not in task_lower and \
-                        "plan" not in task_lower and \
-                        "analyze" not in task_lower:
+                if (
+                    any(kw in task_lower for kw in _SUBMIT_KEYWORDS)
+                    and "assemble" not in task_lower
+                    and "annotate" not in task_lower
+                    and "build" not in task_lower
+                    and "plan" not in task_lower
+                    and "analyze" not in task_lower
+                ):
                     logger.info(
                         "Pruning redundant submit step from pipeline "
                         "(auto-submit is enabled): %r",
@@ -164,9 +168,7 @@ async def orchestrate(
                         new_idx += 1
                 for s in kept:
                     s.depends_on = [
-                        old_to_new[d]
-                        for d in s.depends_on
-                        if d in old_to_new
+                        old_to_new[d] for d in s.depends_on if d in old_to_new
                     ]
                 decision.plan.steps = kept
 
@@ -191,11 +193,13 @@ async def orchestrate(
 
             elif event.type == EventType.ORCHESTRATOR_ERROR:
                 # Agent execution failed — still try to synthesize
-                agent_results.append({
-                    "agent": event.agent_name or "unknown",
-                    "answer": event.data.get("error", "Unknown error"),
-                    "status": "error",
-                })
+                agent_results.append(
+                    {
+                        "agent": event.agent_name or "unknown",
+                        "answer": event.data.get("error", "Unknown error"),
+                        "status": "error",
+                    }
+                )
 
         # ------------------------------------------------------------------
         # 3a. NEEDS_INPUT — emit a dedicated event so the gateway can
@@ -224,14 +228,18 @@ async def orchestrate(
             for ar in agent_results:
                 wf_id = ar.get("workflow_id")
                 persisted = ar.get("persisted", False)
-                if wf_id and persisted:
-                    logger.info(
-                        "Auto-submit enabled: submitting workflow %s", wf_id
-                    )
+                already_submitted = ar.get("auto_submitted", False) or ar.get(
+                    "submission_id"
+                )
+                if wf_id and persisted and not already_submitted:
+                    logger.info("Auto-submit enabled: submitting workflow %s", wf_id)
                     try:
                         # Find the service agent and call submit_workflow
                         service_agent = registry.get("service")
-                        if service_agent and "submit_workflow" in service_agent.tool_names:
+                        if (
+                            service_agent
+                            and "submit_workflow" in service_agent.tool_names
+                        ):
                             submit_result = await service_agent.call_tool(
                                 "submit_workflow",
                                 {
@@ -253,7 +261,8 @@ async def orchestrate(
                             if submit_data.get("error"):
                                 logger.warning(
                                     "Auto-submit failed for %s: %s",
-                                    wf_id, submit_data["error"],
+                                    wf_id,
+                                    submit_data["error"],
                                 )
                             else:
                                 ar["auto_submitted"] = True
@@ -266,7 +275,8 @@ async def orchestrate(
                                 logger.info(
                                     "Auto-submitted workflow %s: status=%s, "
                                     "submission_id=%s",
-                                    wf_id, submit_data.get("status"),
+                                    wf_id,
+                                    submit_data.get("status"),
                                     submit_data.get("submission_id"),
                                 )
                         else:
@@ -355,12 +365,14 @@ async def orchestrate_to_response(
     status = "completed"
 
     async for event in orchestrate(request, registry, llm, routing_llm=routing_llm):
-        execution_trace.append({
-            "type": event.type.value,
-            "data": event.data,
-            "agent_name": event.agent_name,
-            "timestamp": event.timestamp,
-        })
+        execution_trace.append(
+            {
+                "type": event.type.value,
+                "data": event.data,
+                "agent_name": event.agent_name,
+                "timestamp": event.timestamp,
+            }
+        )
 
         if event.type == EventType.ORCHESTRATOR_DONE:
             response_text = event.data.get("response_text", "")

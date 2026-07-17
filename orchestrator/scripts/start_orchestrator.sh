@@ -123,6 +123,11 @@ if [[ -z "${BV_BRC_AUTH_TOKEN:-}" ]] && [[ -f "$AUTH_TOKEN_FILE" ]]; then
     echo "Loaded auth token from $AUTH_TOKEN_FILE"
 fi
 
+# ── Enable auto-submit ────────────────────────────────────────────────
+# When set to "true", the orchestrator will automatically submit workflows
+# after the service agent builds them (no manual confirmation needed).
+export ORCH_AUTO_SUBMIT="${ORCH_AUTO_SUBMIT:-true}"
+
 # ── Ensure log directory exists ───────────────────────────────────────
 mkdir -p "$LOG_DIR"
 
@@ -136,6 +141,7 @@ echo "  Config:    $CONFIG_FILE"
 echo "  Log level: $LOG_LEVEL"
 echo "  Venv:      $VENV_DIR"
 echo "  Auth:      ${BV_BRC_AUTH_TOKEN:+set (${#BV_BRC_AUTH_TOKEN} chars)}"
+echo "  AutoSubmit: $ORCH_AUTO_SUBMIT"
 echo "  Mode:      $( $BACKGROUND && echo 'background' || echo 'foreground' )"
 echo "========================================"
 echo ""

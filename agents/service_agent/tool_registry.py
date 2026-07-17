@@ -145,8 +145,11 @@ CREATE_WORKFLOW_PLAN = {
                             },
                         },
                         "required": [
-                            "step_id", "service_name", "intent",
-                            "depends_on", "input_sources",
+                            "step_id",
+                            "service_name",
+                            "intent",
+                            "depends_on",
+                            "input_sources",
                         ],
                         "additionalProperties": False,
                     },
@@ -304,8 +307,7 @@ WORKSPACE_BROWSE = {
                 "search": {
                     "type": ["string", "null"],
                     "description": (
-                        "Search term to filter files by name. "
-                        "Null for no filter."
+                        "Search term to filter files by name. Null for no filter."
                     ),
                 },
             },
@@ -377,8 +379,7 @@ SEARCH_DATA = {
                 "limit": {
                     "type": ["integer", "null"],
                     "description": (
-                        "Maximum records to return. Max 50. "
-                        "Null defaults to 25."
+                        "Maximum records to return. Max 50. Null defaults to 25."
                     ),
                 },
                 "count_only": {
@@ -444,6 +445,90 @@ GET_FEATURE_GROUP = {
 
 
 # ---------------------------------------------------------------------------
+# GoWe workflow tools (workflow selection + input population flow)
+# ---------------------------------------------------------------------------
+
+LIST_GOWE_WORKFLOWS = {
+    "type": "function",
+    "function": {
+        "name": "list_gowe_workflows",
+        "strict": True,
+        "description": (
+            "List all available workflows registered in the GoWe workflow "
+            "engine. Returns workflow id, name, description, and step count "
+            "for each. Call this first to discover which workflow matches "
+            "the user's request."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": False,
+        },
+    },
+}
+
+GET_WORKFLOW_INPUTS = {
+    "type": "function",
+    "function": {
+        "name": "get_workflow_inputs",
+        "strict": True,
+        "description": (
+            "Get the full input schema for a specific GoWe workflow. "
+            "Returns each input's id, type, required flag, default value, "
+            "and documentation. Call this after selecting a workflow to "
+            "understand what inputs need to be provided."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "workflow_id": {
+                    "type": "string",
+                    "description": (
+                        "The GoWe workflow ID (e.g., 'wf_abc123'). "
+                        "Get this from list_gowe_workflows."
+                    ),
+                },
+            },
+            "required": ["workflow_id"],
+            "additionalProperties": False,
+        },
+    },
+}
+
+SUBMIT_GOWE_JOB = {
+    "type": "function",
+    "function": {
+        "name": "submit_gowe_job",
+        "description": (
+            "Submit a job to the GoWe workflow engine with populated inputs. "
+            "Call this after you have gathered all required input values for "
+            "the selected workflow. The inputs dict must match the workflow's "
+            "input schema."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "workflow_id": {
+                    "type": "string",
+                    "description": "The GoWe workflow ID to run.",
+                },
+                "inputs": {
+                    "type": "object",
+                    "description": (
+                        "Input values matching the workflow's input schema. "
+                        "Include all required inputs and any optional inputs "
+                        "you want to override from defaults."
+                    ),
+                },
+            },
+            "required": ["workflow_id", "inputs"],
+        },
+    },
+}
+
+
+# ---------------------------------------------------------------------------
 # Submission tool (available in Phase 1 for submit-by-id requests)
 # ---------------------------------------------------------------------------
 
@@ -495,6 +580,19 @@ PHASE_2_TOOLS: list[dict] = [
     GET_GENOME_GROUP,
     GET_FEATURE_GROUP,
     GET_SRA_METADATA,  # Also available in Phase 2
+]
+
+# Workflow populate tools (GoWe-first flow: select workflow, populate inputs, submit)
+POPULATE_TOOLS: list[dict] = [
+    LIST_GOWE_WORKFLOWS,
+    GET_WORKFLOW_INPUTS,
+    SUBMIT_GOWE_JOB,
+    WORKSPACE_BROWSE,
+    READ_FILE_INFO,
+    SEARCH_DATA,
+    GET_GENOME_GROUP,
+    GET_FEATURE_GROUP,
+    GET_SRA_METADATA,
 ]
 
 # All tools (for reference / backwards compatibility)

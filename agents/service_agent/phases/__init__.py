@@ -7,6 +7,6 @@ Phase 3: Compose (ValidatedStep[] -> manifest)
 
 from service_agent.phases.decompose import decompose
 from service_agent.phases.build import build_step
-from service_agent.phases.compose import compose_manifest
+from service_agent.phases.compose import compose_from_registry, compose_from_cwl
 
-__all__ = ["decompose", "build_step", "compose_manifest"]
+__all__ = ["decompose", "build_step", "compose_from_registry", "compose_from_cwl"]

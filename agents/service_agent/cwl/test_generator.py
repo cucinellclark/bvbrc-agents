@@ -40,6 +40,7 @@ from .types import (
 # Test fixtures — lightweight stand-ins for Pydantic models
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class FakeStep:
     """Stand-in for ValidatedStep to avoid importing the full models module."""
@@ -102,6 +103,7 @@ class FakeWorkflowPlan:
 # ---------------------------------------------------------------------------
 # Helper factory functions
 # ---------------------------------------------------------------------------
+
 
 def _assembly_step(
     step_id: str = "assemble",
@@ -288,7 +290,10 @@ class TestInferCwlType:
         assert infer_cwl_type({"class": "File", "location": "ws:///..."}) == "File"
 
     def test_dict_with_directory_class(self):
-        assert infer_cwl_type({"class": "Directory", "location": "ws:///..."}) == "Directory"
+        assert (
+            infer_cwl_type({"class": "Directory", "location": "ws:///..."})
+            == "Directory"
+        )
 
     def test_plain_dict(self):
         assert infer_cwl_type({"key": "value"}) == "string"
@@ -302,21 +307,23 @@ class TestInferCwlType:
 class TestInferCwlInputType:
     """Test context-aware CWL type inference."""
 
-    def test_output_path_is_directory(self):
-        assert infer_cwl_input_type("/user@bvbrc/home/test", "output_path") == "Directory"
+    def test_output_path_is_string(self):
+        assert infer_cwl_input_type("/user@bvbrc/home/test", "output_path") == "string"
 
     def test_output_file_is_string(self):
         assert infer_cwl_input_type("my_output", "output_file") == "string"
 
     def test_workspace_file_path(self):
-        assert infer_cwl_input_type(
-            "/user@bvbrc/home/test/file.fasta", "contigs"
-        ) == "File"
+        assert (
+            infer_cwl_input_type("/user@bvbrc/home/test/file.fasta", "contigs")
+            == "File"
+        )
 
     def test_workspace_dir_path(self):
-        assert infer_cwl_input_type(
-            "/user@bvbrc/home/test/folder", "some_dir"
-        ) == "Directory"
+        assert (
+            infer_cwl_input_type("/user@bvbrc/home/test/folder", "some_dir")
+            == "Directory"
+        )
 
     def test_plain_string(self):
         assert infer_cwl_input_type("auto", "recipe") == "string"
@@ -345,14 +352,9 @@ class TestPythonToCwlValue:
         assert result == "my_output"
         assert isinstance(result, str)
 
-    def test_output_path_wrapped_as_directory(self):
-        result = python_to_cwl_value(
-            "/user@bvbrc/home/test", param_name="output_path"
-        )
-        assert result == {
-            "class": "Directory",
-            "location": "ws:///user@bvbrc/home/test",
-        }
+    def test_output_path_passed_as_plain_string(self):
+        result = python_to_cwl_value("/user@bvbrc/home/test", param_name="output_path")
+        assert result == "/user@bvbrc/home/test"
 
     def test_workspace_file_wrapped(self):
         result = python_to_cwl_value(
@@ -404,7 +406,7 @@ class TestGenerateToolDefinition:
         hints = tool["hints"]
         assert "gowe:Execution" in hints
         assert hints["gowe:Execution"]["bvbrc_app_id"] == "GenomeAssembly2"
-        assert hints["gowe:Execution"]["executor"] == "bvbrc"
+        assert "executor" not in hints["gowe:Execution"]  # let GoWe use its default
 
     def test_inputs_from_params(self):
         step = _assembly_step()
@@ -414,7 +416,7 @@ class TestGenerateToolDefinition:
         assert "recipe" in inputs
         assert inputs["recipe"]["type"] == "string"
         assert "output_path" in inputs
-        assert inputs["output_path"]["type"] == "Directory"
+        assert inputs["output_path"]["type"] == "string"
         assert "output_file" in inputs
         assert inputs["output_file"]["type"] == "string"
         assert "trim" in inputs
@@ -449,7 +451,10 @@ class TestGenerateToolDefinition:
         outputs = tool["outputs"]
         assert "result" in outputs
         assert outputs["result"]["type"] == "File[]"
-        assert "$(inputs.output_path.location)" in outputs["result"]["outputBinding"]["glob"]
+        assert (
+            "$(inputs.output_path)"
+            in outputs["result"]["outputBinding"]["glob"]
+        )
 
     def test_underscore_in_step_id(self):
         step = FakeStep(
@@ -801,11 +806,11 @@ class TestFanIn:
 class TestWorkspacePathHandling:
     """Test workspace path detection and wrapping in context."""
 
-    def test_output_path_in_tool_is_directory_type(self):
+    def test_output_path_in_tool_is_string_type(self):
         step = _assembly_step()
         tool = generate_tool_definition(step)
 
-        assert tool["inputs"]["output_path"]["type"] == "Directory"
+        assert tool["inputs"]["output_path"]["type"] == "string"
 
     def test_output_file_in_tool_is_string_type(self):
         step = _assembly_step()
@@ -813,14 +818,11 @@ class TestWorkspacePathHandling:
 
         assert tool["inputs"]["output_file"]["type"] == "string"
 
-    def test_submission_output_path_wrapped(self):
+    def test_submission_output_path_is_plain_string(self):
         step = _assembly_step()
         inputs = generate_submission_inputs({"assemble": step})
 
-        assert inputs["output_path"] == {
-            "class": "Directory",
-            "location": "ws:///user@bvbrc/home/test",
-        }
+        assert inputs["output_path"] == "/user@bvbrc/home/test"
 
     def test_submission_output_file_is_string(self):
         step = _assembly_step()
@@ -880,10 +882,12 @@ class TestGenerateSubmissionInputs:
     def test_multi_step_inputs(self):
         assembly = _assembly_step()
         annotation = _annotation_step()
-        inputs = generate_submission_inputs({
-            "assemble": assembly,
-            "annotate": annotation,
-        })
+        inputs = generate_submission_inputs(
+            {
+                "assemble": assembly,
+                "annotate": annotation,
+            }
+        )
 
         # Assembly params
         assert "assemble_recipe" in inputs
@@ -1026,7 +1030,7 @@ class TestCwlDocumentStructure:
             assert "gowe:Execution" in entry["hints"]
             exec_hint = entry["hints"]["gowe:Execution"]
             assert "bvbrc_app_id" in exec_hint
-            assert exec_hint["executor"] == "bvbrc"
+            assert "executor" not in exec_hint  # let GoWe use its default
 
         # Workflow should have steps with run references using # prefix
         wf = cwl["$graph"][-1]

@@ -21,8 +21,15 @@ _WORKSPACE_PATH_RE = re.compile(r"^/[^/]*@(bvbrc|patricbrc\.org)/.+")
 # Parameter names that are always output basenames (strings, not paths)
 _OUTPUT_BASENAME_PARAMS = frozenset({"output_file"})
 
-# Parameter names that are always directories
-_DIRECTORY_PARAMS = frozenset({"output_path", "workspace_path"})
+# Parameter names that are output destination paths — these are passed as
+# plain strings to the BV-BRC app service (which writes results there).
+# They must NOT be typed as CWL Directory objects, because that would cause
+# GoWe's workspace stager to try to download them as inputs.
+_OUTPUT_PATH_PARAMS = frozenset({"output_path"})
+
+# Parameter names that are always directories (actual input directories
+# that need to be staged in from the workspace)
+_DIRECTORY_PARAMS = frozenset({"workspace_path"})
 
 
 def is_workspace_path(value: str) -> bool:
@@ -59,6 +66,7 @@ def wrap_workspace_path(path: str, as_type: str = "Directory") -> dict[str, str]
 # ---------------------------------------------------------------------------
 # CWL type inference
 # ---------------------------------------------------------------------------
+
 
 def infer_cwl_type(value: Any) -> str:
     """Infer a CWL type string from a Python value.
@@ -112,6 +120,8 @@ def infer_cwl_input_type(value: Any, param_name: str | None = None) -> str:
     """
     if param_name in _OUTPUT_BASENAME_PARAMS:
         return "string"
+    if param_name in _OUTPUT_PATH_PARAMS:
+        return "string"
     if param_name in _DIRECTORY_PARAMS:
         return "Directory"
     if isinstance(value, str) and is_workspace_path(value):
@@ -139,6 +149,7 @@ def _looks_like_file_path(path: str) -> bool:
 # ---------------------------------------------------------------------------
 # Python -> CWL value conversion
 # ---------------------------------------------------------------------------
+
 
 def python_to_cwl_value(value: Any, param_name: str | None = None) -> Any:
     """Convert a Python value to CWL input format.
@@ -173,7 +184,11 @@ def python_to_cwl_value(value: Any, param_name: str | None = None) -> Any:
         if param_name in _OUTPUT_BASENAME_PARAMS:
             return value
 
-        # output_path is always a Directory
+        # output_path is a destination string — not a Directory to stage in
+        if param_name in _OUTPUT_PATH_PARAMS:
+            return value
+
+        # Actual input directories that need staging
         if param_name in _DIRECTORY_PARAMS:
             if is_workspace_path(value):
                 return wrap_workspace_path(value, as_type="Directory")
