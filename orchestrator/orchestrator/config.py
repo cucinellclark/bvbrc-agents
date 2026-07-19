@@ -39,7 +39,7 @@ class AgentConfig(BaseModel):
     endpoint: str  # MCP server URL, e.g. "http://localhost:8053"
     protocol: str = "mcp"
     capabilities: list[str] = Field(default_factory=list)
-    max_iterations: int = 5
+    max_iterations: int = 1000
     timeout_seconds: int = 120
     auth_token: str | None = None  # Override per-agent; usually from env
     chat_tool: str = "agent_chat"  # MCP tool name for the agent's chat entry point

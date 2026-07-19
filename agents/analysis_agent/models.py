@@ -50,7 +50,7 @@ class AgentConfig(BaseModel):
     max_tool_result_chars: int = 8000  # per-tool-result truncation budget
 
     # Agent behavior
-    max_iterations: int = 50
+    max_iterations: int = 1000
     tool_timeout_seconds: int = 30
 
     # Analysis-specific

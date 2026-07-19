@@ -20,7 +20,7 @@ from orchestrator.executor.executor import execute_plan
 from orchestrator.llm.client import LLMClient
 from orchestrator.models import OrchestratorRequest, OrchestratorResponse
 from orchestrator.registry.agent_registry import AgentRegistry
-from orchestrator.router.models import Step
+from orchestrator.router.models import Plan, Step
 from orchestrator.router.router import route
 from orchestrator.synthesizer.synthesizer import synthesize
 
@@ -221,7 +221,200 @@ async def orchestrate(
                     )
 
         # ------------------------------------------------------------------
-        # 3b. AUTO-SUBMIT (when ORCH_AUTO_SUBMIT is enabled)
+        # 3b. PLANNING AGENT — special status handling
+        #
+        # The planning agent returns custom statuses that need dedicated
+        # handling:
+        #   - clarification_questions -> ASK_QUESTIONS event, stop
+        #   - needs_approval + plan   -> PLAN_CREATED event, stop
+        #   - step_ready              -> execute the step via normal
+        #                                executor, emit step events,
+        #                                then fall through to synthesis
+        # ------------------------------------------------------------------
+        _planning_handled = False
+        for ar in agent_results:
+            # --- CLARIFICATION QUESTIONS ---
+            if ar.get("clarification_questions"):
+                yield Event(
+                    type=EventType.ASK_QUESTIONS,
+                    agent_name="planning",
+                    data={
+                        "agent": "planning",
+                        "questions": ar["clarification_questions"],
+                    },
+                )
+                yield Event(
+                    type=EventType.ORCHESTRATOR_DONE,
+                    data={
+                        "response_text": "",
+                        "decision": decision.decision,
+                        "agents_used": agents_used,
+                        "elapsed_ms": _elapsed_ms(start_time),
+                    },
+                )
+                return  # Skip synthesis — nothing to synthesize
+
+            # --- PLAN CREATED ---
+            if ar.get("plan") and ar.get("status") == "needs_approval":
+                yield Event(
+                    type=EventType.PLAN_CREATED,
+                    agent_name="planning",
+                    data={
+                        "agent": "planning",
+                        "plan": ar["plan"],
+                    },
+                )
+                yield Event(
+                    type=EventType.ORCHESTRATOR_DONE,
+                    data={
+                        "response_text": ar.get("answer", ""),
+                        "decision": decision.decision,
+                        "agents_used": agents_used,
+                        "result_for_ui": {"plan": ar["plan"]},
+                        "elapsed_ms": _elapsed_ms(start_time),
+                    },
+                )
+                return  # Skip synthesis — plan card is the response
+
+            # --- REVIEW STEP ---
+            if (
+                ar.get("step_execution")
+                and ar.get("status") == "step_ready"
+                and ar["step_execution"].get("agent") == "review"
+            ):
+                step_exec = ar["step_execution"]
+                review_config = step_exec.get("review_config", {})
+
+                yield Event(
+                    type=EventType.PLAN_REVIEW_READY,
+                    agent_name="planning",
+                    data={
+                        "plan_id": step_exec.get("plan_id"),
+                        "step_id": step_exec.get("step_id"),
+                        "step_index": step_exec.get("step_index"),
+                        "review_config": review_config,
+                        "source_data": step_exec.get("source_data", {}),
+                        "prompt": review_config.get(
+                            "prompt", "Review the results before continuing."
+                        ),
+                    },
+                )
+                yield Event(
+                    type=EventType.ORCHESTRATOR_DONE,
+                    data={
+                        "response_text": ar.get("answer", ""),
+                        "decision": decision.decision,
+                        "agents_used": agents_used,
+                        "elapsed_ms": _elapsed_ms(start_time),
+                    },
+                )
+                return
+
+            # --- STEP READY ---
+            if ar.get("step_execution") and ar.get("status") == "step_ready":
+                step_exec = ar["step_execution"]
+
+                yield Event(
+                    type=EventType.PLAN_STEP_STARTED,
+                    agent_name=step_exec.get("agent"),
+                    data={
+                        "plan_id": step_exec.get("plan_id"),
+                        "step_id": step_exec.get("step_id"),
+                        "step_index": step_exec.get("step_index"),
+                        "agent": step_exec["agent"],
+                    },
+                )
+
+                # Build single-step plan for the normal executor
+                single_step_plan = Plan(
+                    reasoning=f"Plan step: {step_exec['task'][:100]}",
+                    steps=[
+                        Step(
+                            agent_key=step_exec["agent"],
+                            task=step_exec["task"],
+                        )
+                    ],
+                )
+
+                step_agent_results: list[dict[str, Any]] = []
+                async for event in execute_plan(single_step_plan, registry, request):
+                    yield event  # Forward all agent events
+                    if event.type == EventType.AGENT_RESULT:
+                        step_agent_results.append(event.data.get("result_for_ui", {}))
+
+                # Emit plan step result event
+                step_result = step_agent_results[0] if step_agent_results else {}
+                step_status = step_result.get("status", "completed")
+
+                if step_status in ("completed", "max_iterations"):
+                    step_completed_data: dict[str, Any] = {
+                        "plan_id": step_exec.get("plan_id"),
+                        "step_id": step_exec.get("step_id"),
+                        "step_index": step_exec.get("step_index"),
+                        "result_summary": step_result.get("answer", "")[:500],
+                        "agent_result": step_result,
+                    }
+                    if step_result.get("structured_data"):
+                        step_completed_data["structured_data"] = step_result[
+                            "structured_data"
+                        ]
+                    yield Event(
+                        type=EventType.PLAN_STEP_COMPLETED,
+                        agent_name=step_exec.get("agent"),
+                        data=step_completed_data,
+                    )
+                else:
+                    yield Event(
+                        type=EventType.PLAN_STEP_FAILED,
+                        agent_name=step_exec.get("agent"),
+                        data={
+                            "plan_id": step_exec.get("plan_id"),
+                            "step_id": step_exec.get("step_id"),
+                            "step_index": step_exec.get("step_index"),
+                            "error": step_result.get("answer", "Step failed"),
+                        },
+                    )
+
+                # Replace agent_results so the synthesizer works on the
+                # step result. The step result becomes the chat message.
+                agent_results = [step_result]
+                _planning_handled = True
+                break  # Only handle one step_ready per request
+
+            # --- DIRECT STEP COMPLETED ---
+            # When a 'direct' step is executed, the planning agent
+            # returns status="completed" with step_execution data.
+            if (
+                ar.get("step_execution")
+                and ar.get("status") == "completed"
+                and ar["step_execution"].get("agent") == "direct"
+            ):
+                step_exec = ar["step_execution"]
+
+                yield Event(
+                    type=EventType.PLAN_STEP_COMPLETED,
+                    agent_name="planning",
+                    data={
+                        "plan_id": step_exec.get("plan_id"),
+                        "step_id": step_exec.get("step_id"),
+                        "step_index": step_exec.get("step_index"),
+                        "result_summary": step_exec.get(
+                            "direct_answer", ar.get("answer", "")
+                        )[:500],
+                        "agent_result": {
+                            "agent": "planning",
+                            "answer": step_exec.get(
+                                "direct_answer", ar.get("answer", "")
+                            ),
+                            "status": "completed",
+                        },
+                    },
+                )
+                _planning_handled = True
+                break
+
+        # ------------------------------------------------------------------
+        # 3c. AUTO-SUBMIT (when ORCH_AUTO_SUBMIT is enabled)
         # ------------------------------------------------------------------
         auto_submit = getattr(registry._config, "auto_submit", False)
         if auto_submit and agent_results:

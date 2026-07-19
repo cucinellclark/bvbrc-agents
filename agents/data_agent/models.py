@@ -36,7 +36,7 @@ class AgentConfig(BaseModel):
     max_tokens: int = _LLM_DEFAULTS["max_tokens"]
 
     # Agent behavior
-    max_iterations: int = 10
+    max_iterations: int = 1000
     max_results_per_query: int = 100
     tool_timeout_seconds: int = 30
 
@@ -139,6 +139,8 @@ class AgentState(BaseModel):
                 if col not in sources:
                     sources.append(col)
 
+        structured_data = self._extract_structured_data()
+
         return AgentResult(
             answer=self.final_answer or "",
             plan=[
@@ -161,7 +163,65 @@ class AgentState(BaseModel):
             iterations_used=self.iteration,
             status=self.status,
             elapsed_seconds=round(elapsed, 2),
+            structured_data=structured_data,
         )
+
+    def _extract_structured_data(self) -> dict[str, Any] | None:
+        """Extract structured data from tool executions for downstream agents.
+
+        Pulls record IDs, counts, facet distributions, and query metadata
+        from search_data and facet_query tool results.
+        """
+        record_ids: list[str] = []
+        record_count: int | None = None
+        facets: dict[str, Any] = {}
+        collection: str | None = None
+        query_used: str | None = None
+
+        for ex in self.tool_calls_executed:
+            if ex.error or not isinstance(ex.result, dict):
+                continue
+            tc = ex.tool_call
+
+            if tc.name == "search_data":
+                collection = tc.arguments.get("collection", collection)
+                query_used = tc.arguments.get("rql_query") or tc.arguments.get(
+                    "query", query_used
+                )
+
+                num_found = ex.result.get("numFound") or ex.result.get("count")
+                if num_found is not None:
+                    record_count = int(num_found)
+
+                docs = ex.result.get("docs") or ex.result.get("items", [])
+                for doc in docs:
+                    if isinstance(doc, dict):
+                        rid = (
+                            doc.get("genome_id")
+                            or doc.get("feature_id")
+                            or doc.get("id")
+                        )
+                        if rid and rid not in record_ids:
+                            record_ids.append(str(rid))
+
+            elif tc.name == "facet_query":
+                facet_field = tc.arguments.get("facet_field", "")
+                facet_data = ex.result.get("facets") or ex.result.get(
+                    "facet_counts", {}
+                )
+                if facet_field and facet_data:
+                    facets[facet_field] = facet_data
+
+        if not record_ids and record_count is None and not facets:
+            return None
+
+        return {
+            "record_ids": record_ids,
+            "record_count": record_count,
+            "facets": facets,
+            "collection": collection,
+            "query_used": query_used,
+        }
 
 
 class AgentResult(BaseModel):
@@ -175,6 +235,7 @@ class AgentResult(BaseModel):
     iterations_used: int = 0
     status: str = "completed"
     elapsed_seconds: float = 0.0
+    structured_data: dict[str, Any] | None = None
 
     def pretty(self) -> str:
         """Human-readable summary for CLI output."""

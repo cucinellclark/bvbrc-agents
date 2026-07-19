@@ -26,7 +26,7 @@ agents:
       - solr_query
       - faceted_search
       - collection_browsing
-    max_iterations: 5
+    max_iterations: 1000
     timeout_seconds: 120
     auth_token_env: "BV_BRC_AUTH_TOKEN"
     chat_tool: "agent_chat"
@@ -49,7 +49,7 @@ agents:
       - service_configuration
       - parameter_validation
       - multi_step_pipelines
-    max_iterations: 10
+    max_iterations: 1000
     timeout_seconds: 300
     auth_token_env: "BV_BRC_AUTH_TOKEN"
     chat_tool: "agent_chat"
@@ -73,7 +73,7 @@ agents:
       - file_search
       - file_metadata
       - file_preview
-    max_iterations: 8
+    max_iterations: 1000
     timeout_seconds: 120
     auth_token_env: "BV_BRC_AUTH_TOKEN"
     chat_tool: "agent_chat"
@@ -98,7 +98,7 @@ agents:
       - faq_answers
       - platform_usage
       - troubleshooting
-    max_iterations: 8
+    max_iterations: 1000
     timeout_seconds: 120
     auth_token_env: "BV_BRC_AUTH_TOKEN"
     chat_tool: "agent_chat"
@@ -122,13 +122,38 @@ agents:
       - metric_extraction
       - result_summarization
       - workspace_browsing
-    max_iterations: 6
+    max_iterations: 1000
     timeout_seconds: 120
     auth_token_env: "BV_BRC_AUTH_TOKEN"
     chat_tool: "agent_chat"
     mcp_server_name: "bvbrc_server"
     chat_tool_params:
       agent_type: "analysis"
+
+  planning:
+    name: "Planning Agent"
+    description: >
+      Handles complex, multi-step questions that require coordinating
+      multiple agents. Creates step-by-step plans for experiment design,
+      multi-stage analysis, or any request that needs data retrieval,
+      service execution, and workspace operations in sequence. Asks
+      clarification questions when the request is ambiguous. Plans are
+      presented to the user for review and editing before execution.
+      Do NOT route simple single-agent questions here.
+    endpoint: "http://140.221.78.15:8153"
+    protocol: "mcp"
+    capabilities:
+      - multi_step_planning
+      - experiment_design
+      - task_decomposition
+      - clarification
+    max_iterations: 1000
+    timeout_seconds: 300
+    auth_token_env: "BV_BRC_AUTH_TOKEN"
+    chat_tool: "agent_chat"
+    mcp_server_name: "bvbrc_server"
+    chat_tool_params:
+      agent_type: "planning"
 
 # Orchestrator-level settings
 orchestrator:

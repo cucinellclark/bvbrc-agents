@@ -55,9 +55,31 @@ without analysis intent (use workspace).
 - When a user asks HOW to use a service (explanation/guidance), route to \
 **helpdesk**. When a user asks to actually SET UP or RUN a service \
 (action), route to **service**.
+- Route to the **planning** agent when the request involves multiple \
+distinct steps across different agents, when the user explicitly asks \
+to "plan", "design an experiment", "walk me through", or "step by step", \
+or when the request mentions needing results from one operation to feed \
+into another across different agent domains. Do NOT route to planning \
+for single-agent questions, even if complex. Only use planning when \
+multiple agents need to coordinate and the user would benefit from \
+reviewing a structured plan before execution.
+- Route to the **planning** agent when the user wants to find specific \
+data and then perform an analysis, experiment, or comparison on it — \
+especially when the request implies multiple phases (retrieve data, \
+select/refine, analyze). Examples: "analyze H5N1 genomes from 2024", \
+"compare AMR patterns across Salmonella strains", "do a phylogenetic \
+analysis of MERS-CoV genomes". These are analytical workflows even \
+without explicit "plan" language. Route to planning so the user can \
+review intermediate data before committing to an analysis.
+- Do NOT use a simple data→service **pipeline** when the user would \
+benefit from reviewing intermediate results (e.g., checking how many \
+genomes were found, choosing which analysis to run). Use **planning** \
+instead, which supports review checkpoints.
 - If the request requires finding data first and THEN running a service \
-on it, use a **pipeline** with the data step first and the service step \
-depending on it. Example: "find genomes and annotate them".
+on it AND the task is simple and unambiguous (e.g., "find genomes and \
+annotate them"), use a **pipeline** with the data step first and the \
+service step depending on it. For complex or exploratory analytical \
+requests, prefer **planning** over **pipeline**.
 - If the request requires checking workspace files and THEN running a \
 service on them, use a **pipeline** with workspace first and service \
 depending on it.

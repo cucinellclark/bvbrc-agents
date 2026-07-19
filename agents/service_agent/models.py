@@ -59,7 +59,7 @@ class AgentConfig(BaseModel):
     classifier_model: str | None = _LLM_DEFAULTS.get("classifier_model")
 
     # Agent behavior
-    max_iterations: int = 10  # Max LLM calls per phase sub-loop
+    max_iterations: int = 1000  # Max LLM calls per phase sub-loop
     tool_timeout_seconds: int = 30
 
     # BV-BRC API

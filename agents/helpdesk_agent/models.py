@@ -36,7 +36,7 @@ class AgentConfig(BaseModel):
     max_tokens: int = _LLM_DEFAULTS["max_tokens"]
 
     # Agent behavior
-    max_iterations: int = 8
+    max_iterations: int = 1000
     tool_timeout_seconds: int = 30
 
     # BV-BRC API (for service schema lookups)

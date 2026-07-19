@@ -102,7 +102,9 @@ async def route(
             f"preview={raw_response[:120]!r}"
         )
         decision = _parse_routing_response(raw_response, request.query, registry)
-        dr_preview = repr(decision.direct_response[:80]) if decision.direct_response else "None"
+        dr_preview = (
+            repr(decision.direct_response[:80]) if decision.direct_response else "None"
+        )
         logger.info(
             f"Routing decision: type={decision.decision}, "
             f"confidence={decision.confidence}, "
@@ -264,50 +266,165 @@ def _fallback_routing(
 
     # Helpdesk-related keywords (checked first — how-to questions)
     helpdesk_keywords = [
-        "how to", "how do i", "how does", "how can i",
-        "what is", "what are", "what does",
-        "explain", "help", "tutorial", "guide", "documentation",
-        "faq", "troubleshoot", "usage", "getting started",
-        "steps to", "instructions", "walkthrough",
+        "how to",
+        "how do i",
+        "how does",
+        "how can i",
+        "what is",
+        "what are",
+        "what does",
+        "explain",
+        "help",
+        "tutorial",
+        "guide",
+        "documentation",
+        "faq",
+        "troubleshoot",
+        "usage",
+        "getting started",
+        "steps to",
+        "instructions",
+        "walkthrough",
     ]
 
     # Data-related keywords
     data_keywords = [
-        "genome", "genomes", "feature", "features", "gene", "genes",
-        "protein", "proteins", "amr", "antimicrobial", "resistance",
-        "pathway", "pathways", "epitope", "epitopes", "taxonomy",
-        "species", "strain", "strains", "search", "find", "query",
-        "how many", "count", "list", "show me", "retrieve", "data",
-        "solr", "collection", "subsystem", "specialty gene",
-        "surveillance", "serology", "sequence",
+        "genome",
+        "genomes",
+        "feature",
+        "features",
+        "gene",
+        "genes",
+        "protein",
+        "proteins",
+        "amr",
+        "antimicrobial",
+        "resistance",
+        "pathway",
+        "pathways",
+        "epitope",
+        "epitopes",
+        "taxonomy",
+        "species",
+        "strain",
+        "strains",
+        "search",
+        "find",
+        "query",
+        "how many",
+        "count",
+        "list",
+        "show me",
+        "retrieve",
+        "data",
+        "solr",
+        "collection",
+        "subsystem",
+        "specialty gene",
+        "surveillance",
+        "serology",
+        "sequence",
     ]
 
     # Service-related keywords (action-oriented)
     service_keywords = [
-        "assemble", "assembly", "annotate", "annotation", "blast",
-        "align", "alignment", "phylogen", "tree", "workflow",
-        "submit", "run", "job",
-        "pipeline", "comparative", "variation", "snp", "tn-seq",
-        "rna-seq", "expression", "proteome", "metabol",
+        "assemble",
+        "assembly",
+        "annotate",
+        "annotation",
+        "blast",
+        "align",
+        "alignment",
+        "phylogen",
+        "tree",
+        "workflow",
+        "submit",
+        "run",
+        "job",
+        "pipeline",
+        "comparative",
+        "variation",
+        "snp",
+        "tn-seq",
+        "rna-seq",
+        "expression",
+        "proteome",
+        "metabol",
+    ]
+
+    # Planning-related keywords (multi-step coordination)
+    planning_keywords = [
+        "plan",
+        "design experiment",
+        "step by step",
+        "multi-step",
+        "walk me through",
+        "create a plan",
+        "experiment design",
+        "plan out",
+        "outline the steps",
+        "design a workflow",
     ]
 
     # Analysis-related keywords (post-hoc output inspection)
     analysis_keywords = [
-        "analyze results", "analyze my", "analyze the results",
-        "summarize results", "summarize the output", "summarize outputs",
-        "what did my", "what were the results",
-        "examine results", "examine the output",
-        "interpret results", "output files", "output analysis",
-        "job results", "job output", "n50", "metrics",
+        "analyze results",
+        "analyze my",
+        "analyze the results",
+        "summarize results",
+        "summarize the output",
+        "summarize outputs",
+        "what did my",
+        "what were the results",
+        "examine results",
+        "examine the output",
+        "interpret results",
+        "output files",
+        "output analysis",
+        "job results",
+        "job output",
+        "n50",
+        "metrics",
     ]
 
+    planning_score = sum(1 for kw in planning_keywords if kw in q)
     helpdesk_score = sum(1 for kw in helpdesk_keywords if kw in q)
     data_score = sum(1 for kw in data_keywords if kw in q)
     service_score = sum(1 for kw in service_keywords if kw in q)
     analysis_score = sum(1 for kw in analysis_keywords if kw in q)
 
+    # Analytical workflow: data retrieval + analysis action together
+    _analysis_actions = [
+        "analyze", "analysis", "compare", "comparison", "phylogenet",
+        "characterize", "investigate", "examine", "study",
+    ]
+    _data_subjects = [
+        "genome", "genomes", "strain", "strains", "isolate", "isolates",
+        "sequence", "sequences", "amr", "antimicrobial", "protein",
+        "proteins", "feature", "features", "gene", "genes",
+    ]
+    has_analysis_action = any(kw in q for kw in _analysis_actions)
+    has_data_subject = any(kw in q for kw in _data_subjects)
+    if has_analysis_action and has_data_subject:
+        planning_score += 2
+
+    # Planning gets priority when multi-step/plan phrases are present
+    if planning_score > 0 and "planning" in registry.agents:
+        return RoutingDecision(
+            decision="agent",
+            plan=Plan(
+                reasoning="Fallback keyword routing: multi-step planning query.",
+                steps=[Step(agent_key="planning", task=query)],
+            ),
+            confidence=0.5,
+        )
+
     # Analysis gets priority when results/output phrases are present
-    if analysis_score > 0 and analysis_score >= service_score and "analysis" in registry.agents:
+    if (
+        analysis_score > 0
+        and analysis_score >= service_score
+        and "analysis" in registry.agents
+    ):
         return RoutingDecision(
             decision="agent",
             plan=Plan(
@@ -318,7 +435,12 @@ def _fallback_routing(
         )
 
     # Helpdesk gets priority when how-to phrases are present
-    if helpdesk_score > 0 and helpdesk_score >= data_score and helpdesk_score >= service_score and "helpdesk" in registry.agents:
+    if (
+        helpdesk_score > 0
+        and helpdesk_score >= data_score
+        and helpdesk_score >= service_score
+        and "helpdesk" in registry.agents
+    ):
         return RoutingDecision(
             decision="agent",
             plan=Plan(

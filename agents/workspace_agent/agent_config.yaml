@@ -43,7 +43,7 @@ context:
 # ---------------------------------------------------------------------------
 agent:
   # Maximum plan-execute-evaluate iterations before forcing a final answer
-  max_iterations: 8
+  max_iterations: 1000
 
   # Timeout for individual tool executions (seconds)
   tool_timeout_seconds: 30

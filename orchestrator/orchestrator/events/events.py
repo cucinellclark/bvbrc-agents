@@ -42,6 +42,14 @@ class EventType(str, Enum):
     # --- Agent interaction ---
     NEEDS_INPUT = "needs_input"
 
+    # --- Planning agent ---
+    ASK_QUESTIONS = "ask_questions"
+    PLAN_CREATED = "plan_created"
+    PLAN_STEP_STARTED = "plan_step_started"
+    PLAN_STEP_COMPLETED = "plan_step_completed"
+    PLAN_STEP_FAILED = "plan_step_failed"
+    PLAN_REVIEW_READY = "plan_review_ready"
+
     # --- Registry / discovery ---
     DISCOVERY_START = "discovery_start"
     DISCOVERY_AGENT = "discovery_agent"

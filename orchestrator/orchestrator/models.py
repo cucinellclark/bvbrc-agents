@@ -84,7 +84,7 @@ class OrchestratorRequest(BaseModel):
 
     # Orchestrator-level overrides
     target_agent: str | None = None  # Force routing to a specific agent
-    max_steps: int = 5
+    max_steps: int | None = 5  # None = unlimited
 
     # Per-request LLM override (from gateway model lookup)
     llm_override: LLMOverride | None = None
