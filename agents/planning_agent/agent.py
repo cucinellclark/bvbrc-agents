@@ -177,11 +177,14 @@ async def _plan_with_answers(
 
     state.add_system_message(system_prompt)
 
-    # Add the original query
-    state.add_user_message(query)
+    # Add the original query — prefer the explicit original_query from
+    # workflow_context over the generic placeholder that the gateway
+    # may have set (e.g. "Submitted clarification responses.").
+    workflow_ctx = context.get("workflow_context", {})
+    original_query = workflow_ctx.get("original_query", "") or query
+    state.add_user_message(original_query)
 
     # Add clarification answers as assistant/user exchange
-    workflow_ctx = context.get("workflow_context", {})
     answers = workflow_ctx.get("clarification_answers", [])
     if answers:
         # Format answers as a user message with the Q&A
@@ -538,7 +541,18 @@ async def _continue_review(
         selection_parts.append(
             f"Applied filters: {json.dumps(review_selections['filters'])}"
         )
-    selection_summary = ". ".join(selection_parts) if selection_parts else "Review completed"
+    # Group management selections
+    if review_selections.get("group_path"):
+        selection_parts.append(f"Genome group path: {review_selections['group_path']}")
+    if review_selections.get("group_name"):
+        selection_parts.append(f"Group name: {review_selections['group_name']}")
+    if review_selections.get("group_type"):
+        selection_parts.append(f"Group type: {review_selections['group_type']}")
+    if review_selections.get("group_action"):
+        selection_parts.append(f"Action: {review_selections['group_action']}")
+    selection_summary = (
+        ". ".join(selection_parts) if selection_parts else "Review completed"
+    )
 
     state.final_answer = f"Review step completed: {selection_summary}"
     state.step_execution = {

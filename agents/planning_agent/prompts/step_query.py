@@ -85,20 +85,23 @@ def build_step_execution_prompt(
             if structured and isinstance(structured, dict):
                 sd_lines = []
                 if structured.get("record_count") is not None:
-                    sd_lines.append(
-                        f"Record count: {structured['record_count']}"
-                    )
+                    sd_lines.append(f"Record count: {structured['record_count']}")
                 if structured.get("collection"):
-                    sd_lines.append(
-                        f"Collection: {structured['collection']}"
-                    )
+                    sd_lines.append(f"Collection: {structured['collection']}")
                 if structured.get("record_ids"):
                     ids = structured["record_ids"]
                     sd_lines.append(f"Record IDs ({len(ids)} total): {json.dumps(ids)}")
                 if structured.get("facets"):
+                    sd_lines.append(f"Facets: {json.dumps(structured['facets'])}")
+                # Group management results (from group_management review steps)
+                if structured.get("group_path"):
                     sd_lines.append(
-                        f"Facets: {json.dumps(structured['facets'])}"
+                        f"Genome/feature group path: {structured['group_path']}"
                     )
+                if structured.get("group_name"):
+                    sd_lines.append(f"Group name: {structured['group_name']}")
+                if structured.get("group_type"):
+                    sd_lines.append(f"Group type: {structured['group_type']}")
                 if sd_lines:
                     lines.append(f"**{step_id} structured data:**")
                     lines.extend(sd_lines)

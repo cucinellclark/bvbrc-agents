@@ -70,9 +70,17 @@ class ReviewConfig(BaseModel):
     """
 
     data_source_step: str
-    review_type: str  # "data_selection" | "workflow_choice" | "parameter_config"
+    review_type: str  # "data_selection" | "workflow_choice" | "parameter_config" | "group_management"
     prompt: str
     suggested_workflows: list[str] = Field(default_factory=list)
+
+    # Group management fields (used when review_type == "group_management")
+    suggested_group_name: str | None = (
+        None  # Pre-filled name, e.g. "Salmonella AMR Genomes"
+    )
+    group_type: str | None = None  # "genome_group" | "feature_group"
+    group_action: str | None = None  # "create" | "add_to" | "use_existing"
+    id_field: str | None = None  # "genome_id" | "feature_id"
 
 
 class PlanStep(BaseModel):

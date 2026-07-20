@@ -5,7 +5,13 @@ the planning phase of the agent loop.
 """
 
 VALID_AGENTS = [
-    "data", "service", "workspace", "helpdesk", "analysis", "review", "direct",
+    "data",
+    "service",
+    "workspace",
+    "helpdesk",
+    "analysis",
+    "review",
+    "direct",
 ]
 
 TOOL_SCHEMAS: list[dict] = [
@@ -139,12 +145,15 @@ TOOL_SCHEMAS: list[dict] = [
                                                 "data_selection",
                                                 "workflow_choice",
                                                 "parameter_config",
+                                                "group_management",
                                             ],
                                             "description": (
                                                 "Type of review: "
                                                 "'data_selection' to filter/select data, "
                                                 "'workflow_choice' to pick an analysis, "
-                                                "'parameter_config' to set parameters"
+                                                "'parameter_config' to set parameters, "
+                                                "'group_management' to create/add-to/confirm "
+                                                "a genome or feature group"
                                             ),
                                         },
                                         "prompt": {
@@ -163,6 +172,55 @@ TOOL_SCHEMAS: list[dict] = [
                                             ),
                                             "default": [],
                                         },
+                                        "suggested_group_name": {
+                                            "type": "string",
+                                            "description": (
+                                                "Pre-filled group name suggestion "
+                                                "(for group_management reviews). "
+                                                "Generate from context, e.g. "
+                                                "'Salmonella AMR Genomes'."
+                                            ),
+                                        },
+                                        "group_type": {
+                                            "type": "string",
+                                            "enum": [
+                                                "genome_group",
+                                                "feature_group",
+                                            ],
+                                            "description": (
+                                                "Type of group to manage "
+                                                "(for group_management reviews). "
+                                                "Infer from collection: genome -> "
+                                                "genome_group, genome_feature -> "
+                                                "feature_group."
+                                            ),
+                                        },
+                                        "group_action": {
+                                            "type": "string",
+                                            "enum": [
+                                                "create",
+                                                "add_to",
+                                                "use_existing",
+                                            ],
+                                            "description": (
+                                                "Default action for group management: "
+                                                "'create' a new group, 'add_to' an "
+                                                "existing group, or 'use_existing' to "
+                                                "confirm an existing group for use."
+                                            ),
+                                        },
+                                        "id_field": {
+                                            "type": "string",
+                                            "enum": [
+                                                "genome_id",
+                                                "feature_id",
+                                            ],
+                                            "description": (
+                                                "ID field name for the items "
+                                                "(for group_management reviews). "
+                                                "Infer from group_type."
+                                            ),
+                                        },
                                     },
                                     "required": [
                                         "data_source_step",
@@ -172,7 +230,10 @@ TOOL_SCHEMAS: list[dict] = [
                                 },
                             },
                             "required": [
-                                "step_id", "description", "agent", "reasoning",
+                                "step_id",
+                                "description",
+                                "agent",
+                                "reasoning",
                             ],
                         },
                     },

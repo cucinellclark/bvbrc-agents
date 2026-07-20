@@ -77,6 +77,57 @@ When NOT to use review steps:
 - For trivially simple requests where the next step is obvious
 - When the plan is already based on user-specified exact criteria
 
+### The "group_management" Review Type
+Use `review_type: "group_management"` for steps where the user should
+create, add to, or confirm a genome group or feature group. The UI
+presents a list of items with checkboxes, a group name input, and
+options to create a new group or add to an existing one.
+
+A group_management review step requires these `review_config` fields:
+- `data_source_step`: step_id of the step whose results provide the
+  genome/feature IDs
+- `review_type`: `"group_management"`
+- `prompt`: what to ask the user (e.g. "Review the genomes and save
+  as a group for the phylogenetic analysis.")
+- `suggested_group_name`: a descriptive default name generated from
+  the query context (e.g. "Salmonella AMR Genomes")
+- `group_type`: `"genome_group"` or `"feature_group"` — infer from the
+  source step's collection. If the source searched `genome_feature`,
+  use `"feature_group"`. Otherwise use `"genome_group"`.
+- `group_action`: the default action to pre-select:
+  - `"create"` — create a new group (default for search results)
+  - `"add_to"` — add items to an existing group (when user says "add to")
+  - `"use_existing"` — confirm an existing group (when user references
+    one by name, e.g. "run my X group through comparative systems")
+- `id_field`: `"genome_id"` for genome groups, `"feature_id"` for
+  feature groups — must match `group_type`
+
+**When to auto-insert group_management steps** (do this automatically
+even if the user does not explicitly request it):
+
+1. **Multi-service pipeline**: When chaining services where output
+   genomes feed into a downstream comparative or analytical service
+   (e.g. assembly -> annotation -> tree building), insert a
+   group_management step to save intermediate results as a group
+   before the downstream service.
+
+2. **Large search results feeding a service**: When a `data` step
+   searches for genomes/features and a downstream `service` step will
+   use those results, insert a group_management step so the user can
+   curate and save the results as a group.
+
+3. **Comparative services**: When planning `comparative_systems`,
+   `bacterial_genome_tree`, `core_genome_mlst`, `whole_genome_snp`,
+   `blast`, or similar multi-genome services, ensure the input is
+   organized through a group_management step. These services accept
+   `genome_groups` as a parameter and benefit from an explicit group.
+
+4. **User references an existing group by name**: When the user says
+   something like "run my X group through ...", insert a `data` step
+   to resolve the group (using `get_genome_group`), then a
+   group_management review step with `group_action: "use_existing"`
+   so the user can confirm the group contents before proceeding.
+
 ### The "direct" Agent
 Use `"direct"` for steps you can handle yourself:
 - Summarizing results from prior steps
@@ -110,6 +161,50 @@ Use `"direct"` for steps you can handle yourself:
 2. [service] Assemble genomes
 3. [service] Annotate assembled genomes (depends on step 2)
 4. [direct] Summarize the pipeline results
+
+**Search -> genome group -> comparative service:**
+1. [data] Search for genomes matching criteria
+2. [review] Save results as a genome group for analysis
+   (review_config: data_source_step="search_genomes",
+   review_type="group_management",
+   prompt="Review the genomes found. Select which to include and
+   save as a genome group for the phylogenetic tree.",
+   suggested_group_name="Salmonella AMR Genomes",
+   group_type="genome_group", group_action="create",
+   id_field="genome_id")
+3. [service] Run bacterial genome tree using the genome group
+4. [analysis] Analyze tree results
+
+**Use existing genome group -> confirm -> service:**
+1. [data] Look up the user's genome group by name
+2. [review] Confirm genome group contents for analysis
+   (review_config: data_source_step="lookup_group",
+   review_type="group_management",
+   prompt="Confirm the genome group to use for comparative analysis.",
+   group_type="genome_group", group_action="use_existing",
+   id_field="genome_id")
+3. [service] Run comparative systems using the genome group
+
+**Multi-service pipeline with intermediate group:**
+1. [service] Assemble genomes from SRA reads
+2. [service] Annotate assembled genomes (depends on step 1)
+3. [review] Save annotated genomes as a group for comparison
+   (review_config: data_source_step="annotate_genomes",
+   review_type="group_management",
+   prompt="Save the annotated genomes as a genome group.",
+   suggested_group_name="Annotated Genomes",
+   group_type="genome_group", group_action="create",
+   id_field="genome_id")
+4. [service] Run comparative systems using the genome group
+
+**Add search results to existing feature group:**
+1. [data] Search for features matching criteria
+2. [review] Add results to an existing feature group
+   (review_config: data_source_step="search_features",
+   review_type="group_management",
+   prompt="Select features to add to your existing group.",
+   group_type="feature_group", group_action="add_to",
+   id_field="feature_id")
 
 ## Guidelines
 
