@@ -149,7 +149,9 @@ def _build_lifespan(
             timeout_seconds=config.llm_timeout_seconds,
         )
         _state.llm = LLMClient(llm_config)
-        logger.info(f"LLM client initialized: {llm_config.model} @ {llm_config.base_url}")
+        logger.info(
+            f"LLM client initialized: {llm_config.model} @ {llm_config.base_url}"
+        )
 
         # --- Initialize routing LLM client (faster model) ---
         if config.routing_model and config.routing_model != config.llm_model:
@@ -323,7 +325,9 @@ def create_app(config_path: str | None = None) -> FastAPI:
         routing_llm = None if request.llm_override else _state.routing_llm
         try:
             response = await orchestrate_to_response(
-                request, _state.registry, llm,
+                request,
+                _state.registry,
+                llm,
                 routing_llm=routing_llm,
             )
             return response
@@ -361,7 +365,9 @@ def create_app(config_path: str | None = None) -> FastAPI:
         async def event_generator() -> AsyncGenerator[dict[str, str], None]:
             try:
                 async for event in orchestrate(
-                    request, _state.registry, llm,
+                    request,
+                    _state.registry,
+                    llm,
                     routing_llm=routing_llm,
                 ):
                     yield {
@@ -387,7 +393,11 @@ def create_app(config_path: str | None = None) -> FastAPI:
             finally:
                 pass  # Cached clients are reused; closed at shutdown
 
-        return EventSourceResponse(event_generator())
+        return EventSourceResponse(
+            event_generator(),
+            ping=15,  # Keep-alive every 15s to prevent proxy/LB idle timeouts
+            send_timeout=30,  # Fail fast if a single send stalls
+        )
 
     @app.get("/health")
     async def get_health() -> JSONResponse:
@@ -408,9 +418,7 @@ def create_app(config_path: str | None = None) -> FastAPI:
                     "latency_ms": round(agent._last_latency_ms, 1),
                 }
 
-        healthy_count = sum(
-            1 for a in agents_status.values() if a.get("healthy")
-        )
+        healthy_count = sum(1 for a in agents_status.values() if a.get("healthy"))
         total_count = len(agents_status)
 
         status_code = 200 if _state.ready and healthy_count > 0 else 503
@@ -430,9 +438,7 @@ def create_app(config_path: str | None = None) -> FastAPI:
                 },
                 "llm": {
                     "model": _state.config.llm_model if _state.config else None,
-                    "base_url": _state.config.llm_base_url
-                    if _state.config
-                    else None,
+                    "base_url": _state.config.llm_base_url if _state.config else None,
                 },
             },
         )
