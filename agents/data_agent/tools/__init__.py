@@ -36,27 +36,32 @@ async def execute_tool(
     timeout_seconds: float = 30.0,
     base_url: str | None = None,
     headers: Dict[str, str] | None = None,
+    config: Any = None,
 ) -> Dict[str, Any]:
     """Execute a tool by name with the given arguments.
 
     For API tools (search_data, facet_query, probe_data), injects
-    base_url and headers into the arguments.  For search_literature,
-    injects headers (auth) only.
+    base_url and headers into the arguments.  For search_literature
+    and find_similar_genomes, injects headers (auth) and config.
 
     Delegates to the shared ``execute_tool`` for dispatch, timeout,
     and error handling.
     """
-    # Inject base_url/headers for BV-BRC API tools. search_literature needs
-    # headers (auth) but not base_url — it uses config.literature_rag_url.
+    # Inject base_url/headers for BV-BRC API tools. search_literature and
+    # find_similar_genomes need headers (auth) and optionally config, but
+    # not base_url — they use their own service URLs from config/defaults.
     api_tools = {"search_data", "facet_query", "probe_data"}
+    auth_via_headers_tools = {"search_literature", "find_similar_genomes"}
     if tool_name in api_tools:
         if base_url and "base_url" not in arguments:
             arguments["base_url"] = base_url
         if headers and "headers" not in arguments:
             arguments["headers"] = headers
-    elif tool_name == "search_literature":
+    elif tool_name in auth_via_headers_tools:
         if headers and "headers" not in arguments:
             arguments["headers"] = headers
+        if config is not None and "config" not in arguments:
+            arguments["config"] = config
 
     return await _shared_execute_tool(
         tool_name=tool_name,

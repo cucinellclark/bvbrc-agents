@@ -45,7 +45,18 @@ def _get_minhash_caller(config: Any = None):
     return _minhash_caller
 
 
-def _get_auth(config: Any = None) -> str:
+def _get_auth(
+    config: Any = None,
+    headers: Optional[Dict[str, str]] = None,
+) -> str:
+    """Resolve auth from headers (preferred) or config."""
+    if headers:
+        auth_value = headers.get("Authorization") or headers.get("authorization")
+        if auth_value:
+            auth_value = auth_value.strip()
+            if auth_value.lower().startswith("bearer "):
+                auth_value = auth_value[7:].strip()
+            return auth_value
     return getattr(config, "bvbrc_auth_token", None) or ""
 
 
@@ -81,14 +92,14 @@ async def find_similar_genomes(
         include_bacterial: Include bacterial/archaeal genomes.
         include_viral: Include viral genomes.
         config: Agent config object (provides auth token and MinHash URL).
-        headers: HTTP headers (unused; present for dispatcher compat).
+        headers: HTTP headers (``Authorization`` token; preferred over config).
 
     Returns:
         Dict with ``results`` (list of dicts with genome_id, distance,
         pvalue, kmer_counts), ``count``, ``query`` echo, and ``source``.
     """
     # --- auth ---
-    auth_token = _get_auth(config)
+    auth_token = _get_auth(config, headers)
     if not auth_token:
         return {
             "error": "No authentication token available",

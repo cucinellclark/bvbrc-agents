@@ -275,6 +275,7 @@ async def run_agent(
                 timeout_seconds=cfg.tool_timeout_seconds,
                 base_url=cfg.bvbrc_api_url,
                 headers=headers,
+                config=cfg,
             )
             duration_ms = (_time.time() - start) * 1000
 
