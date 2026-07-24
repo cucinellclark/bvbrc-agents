@@ -14,7 +14,24 @@ from typing import Any
 from openai import AsyncOpenAI
 
 from orchestrator.llm.config import LLMConfig
-from llm_config import get_excluded_params, get_temperature_override, uses_max_completion_tokens
+from llm_config import (
+    get_excluded_params,
+    get_temperature_override,
+    uses_max_completion_tokens,
+)
+
+# Import shared retry utility — the orchestrator adds bvbrc-agents/ to
+# sys.path at startup, making the shared package importable.
+try:
+    from shared.agent_utils import llm_call_with_retry
+except ImportError:
+    # Fallback: if shared is not importable, provide a no-op wrapper
+    async def llm_call_with_retry(fn, *a, **kw):  # type: ignore[misc]
+        kw.pop("max_retries", None)
+        kw.pop("base_delay", None)
+        kw.pop("max_delay", None)
+        return await fn(*a, **kw)
+
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +100,9 @@ class LLMClient:
         share the same logic.
         """
         excluded = get_excluded_params(self.config.model)
-        resolved_temp = temperature if temperature is not None else self.config.temperature
+        resolved_temp = (
+            temperature if temperature is not None else self.config.temperature
+        )
         resolved_max = max_tokens or self.config.max_tokens
 
         # Apply forced temperature for models that require a specific value
@@ -141,13 +160,16 @@ class LLMClient:
         """
         try:
             create_kwargs = self._build_create_kwargs(messages, temperature, max_tokens)
-            response = await self._client.chat.completions.create(**create_kwargs)
+
+            async def _do_call():
+                return await self._client.chat.completions.create(**create_kwargs)
+
+            response = await llm_call_with_retry(
+                _do_call, max_retries=3, base_delay=2.0
+            )
 
             content = response.choices[0].message.content or ""
-            logger.info(
-                f"LLM response: {len(content)} chars, "
-                f"preview={content[:80]!r}"
-            )
+            logger.info(f"LLM response: {len(content)} chars, preview={content[:80]!r}")
             return content.strip()
 
         except Exception as e:
@@ -179,7 +201,10 @@ class LLMClient:
             create_kwargs = self._build_create_kwargs(messages, temperature, max_tokens)
             create_kwargs["stream"] = True
 
-            stream = await self._client.chat.completions.create(**create_kwargs)
+            async def _do_stream_call():
+                return await self._client.chat.completions.create(**create_kwargs)
+
+            stream = await llm_call_with_retry(_do_stream_call, max_retries=3, base_delay=2.0)
 
             full_content = ""
             async for chunk in stream:

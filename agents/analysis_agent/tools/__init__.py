@@ -2,25 +2,34 @@
 Tool dispatcher for the BV-BRC Analysis Agent.
 
 Maps tool names (from the LLM's tool_calls) to their async implementation
-functions. Reuses workspace tools for browsing/reading, adds local
+functions. Reuses shared workspace and data tools, adds local
 get_expected_outputs and get_job_details tools.
-
-The `execute_tool` function handles argument unpacking, timeout enforcement,
-and error wrapping. The `truncate_result` function is imported from the
-workspace agent's tools package.
 """
 
 from __future__ import annotations
 
 import asyncio
-import json
+import sys
 import traceback
+from pathlib import Path
 from typing import Any, Dict
 
-from workspace_agent.tools.browse import workspace_browse, get_file_metadata
-from workspace_agent.tools.read import read_file_preview
-from workspace_agent.tools._mcp_imports import get_json_rpc
-from analysis_agent.output_knowledge import get_expected_outputs as _get_expected_outputs
+from shared.tools import execute_tool as _shared_execute_tool
+from shared.tools.workspace import (
+    workspace_browse,
+    get_file_metadata,
+    read_file_preview,
+)
+from shared.tools.data import search_data
+from shared.tools.similar_genome import find_similar_genomes
+from shared.tools.literature import search_literature
+from shared.tools._mcp_imports import get_json_rpc
+from analysis_agent.output_knowledge import (
+    get_expected_outputs as _get_expected_outputs,
+)
+
+# Import the workspace agent's sophisticated truncate_result
+from workspace_agent.tools import truncate_result  # noqa: E402
 
 
 async def _get_expected_outputs_async(
@@ -32,7 +41,6 @@ async def _get_expected_outputs_async(
     This is a local lookup (no API call), but we wrap it as async to match
     the signature expected by execute_tool.
     """
-    # Ignore injected config/headers -- this is a local lookup
     kwargs.pop("config", None)
     kwargs.pop("headers", None)
     return _get_expected_outputs(service_name)
@@ -43,7 +51,6 @@ async def _get_expected_outputs_async(
 # ---------------------------------------------------------------------------
 
 _service_api_instance = None
-
 _APP_SERVICE_URL = "https://p3.theseed.org/services/app_service"
 
 
@@ -73,7 +80,6 @@ async def get_job_details(
     including status, parameters (with output_path/output_file), and
     optionally stdout/stderr logs.
     """
-    # Extract auth token from headers
     token = None
     if headers and "Authorization" in headers:
         token = headers["Authorization"]
@@ -92,21 +98,14 @@ async def get_job_details(
             "source": "bvbrc-service",
         }
 
-    # Ensure all IDs are strings
     task_ids_str = [str(tid) for tid in task_ids]
 
-    # Import and call the MCP server's query_tasks function
-    import sys
-    from pathlib import Path
+    from shared.tools._mcp_imports import get_service_functions
 
-    mcp_path = str(Path(__file__).resolve().parent.parent.parent.parent / "mcp_server")
-    if mcp_path not in sys.path:
-        sys.path.insert(0, mcp_path)
-
-    from functions.service_functions import query_tasks
+    service_fn = get_service_functions()
 
     api = _get_service_api()
-    return await query_tasks(
+    return await service_fn.query_tasks(
         api=api,
         token=token,
         params={"task_ids": task_ids_str},
@@ -122,8 +121,11 @@ TOOL_DISPATCH: Dict[str, Any] = {
     "workspace_browse": workspace_browse,
     "get_file_metadata": get_file_metadata,
     "read_file_preview": read_file_preview,
+    "search_data": search_data,
     "get_expected_outputs": _get_expected_outputs_async,
     "get_job_details": get_job_details,
+    "find_similar_genomes": find_similar_genomes,
+    "search_literature": search_literature,
 }
 
 
@@ -134,67 +136,15 @@ async def execute_tool(
     config: Any = None,
     headers: Dict[str, str] | None = None,
 ) -> Dict[str, Any]:
+    """Execute a tool by name with the given arguments.
+
+    Delegates to the shared ``execute_tool`` with this agent's dispatch table.
     """
-    Execute a tool by name with the given arguments.
-
-    Handles:
-      - Looking up the tool function
-      - Injecting config/headers for tools that need them
-      - Timeout enforcement
-      - Error wrapping (tool errors become structured dicts, not exceptions)
-    """
-    func = TOOL_DISPATCH.get(tool_name)
-    if func is None:
-        return {
-            "error": f"Unknown tool: '{tool_name}'",
-            "available_tools": sorted(TOOL_DISPATCH.keys()),
-        }
-
-    # Inject config and headers for all workspace tools
-    if config is not None and "config" not in arguments:
-        arguments["config"] = config
-    if headers is not None and "headers" not in arguments:
-        arguments["headers"] = headers
-
-    try:
-        result = await asyncio.wait_for(
-            func(**arguments),
-            timeout=timeout_seconds,
-        )
-        return result
-
-    except asyncio.TimeoutError:
-        return {
-            "error": f"Tool '{tool_name}' timed out after {timeout_seconds}s",
-            "tool": tool_name,
-            "arguments": {
-                k: v for k, v in arguments.items()
-                if k not in ("config", "headers")
-            },
-        }
-
-    except TypeError as e:
-        # Argument mismatch (wrong params from LLM)
-        return {
-            "error": f"Invalid arguments for tool '{tool_name}': {str(e)}",
-            "tool": tool_name,
-            "arguments": {
-                k: v for k, v in arguments.items()
-                if k not in ("config", "headers")
-            },
-        }
-
-    except Exception as e:
-        return {
-            "error": f"Tool '{tool_name}' failed: {type(e).__name__}: {str(e)}",
-            "tool": tool_name,
-            "arguments": {
-                k: v for k, v in arguments.items()
-                if k not in ("config", "headers")
-            },
-            "traceback": traceback.format_exc(),
-        }
-
-
-# Import truncate_result from workspace_agent tools to avoid duplication
-from workspace_agent.tools import truncate_result  # noqa: E402
+    return await _shared_execute_tool(
+        tool_name=tool_name,
+        arguments=arguments,
+        dispatch_table=TOOL_DISPATCH,
+        timeout_seconds=timeout_seconds,
+        config=config,
+        headers=headers,
+    )

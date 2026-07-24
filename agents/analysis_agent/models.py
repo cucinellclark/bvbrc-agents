@@ -60,6 +60,13 @@ class AgentConfig(BaseModel):
     bvbrc_workspace_url: str = "https://p3.theseed.org/services/Workspace"
     bvbrc_auth_token: str | None = None
 
+    # Literature RAG retrieval gateway
+    literature_rag_url: str = "http://ash.cels.anl.gov:12006"
+    literature_rag_timeout_seconds: int = 45
+
+    # Similar Genome Finder (MinHash service)
+    similar_genome_finder_url: str = "https://p3.theseed.org/services/minhash_service"
+
     # MCP server path (for importing workspace_functions via sys.path)
     mcp_server_path: str = str(
         Path(__file__).resolve().parent.parent.parent / "mcp_server"
@@ -170,10 +177,12 @@ class AgentState(BaseModel):
                     # Detect HTML reports for report_links
                     name = item.get("name", "")
                     if name.lower().endswith((".html", ".htm")):
-                        self.collected_report_links.append({
-                            "path": item.get("path", ""),
-                            "label": name,
-                        })
+                        self.collected_report_links.append(
+                            {
+                                "path": item.get("path", ""),
+                                "label": name,
+                            }
+                        )
 
         elif tool_name == "get_file_metadata":
             metadata = inner.get("metadata", inner)

@@ -346,6 +346,55 @@ async def orchestrate(
                 step_result = step_agent_results[0] if step_agent_results else {}
                 step_status = step_result.get("status", "completed")
 
+                # --- WORKFLOW SUBMITTED ---
+                # If the step submitted a long-running workflow to GoWe,
+                # mark the step as completed (submission succeeded) but
+                # pause the plan so the frontend can wait for the workflow
+                # to finish before advancing to the next step.
+                if step_result.get("submission_id") or step_result.get(
+                    "auto_submitted"
+                ):
+                    # Step completed (the submission itself succeeded)
+                    yield Event(
+                        type=EventType.PLAN_STEP_COMPLETED,
+                        agent_name=step_exec.get("agent"),
+                        data={
+                            "plan_id": step_exec.get("plan_id"),
+                            "step_id": step_exec.get("step_id"),
+                            "step_index": step_exec.get("step_index"),
+                            "result_summary": step_result.get("answer", "")[:500],
+                            "agent_result": step_result,
+                        },
+                    )
+                    # Notify that a workflow was submitted and the plan
+                    # should pause until the workflow reaches a terminal
+                    # state (COMPLETED / FAILED / CANCELLED).
+                    yield Event(
+                        type=EventType.PLAN_WORKFLOW_SUBMITTED,
+                        agent_name=step_exec.get("agent"),
+                        data={
+                            "plan_id": step_exec.get("plan_id"),
+                            "step_id": step_exec.get("step_id"),
+                            "step_index": step_exec.get("step_index"),
+                            "workflow_id": step_result.get("workflow_id", ""),
+                            "submission_id": step_result.get("submission_id", ""),
+                            "result_summary": step_result.get("answer", "")[:500],
+                        },
+                    )
+                    # Return early — skip synthesis and auto-advance.
+                    # The gateway will register a workflow watch and the
+                    # frontend will show a "waiting" state on the PlanCard.
+                    yield Event(
+                        type=EventType.ORCHESTRATOR_DONE,
+                        data={
+                            "response_text": step_result.get("answer", ""),
+                            "decision": decision.decision,
+                            "agents_used": agents_used,
+                            "elapsed_ms": _elapsed_ms(start_time),
+                        },
+                    )
+                    return
+
                 if step_status in ("completed", "max_iterations"):
                     step_completed_data: dict[str, Any] = {
                         "plan_id": step_exec.get("plan_id"),

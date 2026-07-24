@@ -18,6 +18,9 @@ from typing import Any
 
 # Shared utilities -- deduplicated across all agents
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "shared"))
+# Also add repo root so `shared` package imports work (shared.tools, shared.prompts)
+if str(Path(__file__).resolve().parent.parent.parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from agent_utils import (
     call_fingerprint,
     parse_tool_calls as _parse_tool_calls_raw,
@@ -42,7 +45,6 @@ from data_agent.tool_registry import TOOL_SCHEMAS
 def _parse_tool_calls(response: Any) -> list[ToolCall]:
     """Extract ToolCall objects from an OpenAI ChatCompletion response."""
     return _parse_tool_calls_raw(response, ToolCall)
-
 
 
 # _build_simulated_result was moved to data_agent/prompts/simulated_results.py
@@ -137,7 +139,9 @@ async def plan_only(
     return state.to_result()
 
 
-ProgressCallback = Any  # async (progress: float, total: float|None, message: str) -> None
+ProgressCallback = (
+    Any  # async (progress: float, total: float|None, message: str) -> None
+)
 
 
 async def run_agent(
@@ -192,7 +196,9 @@ async def run_agent(
         state.iteration = iteration + 1
 
         await emit_progress(
-            progress_callback, iteration, cfg.max_iterations,
+            progress_callback,
+            iteration,
+            cfg.max_iterations,
             "Planning next step...",
         )
 
@@ -209,7 +215,12 @@ async def run_agent(
 
         # 2. CHECK -- If no tool calls, the LLM produced a final answer
         if not tool_calls:
-            await emit_progress(progress_callback, iteration + 1, cfg.max_iterations, "Composing answer...")
+            await emit_progress(
+                progress_callback,
+                iteration + 1,
+                cfg.max_iterations,
+                "Composing answer...",
+            )
             state.final_answer = content or ""
             state.status = "completed"
             break
@@ -227,7 +238,12 @@ async def run_agent(
             # --- Duplicate detection ---
             if fp in executed_fingerprints:
                 duplicate_count += 1
-                state.add_tool_result(tc.id, json.dumps({"_duplicate": True, "_message": DUPLICATE_CALL_WARNING}))
+                state.add_tool_result(
+                    tc.id,
+                    json.dumps(
+                        {"_duplicate": True, "_message": DUPLICATE_CALL_WARNING}
+                    ),
+                )
 
                 # If we've seen 2+ duplicates total, break the inner loop
                 # to let the outer loop re-prompt the LLM
@@ -246,7 +262,9 @@ async def run_agent(
                 _tool_msg = "Listing available data collections..."
             elif tc.name == "get_collection_fields":
                 _tool_msg = f"Looking up fields for {_tc_args.get('collection', 'collection')}..."
-            await emit_progress(progress_callback, iteration, cfg.max_iterations, _tool_msg)
+            await emit_progress(
+                progress_callback, iteration, cfg.max_iterations, _tool_msg
+            )
 
             import time as _time
 
@@ -278,7 +296,9 @@ async def run_agent(
                     _result_msg = f"Found {_nf} records."
                 elif result.get("error"):
                     _result_msg = f"Query returned an error, adjusting approach..."
-            await emit_progress(progress_callback, iteration, cfg.max_iterations, _result_msg)
+            await emit_progress(
+                progress_callback, iteration, cfg.max_iterations, _result_msg
+            )
 
             # Serialize and truncate for the LLM context
             result_str = truncate_result(result)
@@ -291,7 +311,9 @@ async def run_agent(
         # time-to-first-token for remote endpoints (Argo).
         state.status = "max_iterations"
         await emit_progress(
-            progress_callback, cfg.max_iterations, cfg.max_iterations,
+            progress_callback,
+            cfg.max_iterations,
+            cfg.max_iterations,
             f"Synthesizing answer from {len(state.tool_calls_executed)} queries...",
         )
         try:
@@ -309,9 +331,14 @@ async def run_agent(
             )
         except Exception:
             # If the synthesis call fails, fall back to the generic message
-            state.final_answer = (
-                MAX_ITERATIONS_FALLBACK.format(n=len(state.tool_calls_executed))
+            state.final_answer = MAX_ITERATIONS_FALLBACK.format(
+                n=len(state.tool_calls_executed)
             )
 
-    await emit_progress(progress_callback, cfg.max_iterations, cfg.max_iterations, "Data retrieval complete.")
+    await emit_progress(
+        progress_callback,
+        cfg.max_iterations,
+        cfg.max_iterations,
+        "Data retrieval complete.",
+    )
     return state.to_result()

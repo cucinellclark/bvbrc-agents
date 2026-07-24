@@ -18,7 +18,8 @@ agents:
       Retrieves biological data from BV-BRC. Translates natural language
       questions into Solr queries against genome, feature, AMR, pathway,
       epitope, and other BV-BRC collections. Returns structured data results
-      including counts, facets, and tabular data.
+      including counts, facets, and tabular data. Can also find similar
+      genomes using Mash/MinHash genomic distance estimation.
     endpoint: "http://140.221.78.15:8153"
     protocol: "mcp"
     capabilities:
@@ -26,6 +27,7 @@ agents:
       - solr_query
       - faceted_search
       - collection_browsing
+      - similar_genome_finder
     max_iterations: 1000
     timeout_seconds: 120
     auth_token_env: "BV_BRC_AUTH_TOKEN"
@@ -166,4 +168,7 @@ orchestrator:
   # Routing is a simple JSON classification task — a smaller model
   # reduces time-to-first-action significantly with remote endpoints.
   # Set to null or omit to use the default LLM model for routing.
-  routing_model: "gpt41mini"
+  # NOTE: Previously set to "gpt41mini" which does not exist on the
+  # Argo endpoint, causing 0-char responses and fallback misrouting.
+  # Set to null so routing uses the same model as the frontend/agents.
+  routing_model: null

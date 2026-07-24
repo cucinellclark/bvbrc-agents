@@ -21,6 +21,9 @@ from typing import Any
 
 # Shared utilities -- deduplicated across all agents
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "shared"))
+# Also add repo root so `shared` package imports work (shared.tools, shared.prompts)
+if str(Path(__file__).resolve().parent.parent.parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from agent_utils import (  # noqa: E402
     call_fingerprint,
     parse_tool_calls as _parse_tool_calls_raw,
@@ -644,10 +647,18 @@ async def _run_planning_loop(
                     break
                 continue
 
+            # Build headers for shared tools that need auth
+            _headers = (
+                {"Authorization": config.bvbrc_auth_token}
+                if config.bvbrc_auth_token
+                else None
+            )
             start = time.time()
             result = await execute_tool(
                 tool_name=tc.name,
                 arguments=dict(tc.arguments),
+                config=config,
+                headers=_headers,
             )
             duration_ms = (time.time() - start) * 1000
 
@@ -701,8 +712,15 @@ async def _run_planning_loop(
                 )
                 return state.to_result()
 
-            # For all tools, feed the result back to the LLM
-            state.add_tool_result(tc.id, json.dumps(result, default=str))
+            # For all tools, feed the result back to the LLM (truncated)
+            from shared.tools import truncate_result
+
+            result_str = (
+                truncate_result(result, max_chars=8000)
+                if isinstance(result, dict)
+                else json.dumps(result, default=str)
+            )
+            state.add_tool_result(tc.id, result_str)
 
     else:
         # Max iterations reached

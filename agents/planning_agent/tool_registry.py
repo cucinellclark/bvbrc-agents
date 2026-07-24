@@ -257,4 +257,179 @@ TOOL_SCHEMAS: list[dict] = [
             },
         },
     },
+    # ------------------------------------------------------------------
+    # Shared reconnaissance tools
+    # ------------------------------------------------------------------
+    {
+        "type": "function",
+        "function": {
+            "name": "workspace_browse",
+            "description": (
+                "Browse the user's BV-BRC workspace to find files, genome "
+                "groups, feature groups, and job output folders. Use this "
+                "during planning to discover what data the user already has "
+                "before asking clarification questions."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": ["string", "null"],
+                        "description": (
+                            "Workspace path to browse. Null defaults to home. "
+                            "Use 'Genome Groups' to browse genome groups directly, "
+                            "or 'Feature Groups' for feature groups."
+                        ),
+                    },
+                    "name_contains": {
+                        "type": ["array", "null"],
+                        "items": {"type": "string"},
+                        "description": "Filter by filename substrings.",
+                    },
+                    "workspace_types": {
+                        "type": ["array", "null"],
+                        "items": {"type": "string"},
+                        "description": (
+                            "Filter by workspace object type. Common types: "
+                            "'genome_group', 'feature_group', 'reads', "
+                            "'contigs', 'genbank_file', 'gff', 'nwk', "
+                            "'csv', 'json', 'folder'."
+                        ),
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_file_metadata",
+            "description": (
+                "Get metadata for a specific workspace file (type, size, date)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Full workspace path to the file.",
+                    },
+                },
+                "required": ["path"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_data",
+            "description": (
+                "Query BV-BRC Solr collections. Use during planning to "
+                "verify data availability or resolve organism names."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "collection": {
+                        "type": "string",
+                        "description": "Solr collection (e.g. 'genome').",
+                    },
+                    "query": {
+                        "type": "string",
+                        "description": "Solr query string.",
+                    },
+                    "select": {
+                        "type": ["array", "null"],
+                        "items": {"type": "string"},
+                        "description": "Fields to return.",
+                    },
+                    "limit": {
+                        "type": ["integer", "null"],
+                        "description": "Max records (default 25).",
+                    },
+                    "count_only": {
+                        "type": ["boolean", "null"],
+                        "description": "Return only count if true.",
+                    },
+                },
+                "required": ["collection", "query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_gowe_workflows",
+            "description": (
+                "List available GoWe workflows. Use during planning to "
+                "verify which workflows exist before assigning service steps."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "find_similar_genomes",
+            "description": (
+                "Find public BV-BRC genomes similar to a query genome using "
+                "Mash/MinHash distance estimation. Use during planning to identify "
+                "reference genomes or related organisms before downstream analysis steps."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "genome_id": {
+                        "type": ["string", "null"],
+                        "description": "A BV-BRC genome ID (e.g. '83332.12').",
+                    },
+                    "fasta_file": {
+                        "type": ["string", "null"],
+                        "description": "FULL workspace path to a FASTA/contigs file (e.g. '/user@patricbrc.org/home/file.fasta'). Must start with /.",
+                    },
+                    "max_pvalue": {"type": ["number", "null"], "description": "Max p-value (default 0.01)."},
+                    "max_distance": {"type": ["number", "null"], "description": "Max Mash distance (default 0.01)."},
+                    "max_hits": {"type": ["integer", "null"], "description": "Max results (default 50)."},
+                    "scope": {"type": ["string", "null"], "description": "'reference' or 'all'."},
+                    "include_bacterial": {"type": ["boolean", "null"], "description": "Include bacterial genomes (default true)."},
+                    "include_viral": {"type": ["boolean", "null"], "description": "Include viral genomes (default true)."},
+                },
+                "required": ["genome_id", "fasta_file"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_literature",
+            "description": (
+                "Search scientific literature using the literature RAG service and return raw "
+                "source passages with bibliographic metadata. Use during planning when the plan "
+                "needs literature-backed context (papers, evidence, citations)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Natural-language query (organism/gene/topic).",
+                    },
+                    "top_k": {
+                        "type": ["integer", "null"],
+                        "description": "Maximum number of sources to return (default 10).",
+                    },
+                    "use_graph": {
+                        "type": ["boolean", "null"],
+                        "description": "Enable knowledge-graph-augmented retrieval (default false).",
+                    },
+                },
+                "required": ["query"],
+            },
+        },
+    },
 ]

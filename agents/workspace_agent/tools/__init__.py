@@ -2,19 +2,29 @@
 Tool dispatcher for the BV-BRC Workspace Exploration Agent.
 
 Maps tool names (from the LLM's tool_calls) to their async implementation
-functions. The `execute_tool` function handles argument unpacking, timeout
-enforcement, and error wrapping.
+functions.  Core implementations come from the shared tool library.
+
+The workspace agent keeps its own sophisticated ``truncate_result`` that
+does representative sampling across types, UI grid stripping, and
+aggregate summary generation.
 """
 
 from __future__ import annotations
 
-import asyncio
 import json
-import traceback
+import math
+import os
+from collections import Counter, defaultdict
 from typing import Any, Dict
 
-from workspace_agent.tools.browse import workspace_browse, get_file_metadata
-from workspace_agent.tools.read import read_file_preview
+from shared.tools import execute_tool as _shared_execute_tool
+from shared.tools.workspace import (
+    workspace_browse,
+    get_file_metadata,
+    read_file_preview,
+)
+from shared.tools.similar_genome import find_similar_genomes
+from shared.tools.literature import search_literature
 
 # ---------------------------------------------------------------------------
 # Dispatch table: tool name -> async callable
@@ -23,6 +33,8 @@ TOOL_DISPATCH: Dict[str, Any] = {
     "workspace_browse": workspace_browse,
     "get_file_metadata": get_file_metadata,
     "read_file_preview": read_file_preview,
+    "find_similar_genomes": find_similar_genomes,
+    "search_literature": search_literature,
 }
 
 
@@ -33,78 +45,31 @@ async def execute_tool(
     config: Any = None,
     headers: Dict[str, str] | None = None,
 ) -> Dict[str, Any]:
+    """Execute a tool by name with the given arguments.
+
+    Delegates to the shared ``execute_tool`` with this agent's dispatch table.
     """
-    Execute a tool by name with the given arguments.
+    return await _shared_execute_tool(
+        tool_name=tool_name,
+        arguments=arguments,
+        dispatch_table=TOOL_DISPATCH,
+        timeout_seconds=timeout_seconds,
+        config=config,
+        headers=headers,
+    )
 
-    Handles:
-      - Looking up the tool function
-      - Injecting config/headers for tools that need them
-      - Timeout enforcement
-      - Error wrapping (tool errors become structured dicts, not exceptions)
-    """
-    func = TOOL_DISPATCH.get(tool_name)
-    if func is None:
-        return {
-            "error": f"Unknown tool: '{tool_name}'",
-            "available_tools": sorted(TOOL_DISPATCH.keys()),
-        }
 
-    # Inject config and headers for all workspace tools
-    if config is not None and "config" not in arguments:
-        arguments["config"] = config
-    if headers is not None and "headers" not in arguments:
-        arguments["headers"] = headers
-
-    try:
-        result = await asyncio.wait_for(
-            func(**arguments),
-            timeout=timeout_seconds,
-        )
-        return result
-
-    except asyncio.TimeoutError:
-        return {
-            "error": f"Tool '{tool_name}' timed out after {timeout_seconds}s",
-            "tool": tool_name,
-            "arguments": {
-                k: v for k, v in arguments.items()
-                if k not in ("config", "headers")
-            },
-        }
-
-    except TypeError as e:
-        # Argument mismatch (wrong params from LLM)
-        return {
-            "error": f"Invalid arguments for tool '{tool_name}': {str(e)}",
-            "tool": tool_name,
-            "arguments": {
-                k: v for k, v in arguments.items()
-                if k not in ("config", "headers")
-            },
-        }
-
-    except Exception as e:
-        return {
-            "error": f"Tool '{tool_name}' failed: {type(e).__name__}: {str(e)}",
-            "tool": tool_name,
-            "arguments": {
-                k: v for k, v in arguments.items()
-                if k not in ("config", "headers")
-            },
-            "traceback": traceback.format_exc(),
-        }
+# ---------------------------------------------------------------------------
+# Workspace-agent-specific truncation (representative sampling)
+# ---------------------------------------------------------------------------
 
 
 def _build_items_summary(items: list) -> Dict[str, Any]:
     """Build an aggregate summary of workspace items for the LLM.
 
     Returns counts by type, folder distribution, size stats, etc. so the LLM
-    can answer aggregation questions (e.g., "what types of files do I have?")
-    even when the full item list is truncated.
+    can answer aggregation questions even when the full item list is truncated.
     """
-    from collections import Counter
-    import os
-
     type_counts: Counter = Counter()
     folder_counts: Counter = Counter()
     total_size = 0
@@ -117,7 +82,6 @@ def _build_items_summary(items: list) -> Dict[str, Any]:
             item_size = item.get("size", 0)
             item_date = item.get("creation_time", "")
         elif isinstance(item, list) and len(item) >= 4:
-            # Fallback for unconverted positional arrays
             item_type = item[1] if len(item) > 1 else "unknown"
             item_path = item[2] if len(item) > 2 else ""
             item_size = item[6] if len(item) > 6 else 0
@@ -127,7 +91,6 @@ def _build_items_summary(items: list) -> Dict[str, Any]:
 
         type_counts[item_type] += 1
 
-        # Extract parent folder (one level up from the item)
         parent = os.path.dirname(item_path.rstrip("/")) if item_path else ""
         if parent:
             folder_counts[parent] += 1
@@ -143,13 +106,10 @@ def _build_items_summary(items: list) -> Dict[str, Any]:
         "unique_types": sorted(type_counts.keys()),
     }
 
-    # Top folders (limit to 10 most common)
     if folder_counts:
         summary["top_folders"] = dict(folder_counts.most_common(10))
-
     if total_size > 0:
         summary["total_size_bytes"] = total_size
-
     if dates:
         sorted_dates = sorted(dates)
         summary["date_range"] = {
@@ -161,25 +121,21 @@ def _build_items_summary(items: list) -> Dict[str, Any]:
 
 
 def _slim_item(item: Any) -> Any:
-    """Strip verbose metadata fields from a workspace item dict to save space."""
+    """Strip verbose metadata fields from a workspace item dict."""
     if not isinstance(item, dict):
         return item
-    # Drop fields that are large/noisy and rarely needed for the LLM answer
-    drop_keys = {"userMeta", "autoMeta", "link_reference", "user_permissions", "global_permission"}
+    drop_keys = {
+        "userMeta",
+        "autoMeta",
+        "link_reference",
+        "user_permissions",
+        "global_permission",
+    }
     return {k: v for k, v in item.items() if k not in drop_keys}
 
 
 def _sample_representative(items: list, budget: int) -> list:
-    """Pick a representative sample of items, ensuring each type is included.
-
-    Strategy:
-      1. Group by type.
-      2. Take at least 1 item per type (round-robin).
-      3. Fill remaining budget proportionally.
-    """
-    from collections import defaultdict
-    import math
-
+    """Pick a representative sample of items, ensuring each type is included."""
     if len(items) <= budget:
         return [_slim_item(i) for i in items]
 
@@ -206,12 +162,11 @@ def _sample_representative(items: list, budget: int) -> list:
     # Phase 2: fill proportionally from each type
     if remaining_budget > 0:
         for t, group in by_type.items():
-            # Already took one in phase 1; figure out how many more
             share = max(0, math.floor((len(group) / len(items)) * remaining_budget))
             for item in group[1 : 1 + share]:
                 sampled.append(_slim_item(item))
 
-    # If we still have room, add more until budget
+    # Fill remaining budget
     if len(sampled) < budget:
         seen = {id(s) for s in sampled}
         for item in items:
@@ -225,48 +180,29 @@ def _sample_representative(items: list, budget: int) -> list:
 
 
 def _strip_ui_grid(obj: Any) -> Any:
-    """Recursively remove ``ui_grid`` keys from a result dict.
-
-    The ``ui_grid`` payload is a UI-rendering artefact that duplicates the
-    ``items`` list plus column definitions, formatters, etc.  The LLM never
-    needs it and it can easily double the serialized size of a result.
-    """
+    """Recursively remove ``ui_grid`` keys from a result dict."""
     if isinstance(obj, dict):
-        return {
-            k: _strip_ui_grid(v)
-            for k, v in obj.items()
-            if k != "ui_grid"
-        }
+        return {k: _strip_ui_grid(v) for k, v in obj.items() if k != "ui_grid"}
     if isinstance(obj, list):
         return [_strip_ui_grid(v) for v in obj]
     return obj
 
 
 def truncate_result(result: Dict[str, Any], max_chars: int = 8000) -> str:
-    """
-    Serialize a tool result to JSON, truncating if too large.
+    """Workspace-agent-specific truncation with representative sampling.
 
-    Large results (e.g., long file listings) can overwhelm the LLM's context
-    window. This function:
-      1. Strips ``ui_grid`` payloads (duplicate item data for UI rendering).
-      2. Adds an aggregate summary (type counts, folder distribution, etc.)
-         so the LLM can answer aggregation questions even when items are cut.
-      3. Samples items representatively across types rather than taking only
-         the first N.
-      4. Strips verbose metadata fields from sampled items to fit more.
+    1. Strips ``ui_grid`` payloads (duplicate item data for UI rendering).
+    2. Adds aggregate summary (type counts, folder distribution, etc.).
+    3. Samples items representatively across types (not just first N).
+    4. Strips verbose metadata from sampled items.
     """
-    # Remove ui_grid before anything else — it duplicates items and the LLM
-    # never needs UI rendering metadata.
     result = _strip_ui_grid(result)
-
     serialized = json.dumps(result, indent=2, default=str)
 
     if len(serialized) <= max_chars:
         return serialized
 
-    # Try to preserve structure: if there are items/results, truncate the list
     for list_key in ("items", "results", "records", "files"):
-        # Check both top-level and nested under "result" envelope
         target = result
         if "result" in result and isinstance(result["result"], dict):
             target = result["result"]
@@ -274,8 +210,6 @@ def truncate_result(result: Dict[str, Any], max_chars: int = 8000) -> str:
         if list_key in target and isinstance(target[list_key], list):
             all_items = target[list_key]
             num_items = len(all_items)
-
-            # Build aggregate summary from the *full* list before truncating
             summary = _build_items_summary(all_items)
 
             truncated = dict(result)
@@ -285,7 +219,6 @@ def truncate_result(result: Dict[str, Any], max_chars: int = 8000) -> str:
             else:
                 inner = truncated
 
-            # Always attach the full summary
             inner["_summary"] = summary
 
             # Binary search for the largest representative sample that fits
@@ -307,7 +240,6 @@ def truncate_result(result: Dict[str, Any], max_chars: int = 8000) -> str:
                 else:
                     hi = mid - 1
 
-            # Finalize with the best fit
             inner[list_key] = _sample_representative(all_items, best_n)
             inner["_truncated"] = {
                 "total": num_items,

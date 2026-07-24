@@ -20,6 +20,55 @@ from orchestrator.synthesizer.prompts import build_synthesis_prompt
 logger = logging.getLogger(__name__)
 
 
+def _build_fallback(
+    agent_results: list[dict[str, Any]],
+    error: str | None = None,
+) -> str:
+    """Build a fallback response when synthesis fails or returns empty."""
+    parts: list[str] = []
+
+    for result in agent_results:
+        answer = result.get("answer", "")
+        agent = result.get("agent", "unknown")
+        if answer:
+            parts.append(f"**{agent}**: {answer}")
+            continue
+
+        # No textual answer — try to summarise the tool trace
+        tool_trace = result.get("tool_trace") or []
+        if tool_trace:
+            summary_lines = []
+            for call in tool_trace:
+                tool_name = call.get("tool", "unknown")
+                args = call.get("arguments", {})
+                brief = json.dumps(args, default=str)
+                if len(brief) > 200:
+                    brief = brief[:200] + "..."
+                summary_lines.append(f"- `{tool_name}({brief})`")
+            elapsed = result.get("elapsed_seconds", "?")
+            iters = result.get("iterations_used", "?")
+            parts.append(
+                f"The **{agent}** agent executed {len(tool_trace)} tool call(s) "
+                f"over {iters} iterations ({elapsed}s) but was unable to produce "
+                f"a textual summary.\n\n"
+                + "\n".join(summary_lines[:10])
+            )
+
+    if parts:
+        return "\n\n".join(parts)
+
+    if error:
+        return (
+            "I encountered an error generating a response. "
+            "Please try your question again."
+        )
+
+    return (
+        "The agent completed its work but was unable to produce a summary. "
+        "Please try rephrasing your question or breaking it into smaller steps."
+    )
+
+
 async def synthesize(
     request: OrchestratorRequest,
     agent_results: list[dict[str, Any]],
@@ -135,29 +184,26 @@ async def synthesize(
             f"preview={response_text[:80]!r}"
         )
 
+        # If the LLM returned nothing, build a fallback from agent results
+        if not response_text.strip():
+            logger.warning("Synthesis LLM returned empty response, using fallback")
+            response_text = _build_fallback(agent_results)
+            yield Event(
+                type=EventType.SYNTHESIS_CHUNK,
+                data={"chunk": response_text},
+            )
+
         yield Event(
             type=EventType.SYNTHESIS_DONE,
             data={
                 "response_text": response_text,
-                "method": "llm_synthesis",
+                "method": "llm_synthesis" if response_text else "fallback",
             },
         )
 
     except Exception as e:
         logger.error(f"Synthesis LLM call failed: {e}")
-
-        # Fallback: concatenate agent answers
-        fallback_parts = []
-        for result in agent_results:
-            answer = result.get("answer", "")
-            if answer:
-                agent = result.get("agent", "unknown")
-                fallback_parts.append(f"**{agent}**: {answer}")
-
-        fallback = "\n\n".join(fallback_parts) if fallback_parts else (
-            "I encountered an error generating a response. "
-            "Please try your question again."
-        )
+        fallback = _build_fallback(agent_results, error=str(e))
 
         yield Event(
             type=EventType.SYNTHESIS_DONE,

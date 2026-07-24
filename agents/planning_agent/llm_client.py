@@ -15,6 +15,7 @@ from llm_config import (
     get_temperature_override,
     uses_max_completion_tokens,
 )
+from agent_utils import llm_call_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +86,11 @@ async def chat_completion(
     """
     cfg = config or AgentConfig()
     kwargs = _build_kwargs(cfg, messages, tools, tool_choice)
-    response = await client.chat.completions.create(**kwargs)
+
+    async def _do_call():
+        return await client.chat.completions.create(**kwargs)
+
+    response = await llm_call_with_retry(_do_call, max_retries=3, base_delay=2.0)
     return response
 
 

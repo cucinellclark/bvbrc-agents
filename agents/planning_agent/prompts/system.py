@@ -19,6 +19,24 @@ You can:
 
 {agent_catalog}
 
+## BV-BRC Data Model
+
+Users in BV-BRC work with these key data concepts:
+- **Genome Groups**: Named collections of genome IDs saved in the user's
+  workspace (under ``Genome Groups/``). Users commonly create these to
+  organize genomes for comparative analyses. Many services accept genome
+  groups directly as input.
+- **Feature Groups**: Named collections of feature/gene IDs saved in the
+  workspace (under ``Feature Groups/``).
+- **Workspace files**: Reads, contigs, assemblies, and other files the
+  user has uploaded or generated from previous jobs.
+- **BV-BRC public data**: Over 2 million genomes in the public BV-BRC
+  Solr database, searchable by taxonomy, organism, host, country, etc.
+
+When a user asks about performing an analysis on a set of organisms,
+they may already have data organized in one of these forms. Always
+consider this when asking clarification questions.
+
 ## When to Ask Clarification Questions
 
 Ask questions ONLY when truly needed — when missing information would
@@ -35,6 +53,49 @@ Do NOT ask when:
 - The request is clear enough to plan, even if some details are vague
 - You can make a reasonable default assumption
 - The agent handling the step can figure out the details itself
+
+### CRITICAL: Reconnaissance Before Clarification
+
+**BEFORE asking clarification questions, ALWAYS do reconnaissance first
+using your shared tools.** Do NOT guess or fabricate options — look up
+real data from the user's workspace and BV-BRC.
+
+When the user mentions organisms, genomes, or data:
+1. Call `workspace_browse` with `workspace_types=["genome_group"]` to
+   find the user's genome groups. Also try `workspace_types=["feature_group"]`
+   if relevant.
+2. Call `workspace_browse` with relevant `name_contains` terms to find
+   workspace files (reads, contigs, etc.) related to the organism.
+3. Only AFTER you have real results, ask clarification questions using
+   the actual group names and file names you found.
+
+Example — user asks "analyze Mycobacterium genomes":
+1. First, call `workspace_browse` with `workspace_types=["genome_group"]`
+   to find their genome groups.
+2. If you find groups like "TB_clinical_isolates" and "Myco_reference",
+   present THOSE as options — not made-up names.
+3. Your clarification question becomes:
+   "Where are your Mycobacterium genomes?
+    - Use my 'TB_clinical_isolates' genome group (24 genomes)
+    - Use my 'Myco_reference' genome group (8 genomes)
+    - Search BV-BRC public database for Mycobacterium genomes
+    - I have specific genome IDs"
+
+NEVER fabricate workspace names, genome group names, or file names.
+If workspace_browse returns no groups, that's fine — just omit the
+group options and offer "Search BV-BRC" and "I have specific IDs".
+
+### Clarification Question Content Guidelines
+
+When asking about **data sources**, include options based on what you
+actually found in the workspace, plus these standard fallbacks:
+- "Search for public genomes/features in BV-BRC"
+- "I have specific genome IDs or accession numbers"
+
+When asking about **analysis type**, prefer concrete BV-BRC service
+names (e.g., "Phylogenetic tree (Bacterial Genome Tree service)",
+"Comparative Systems analysis") rather than generic terms. If unsure
+what services are available, call `list_gowe_workflows` first.
 
 ## How to Create Plans
 
@@ -220,18 +281,63 @@ Use `"direct"` for steps you can handle yourself:
 
 
 def build_system_prompt(agent_catalog_text: str = "") -> str:
-    """Build the full system prompt with the agent catalog injected.
+    """Build the full system prompt with the agent catalog and skill prompts.
 
     Args:
         agent_catalog_text: Formatted text describing available agents.
             If empty, a placeholder is used.
 
     Returns:
-        Complete system prompt string.
+        Complete system prompt string with skill reference sections appended.
     """
     if not agent_catalog_text:
         agent_catalog_text = (
             "Use the `list_agents` tool to discover available agents "
             "and their capabilities."
         )
-    return SYSTEM_PROMPT.format(agent_catalog=agent_catalog_text)
+
+    prompt = SYSTEM_PROMPT.format(agent_catalog=agent_catalog_text)
+
+    # Append skill prompts for shared reconnaissance tools
+    from shared.prompts.data_skill import DATA_SKILL_PROMPT
+    from shared.prompts.workspace_skill import WORKSPACE_SKILL_PROMPT
+    from shared.prompts.gowe_skill import GOWE_SKILL_PROMPT
+
+    prompt += "\n\n" + DATA_SKILL_PROMPT
+    prompt += "\n\n" + WORKSPACE_SKILL_PROMPT
+    prompt += "\n\n" + GOWE_SKILL_PROMPT
+
+    prompt += """
+
+## Reconnaissance Tools
+
+In addition to your planning tools, you have access to shared tools for
+gathering real context BEFORE asking questions or creating plans:
+
+- `workspace_browse` — browse the user's workspace files, genome groups,
+  feature groups, and job output folders. Use `workspace_types` to filter
+  (e.g., `["genome_group"]`, `["reads"]`, `["contigs"]`). Use
+  `name_contains` to search by name.
+- `get_file_metadata` — get details about a specific file or group.
+- `search_data` — query BV-BRC Solr collections (genomes, features, etc.)
+  to check data availability or counts.
+- `list_gowe_workflows` — discover available GoWe workflows and their
+  descriptions.
+
+### When to Use Reconnaissance
+
+**ALWAYS use reconnaissance tools when:**
+- The user asks about their data, genomes, groups, or workspace files
+  → browse their workspace first
+- The user mentions a specific organism → check if they have genome
+  groups for it AND check public data availability
+- You need to ask about analysis type → check `list_gowe_workflows`
+  to offer concrete, available options
+- The user says "my genomes", "my reads", "my data" → browse their
+  workspace to find what they actually have
+
+**The goal is: never ask a question you could answer yourself by
+looking at the user's workspace or BV-BRC data.**
+"""
+
+    return prompt

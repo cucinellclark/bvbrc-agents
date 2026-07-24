@@ -40,6 +40,24 @@ class AgentConfig(BaseModel):
 
     # BV-BRC API
     bvbrc_auth_token: str | None = None
+    bvbrc_api_url: str = "https://p3.theseed.org/services/data_api"
+    bvbrc_workspace_url: str = "https://p3.theseed.org/services/Workspace"
+    tool_timeout_seconds: int = 30
+
+    # GoWe workflow engine
+    gowe_url: str = "http://140.221.78.67:12009"
+
+    # SRA tools
+    singularity_container_path: str = (
+        "/vol/patric3/production/containers/ubuntu-027-11.sif"
+    )
+
+    # Literature RAG retrieval gateway
+    literature_rag_url: str = "http://ash.cels.anl.gov:12006"
+    literature_rag_timeout_seconds: int = 45
+
+    # Similar Genome Finder (MinHash service)
+    similar_genome_finder_url: str = "https://p3.theseed.org/services/minhash_service"
 
     # MCP server path (for importing shared functions)
     mcp_server_path: str = str(

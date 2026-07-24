@@ -243,9 +243,9 @@ Below are the queryable fields for each collection. Use ONLY these field names i
   genome_id (string): Primary key
   genome_length (integer): Total assembly length (bp)
   genome_name (string (case-insensitive)): Scientific name + strain
-  genome_quality (string): Quality tier
+  genome_quality (string): Quality tier [enum: Good, Poor]
   genome_quality_flags (string[]): QC flag list
-  genome_status (string (case-insensitive)): Assembly status
+  genome_status (string (case-insensitive)): Assembly status [enum: Complete, WGS, Partial, Plasmid, Deprecated]
   genus (string (case-insensitive)): Taxonomic genus
   geographic_group (string (case-insensitive)): Regional grouping
   geographic_location (string (case-insensitive)): Free-text location

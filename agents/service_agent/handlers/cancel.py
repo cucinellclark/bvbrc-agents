@@ -11,6 +11,9 @@ from service_agent.models import AgentConfig, AgentResult, AgentState
 
 # Shared utilities
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent / "shared"))
+# Also add repo root so `shared` package imports work
+if str(Path(__file__).resolve().parent.parent.parent.parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent))
 from agent_utils import emit_progress  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -60,7 +63,8 @@ async def handle_cancel(
 
         client = GoWeClient(base_url=config.gowe_url)
         result = await client.cancel_submission(
-            sub_id, auth_token=config.bvbrc_auth_token,
+            sub_id,
+            auth_token=config.bvbrc_auth_token,
         )
 
         new_state = result.get("state", "CANCELLED")
@@ -69,8 +73,7 @@ async def handle_cancel(
         state.status = "completed"
         state.current_phase = "done"
         state.operation_message = (
-            f"Submission **{sub_id}** has been cancelled. "
-            f"State: **{new_state}**."
+            f"Submission **{sub_id}** has been cancelled. State: **{new_state}**."
         )
 
         logger.info("Submission %s cancelled: state=%s", sub_id, new_state)
@@ -79,8 +82,7 @@ async def handle_cancel(
         logger.error("Failed to cancel submission %s: %s", sub_id, e)
         state.status = "error"
         state.error_message = (
-            f"Failed to cancel submission {sub_id}: "
-            f"{type(e).__name__}: {e}"
+            f"Failed to cancel submission {sub_id}: {type(e).__name__}: {e}"
         )
 
     await emit_progress(progress_callback, 1, 1, "Done.")

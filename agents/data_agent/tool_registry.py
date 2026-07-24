@@ -73,18 +73,18 @@ SEARCH_DATA = {
                 },
                 "query": {
                     "type": "string",
-                "description": (
-                    "Solr query string using Solr syntax. Examples:\n"
-                    "  genome_name:Salmonella AND host_name:Human\n"
-                    "  resistant_phenotype:Resistant AND antibiotic:ciprofloxacin\n"
-                    "  genome_id:(83332.12 OR 208964.12)\n"
-                    "  taxon_lineage_ids:1763 (all Mycobacterium)\n"
-                    "  product:*kinase* (wildcard search)\n"
-                    "  collection_year:[2020 TO 2024] (year range)\n"
-                    "  genome_length:[4000000 TO 5000000] (numeric range)\n"
-                    "  gc_content:[60 TO *] (open-ended range)\n"
-                    "Use * for all records."
-                ),
+                    "description": (
+                        "Solr query string using Solr syntax. Examples:\n"
+                        "  genome_name:Salmonella AND host_name:Human\n"
+                        "  resistant_phenotype:Resistant AND antibiotic:ciprofloxacin\n"
+                        "  genome_id:(83332.12 OR 208964.12)\n"
+                        "  taxon_lineage_ids:1763 (all Mycobacterium)\n"
+                        "  product:*kinase* (wildcard search)\n"
+                        "  collection_year:[2020 TO 2024] (year range)\n"
+                        "  genome_length:[4000000 TO 5000000] (numeric range)\n"
+                        "  gc_content:[60 TO *] (open-ended range)\n"
+                        "Use * for all records."
+                    ),
                 },
                 "select": {
                     "type": "array",
@@ -303,6 +303,87 @@ FACET_QUERY = {
 }
 
 
+FIND_SIMILAR_GENOMES = {
+    "type": "function",
+    "function": {
+        "name": "find_similar_genomes",
+        "description": (
+            "Find public genomes in BV-BRC that are similar to a query genome "
+            "using Mash/MinHash genomic distance estimation. Returns genome IDs "
+            "ranked by distance. This is NOT a Solr query — it uses a dedicated "
+            "MinHash service for sequence-level similarity.\n\n"
+            "Provide exactly ONE of genome_id or fasta_file (not both).\n\n"
+            "Use this instead of search_data when the user asks for 'similar "
+            "genomes', 'closest genomes', 'related genomes', or 'genome distance'."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "genome_id": {
+                    "type": "string",
+                    "description": "A BV-BRC genome ID (e.g. '83332.12'). Mutually exclusive with fasta_file.",
+                },
+                "fasta_file": {
+                    "type": "string",
+                    "description": "FULL workspace path to a FASTA/contigs file (e.g. '/user@patricbrc.org/home/file.fasta'). Must start with /. Use workspace_browse to find the path if needed.",
+                },
+                "max_pvalue": {
+                    "type": "number",
+                    "description": "Max p-value threshold (default 0.01). Options: 0.001, 0.01, 0.1, 1.0",
+                },
+                "max_distance": {
+                    "type": "number",
+                    "description": "Max Mash distance (default 0.01). Options: 0.01, 0.05, 0.1, 0.5, 1.0",
+                },
+                "max_hits": {
+                    "type": "integer",
+                    "description": "Max results to return (default 50). Options: 1, 10, 50, 100, 500",
+                },
+                "scope": {
+                    "type": "string",
+                    "description": "'reference' (ref+rep only, default) or 'all' (all public genomes).",
+                },
+                "include_bacterial": {
+                    "type": "boolean",
+                    "description": "Include bacterial/archaeal genomes (default true).",
+                },
+                "include_viral": {
+                    "type": "boolean",
+                    "description": "Include viral genomes (default true).",
+                },
+            },
+            "required": ["genome_id"],
+        },
+    },
+}
+
+SEARCH_LITERATURE = {
+    "type": "function",
+    "function": {
+        "name": "search_literature",
+        "description": "Search scientific literature using the literature RAG service and return raw source passages with metadata.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Natural-language query (organism/gene/topic).",
+                },
+                "top_k": {
+                    "type": "integer",
+                    "description": "Maximum number of sources to return (default 10).",
+                },
+                "use_graph": {
+                    "type": "boolean",
+                    "description": "Enable knowledge-graph-augmented retrieval (default false).",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+}
+
+
 # ---------------------------------------------------------------------------
 # Complete tool list for the agent
 # ---------------------------------------------------------------------------
@@ -310,10 +391,12 @@ TOOL_SCHEMAS: list[dict] = [
     SEARCH_DATA,
     LIST_COLLECTIONS,
     GET_COLLECTION_FIELDS,
-    GET_GENOME_GROUP,
-    GET_FEATURE_GROUP,
+    # GET_GENOME_GROUP,   # disabled – group tools temporarily removed
+    # GET_FEATURE_GROUP,  # disabled – group tools temporarily removed
     FACET_QUERY,
     PROBE_DATA,
+    FIND_SIMILAR_GENOMES,
+    SEARCH_LITERATURE,
 ]
 
 # Dispatch table: tool name -> schema (for future execution mapping)

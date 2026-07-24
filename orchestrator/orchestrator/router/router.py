@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any
 
 from orchestrator.llm.client import LLMClient
 from orchestrator.models import OrchestratorRequest
@@ -90,17 +89,31 @@ async def route(
         conversation_context=conversation_context,
     )
 
+    max_routing_attempts = 2
     try:
-        raw_response = await llm.complete(
-            prompt=user_prompt,
-            system_prompt=system_prompt,
-            temperature=0.0,
-            max_tokens=512,
-        )
-        logger.info(
-            f"Routing LLM raw response: {len(raw_response)} chars, "
-            f"preview={raw_response[:120]!r}"
-        )
+        raw_response = ""
+        for attempt in range(1, max_routing_attempts + 1):
+            raw_response = await llm.complete(
+                prompt=user_prompt,
+                system_prompt=system_prompt,
+                temperature=0.0,
+                max_tokens=4096,
+            )
+            logger.info(
+                f"Routing LLM raw response (attempt {attempt}/{max_routing_attempts}): "
+                f"{len(raw_response)} chars, preview={raw_response[:120]!r}"
+            )
+            if raw_response and raw_response.strip():
+                break
+            logger.warning(
+                "Routing LLM returned empty response "
+                f"(attempt {attempt}/{max_routing_attempts})"
+            )
+        else:
+            # All attempts returned empty — fall through to error handling
+            raise ValueError(
+                f"Routing LLM returned empty response after {max_routing_attempts} attempts"
+            )
         decision = _parse_routing_response(raw_response, request.query, registry)
         dr_preview = (
             repr(decision.direct_response[:80]) if decision.direct_response else "None"
@@ -114,9 +127,15 @@ async def route(
         return decision
 
     except Exception as e:
-        logger.error(f"Routing LLM call failed: {e}")
-        # Fallback: try to infer from keywords
-        return _fallback_routing(request.query, registry)
+        logger.error(f"Routing LLM call failed: {e}", exc_info=True)
+        return RoutingDecision(
+            decision="direct",
+            direct_response=(
+                "I'm sorry, I encountered an error while processing your "
+                "request. Please try again."
+            ),
+            confidence=0.0,
+        )
 
 
 def _parse_routing_response(
@@ -147,8 +166,8 @@ def _parse_routing_response(
             try:
                 data = json.loads(text[start:end])
             except json.JSONDecodeError:
-                logger.warning(f"Could not parse routing response: {text[:200]}")
-                return _fallback_routing(query, registry)
+                logger.error(f"Could not parse routing response: {text[:200]}")
+                raise ValueError(f"Unparseable routing response: {text[:200]}")
         elif start >= 0:
             # LLM truncated the JSON (missing closing brace) — try to repair
             fragment = text[start:]
@@ -160,11 +179,11 @@ def _parse_routing_response(
                 except json.JSONDecodeError:
                     continue
             else:
-                logger.warning(f"Could not repair truncated routing JSON: {text[:200]}")
-                return _fallback_routing(query, registry)
+                logger.error(f"Could not repair truncated routing JSON: {text[:200]}")
+                raise ValueError(f"Truncated routing response: {text[:200]}")
         else:
-            logger.warning(f"No JSON found in routing response: {text[:200]}")
-            return _fallback_routing(query, registry)
+            logger.error(f"No JSON found in routing response: {text[:200]}")
+            raise ValueError(f"No JSON in routing response: {text[:200]}")
 
     decision_type = data.get("decision", "direct")
     reasoning = data.get("reasoning", "")
@@ -188,11 +207,11 @@ def _parse_routing_response(
                     agent_key = key
                     break
             else:
-                logger.warning(
+                logger.error(
                     f"Router selected unknown agent '{agent_key}', "
-                    f"falling back to keyword routing"
+                    f"available agents: {list(registry.agent_keys)}"
                 )
-                return _fallback_routing(query, registry)
+                raise ValueError(f"Router selected unknown agent '{agent_key}'")
 
         return RoutingDecision(
             decision="agent",
@@ -206,11 +225,10 @@ def _parse_routing_response(
     elif decision_type == "pipeline":
         raw_steps = data.get("steps", [])
         if not raw_steps:
-            logger.warning("Router returned pipeline with no steps, falling back")
-            return _fallback_routing(query, registry)
+            logger.error("Router returned pipeline with no steps")
+            raise ValueError("Router returned pipeline with no steps")
 
         steps: list[Step] = []
-        valid = True
         for raw_step in raw_steps:
             agent_key = raw_step.get("agent_key", "")
             task = raw_step.get("task", query)
@@ -223,17 +241,15 @@ def _parse_routing_response(
                         agent_key = key
                         break
                 else:
-                    logger.warning(
+                    logger.error(
                         f"Pipeline step references unknown agent '{agent_key}', "
-                        f"falling back to keyword routing"
+                        f"available agents: {list(registry.agent_keys)}"
                     )
-                    valid = False
-                    break
+                    raise ValueError(
+                        f"Pipeline step references unknown agent '{agent_key}'"
+                    )
 
             steps.append(Step(agent_key=agent_key, task=task, depends_on=depends_on))
-
-        if not valid:
-            return _fallback_routing(query, registry)
 
         # Validate depends_on indices are in range
         for i, step in enumerate(steps):
@@ -252,244 +268,3 @@ def _parse_routing_response(
             direct_response=data.get("direct_response", reasoning),
             confidence=0.5,
         )
-
-
-def _fallback_routing(
-    query: str,
-    registry: AgentRegistry,
-) -> RoutingDecision:
-    """Simple keyword-based fallback when LLM routing fails.
-
-    This is a safety net, not the primary routing mechanism.
-    """
-    q = query.lower()
-
-    # Helpdesk-related keywords (checked first — how-to questions)
-    helpdesk_keywords = [
-        "how to",
-        "how do i",
-        "how does",
-        "how can i",
-        "what is",
-        "what are",
-        "what does",
-        "explain",
-        "help",
-        "tutorial",
-        "guide",
-        "documentation",
-        "faq",
-        "troubleshoot",
-        "usage",
-        "getting started",
-        "steps to",
-        "instructions",
-        "walkthrough",
-    ]
-
-    # Data-related keywords
-    data_keywords = [
-        "genome",
-        "genomes",
-        "feature",
-        "features",
-        "gene",
-        "genes",
-        "protein",
-        "proteins",
-        "amr",
-        "antimicrobial",
-        "resistance",
-        "pathway",
-        "pathways",
-        "epitope",
-        "epitopes",
-        "taxonomy",
-        "species",
-        "strain",
-        "strains",
-        "search",
-        "find",
-        "query",
-        "how many",
-        "count",
-        "list",
-        "show me",
-        "retrieve",
-        "data",
-        "solr",
-        "collection",
-        "subsystem",
-        "specialty gene",
-        "surveillance",
-        "serology",
-        "sequence",
-    ]
-
-    # Service-related keywords (action-oriented)
-    service_keywords = [
-        "assemble",
-        "assembly",
-        "annotate",
-        "annotation",
-        "blast",
-        "align",
-        "alignment",
-        "phylogen",
-        "tree",
-        "workflow",
-        "submit",
-        "run",
-        "job",
-        "pipeline",
-        "comparative",
-        "variation",
-        "snp",
-        "tn-seq",
-        "rna-seq",
-        "expression",
-        "proteome",
-        "metabol",
-    ]
-
-    # Planning-related keywords (multi-step coordination)
-    planning_keywords = [
-        "plan",
-        "design experiment",
-        "step by step",
-        "multi-step",
-        "walk me through",
-        "create a plan",
-        "experiment design",
-        "plan out",
-        "outline the steps",
-        "design a workflow",
-    ]
-
-    # Analysis-related keywords (post-hoc output inspection)
-    analysis_keywords = [
-        "analyze results",
-        "analyze my",
-        "analyze the results",
-        "summarize results",
-        "summarize the output",
-        "summarize outputs",
-        "what did my",
-        "what were the results",
-        "examine results",
-        "examine the output",
-        "interpret results",
-        "output files",
-        "output analysis",
-        "job results",
-        "job output",
-        "n50",
-        "metrics",
-    ]
-
-    planning_score = sum(1 for kw in planning_keywords if kw in q)
-    helpdesk_score = sum(1 for kw in helpdesk_keywords if kw in q)
-    data_score = sum(1 for kw in data_keywords if kw in q)
-    service_score = sum(1 for kw in service_keywords if kw in q)
-    analysis_score = sum(1 for kw in analysis_keywords if kw in q)
-
-    # Analytical workflow: data retrieval + analysis action together
-    _analysis_actions = [
-        "analyze", "analysis", "compare", "comparison", "phylogenet",
-        "characterize", "investigate", "examine", "study",
-    ]
-    _data_subjects = [
-        "genome", "genomes", "strain", "strains", "isolate", "isolates",
-        "sequence", "sequences", "amr", "antimicrobial", "protein",
-        "proteins", "feature", "features", "gene", "genes",
-    ]
-    has_analysis_action = any(kw in q for kw in _analysis_actions)
-    has_data_subject = any(kw in q for kw in _data_subjects)
-    if has_analysis_action and has_data_subject:
-        planning_score += 2
-
-    # Planning gets priority when multi-step/plan phrases are present
-    if planning_score > 0 and "planning" in registry.agents:
-        return RoutingDecision(
-            decision="agent",
-            plan=Plan(
-                reasoning="Fallback keyword routing: multi-step planning query.",
-                steps=[Step(agent_key="planning", task=query)],
-            ),
-            confidence=0.5,
-        )
-
-    # Analysis gets priority when results/output phrases are present
-    if (
-        analysis_score > 0
-        and analysis_score >= service_score
-        and "analysis" in registry.agents
-    ):
-        return RoutingDecision(
-            decision="agent",
-            plan=Plan(
-                reasoning="Fallback keyword routing: analysis/results query.",
-                steps=[Step(agent_key="analysis", task=query)],
-            ),
-            confidence=0.5,
-        )
-
-    # Helpdesk gets priority when how-to phrases are present
-    if (
-        helpdesk_score > 0
-        and helpdesk_score >= data_score
-        and helpdesk_score >= service_score
-        and "helpdesk" in registry.agents
-    ):
-        return RoutingDecision(
-            decision="agent",
-            plan=Plan(
-                reasoning="Fallback keyword routing: helpdesk/how-to query.",
-                steps=[Step(agent_key="helpdesk", task=query)],
-            ),
-            confidence=0.5,
-        )
-
-    if data_score > service_score and "data" in registry.agents:
-        return RoutingDecision(
-            decision="agent",
-            plan=Plan(
-                reasoning="Fallback keyword routing: data-related query.",
-                steps=[Step(agent_key="data", task=query)],
-            ),
-            confidence=0.5,
-        )
-
-    if service_score > data_score and "service" in registry.agents:
-        return RoutingDecision(
-            decision="agent",
-            plan=Plan(
-                reasoning="Fallback keyword routing: service-related query.",
-                steps=[Step(agent_key="service", task=query)],
-            ),
-            confidence=0.5,
-        )
-
-    # If we have any healthy agent, default to data (broader capability)
-    if "data" in registry.healthy_agents:
-        return RoutingDecision(
-            decision="agent",
-            plan=Plan(
-                reasoning="Fallback: defaulting to data agent.",
-                steps=[Step(agent_key="data", task=query)],
-            ),
-            confidence=0.3,
-        )
-
-    # Truly cannot route — respond directly
-    return RoutingDecision(
-        decision="direct",
-        direct_response=(
-            "I'm not sure how to help with that request. "
-            "I can help you search BV-BRC biological data, "
-            "set up bioinformatics service workflows, or "
-            "answer questions about how to use BV-BRC. "
-            "Could you rephrase your question?"
-        ),
-        confidence=0.3,
-    )

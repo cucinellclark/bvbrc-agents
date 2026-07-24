@@ -1,0 +1,197 @@
+"""
+Shared GoWe workflow-engine tools.
+
+These tools let any agent discover available workflows, inspect their
+input schemas, and submit jobs to the GoWe CWL engine.
+
+Each function accepts a generic *config* object (needs ``gowe_url``,
+``bvbrc_auth_token``, ``mcp_server_path`` attributes) and optional
+*headers*.
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Any, Dict, Optional
+
+from shared.tools._mcp_imports import get_gowe_client
+
+logger = logging.getLogger(__name__)
+
+
+def _get_client(config: Any = None):
+    """Build a ``GoWeClient`` from config."""
+    mod = get_gowe_client(getattr(config, "mcp_server_path", None))
+    gowe_url = getattr(config, "gowe_url", None) or "http://140.221.78.67:12009"
+    return mod.GoWeClient(base_url=gowe_url)
+
+
+def _get_auth(config: Any = None) -> str:
+    return getattr(config, "bvbrc_auth_token", None) or ""
+
+
+# ---------------------------------------------------------------------------
+# Tool implementations
+# ---------------------------------------------------------------------------
+
+
+async def list_gowe_workflows(
+    config: Any = None,
+    **kwargs: Any,
+) -> Dict[str, Any]:
+    """List all available workflows registered in GoWe.
+
+    Returns a simplified list with workflow ``id``, ``name``, ``description``,
+    ``step_count``, and ``class`` for each workflow.
+    """
+    try:
+        client = _get_client(config)
+        auth = _get_auth(config)
+        workflows, pagination = await client.list_workflows(
+            auth_token=auth,
+            limit=100,
+        )
+
+        result = []
+        for wf in workflows or []:
+            result.append(
+                {
+                    "id": wf.get("id"),
+                    "name": wf.get("name"),
+                    "description": wf.get("description", ""),
+                    "step_count": wf.get("step_count", 1),
+                    "class": wf.get("class", ""),
+                }
+            )
+
+        return {"workflows": result, "count": len(result)}
+
+    except Exception as e:
+        return {"error": f"Failed to list GoWe workflows: {type(e).__name__}: {e}"}
+
+
+async def get_workflow_inputs(
+    workflow_id: str,
+    config: Any = None,
+    **kwargs: Any,
+) -> Dict[str, Any]:
+    """Get the input schema for a specific GoWe workflow.
+
+    Args:
+        workflow_id: The GoWe workflow ID (e.g. ``'wf_abc123'``).
+
+    Returns:
+        Dict with ``workflow_id``, ``inputs`` list, and ``count``.
+    """
+    if not workflow_id:
+        return {"error": "workflow_id is required."}
+
+    try:
+        client = _get_client(config)
+        auth = _get_auth(config)
+        inputs = await client.get_workflow_inputs(workflow_id, auth_token=auth)
+
+        return {
+            "workflow_id": workflow_id,
+            "inputs": inputs or [],
+            "count": len(inputs or []),
+        }
+
+    except Exception as e:
+        return {
+            "error": (
+                f"Failed to get inputs for workflow '{workflow_id}': "
+                f"{type(e).__name__}: {e}"
+            ),
+        }
+
+
+async def submit_gowe_job(
+    workflow_id: str,
+    inputs: Dict[str, Any],
+    config: Any = None,
+    **kwargs: Any,
+) -> Dict[str, Any]:
+    """Submit a job to GoWe with the given workflow ID and populated inputs.
+
+    Args:
+        workflow_id: The GoWe workflow ID.
+        inputs: Dict of input values matching the workflow's input schema.
+    """
+    if not workflow_id:
+        return {"error": "workflow_id is required."}
+
+    auth = _get_auth(config)
+    if not auth:
+        return {"error": "No authentication token available."}
+
+    try:
+        client = _get_client(config)
+
+        # Clean up the inputs before submission
+        cleaned_inputs: Dict[str, Any] = {}
+        for key, value in inputs.items():
+            if value is None:
+                continue
+            # Strip URI prefixes from string values
+            if isinstance(value, str):
+                if value.startswith("ws://"):
+                    value = value[len("ws://") :]
+                elif value.startswith("workspace:"):
+                    value = value[len("workspace:") :]
+            # Clean nested records (e.g., paired_end_libs)
+            if isinstance(value, list) and value and isinstance(value[0], dict):
+                value = _clean_record_values(value)
+            cleaned_inputs[key] = value
+
+        result = await client.create_submission(
+            workflow_id=workflow_id,
+            inputs=cleaned_inputs,
+            auth_token=auth,
+        )
+
+        submission_id = result.get("id", "")
+        logger.info(
+            "Job submitted: workflow_id=%s, submission_id=%s, state=%s",
+            workflow_id,
+            submission_id,
+            result.get("state"),
+        )
+
+        return {
+            "workflow_id": workflow_id,
+            "submission_id": submission_id,
+            "status": result.get("state", "PENDING"),
+            "message": "Job submitted successfully to GoWe.",
+        }
+
+    except Exception as e:
+        logger.error("Failed to submit job: %s", e)
+        return {
+            "error": f"GoWe submission failed: {type(e).__name__}: {e}",
+            "workflow_id": workflow_id,
+        }
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _clean_record_values(records: list) -> list:
+    """Strip URI prefixes from nested record values (e.g. paired-end libs)."""
+    cleaned = []
+    for rec in records:
+        if not isinstance(rec, dict):
+            cleaned.append(rec)
+            continue
+        clean_rec = {}
+        for k, v in rec.items():
+            if isinstance(v, str):
+                if v.startswith("ws://"):
+                    v = v[len("ws://") :]
+                elif v.startswith("workspace:"):
+                    v = v[len("workspace:") :]
+            clean_rec[k] = v
+        cleaned.append(clean_rec)
+    return cleaned

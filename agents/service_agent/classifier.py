@@ -89,6 +89,7 @@ Return ONLY a JSON object (no markdown, no explanation):
 # Public API
 # ---------------------------------------------------------------------------
 
+
 async def classify_intent(
     query: str,
     context: dict[str, Any],
@@ -135,15 +136,19 @@ async def classify_intent(
         logger.info(
             "Intent classified: action=%s, workflow_id=%s, confidence=%.2f, "
             "model=%s, reasoning=%s",
-            intent.action, intent.workflow_id, intent.confidence,
-            classifier_model, intent.reasoning,
+            intent.action,
+            intent.workflow_id,
+            intent.confidence,
+            classifier_model,
+            intent.reasoning,
         )
         return intent
 
     except Exception as e:
         logger.warning(
             "Intent classifier failed (%s: %s), defaulting to 'plan'",
-            type(e).__name__, e,
+            type(e).__name__,
+            e,
         )
         return Intent(
             action="plan",
@@ -155,6 +160,7 @@ async def classify_intent(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _build_context_summary(context: dict[str, Any]) -> str:
     """Extract workflow references and recent conversation from context."""

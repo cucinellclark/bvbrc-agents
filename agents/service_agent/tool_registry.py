@@ -1,176 +1,27 @@
 """
-OpenAI-compatible function/tool schema definitions for the Service Agent v2.
+OpenAI-compatible function/tool schema definitions for the Service Agent.
 
-Tools are organized by phase:
-  - Phase 1 (Decompose): create_workflow_plan, list_services, get_sra_metadata
-  - Phase 2 (Build):     get_service_schema, plan_service, workspace_browse,
-                          read_file_info, search_data, get_genome_group,
-                          get_feature_group, get_sra_metadata
-  - Phase 3 (Compose):   Programmatic -- no LLM tools needed
+Tools for the GoWe-first workflow: discover workflows, inspect inputs,
+gather context from workspace/data, and submit jobs.
 """
 
 from __future__ import annotations
 
 
 # ---------------------------------------------------------------------------
-# Service name enum -- all friendly service names from service_mapping.json
-# ---------------------------------------------------------------------------
-SERVICE_NAMES = [
-    "bacterial_genome_tree",
-    "blast",
-    "comparative_systems",
-    "comprehensive_genome_analysis",
-    "core_genome_mlst",
-    "date",
-    "docking",
-    "expression_import",
-    "fastqutils",
-    "gene_tree",
-    "genome_alignment",
-    "genome_annotation",
-    "genome_assembly",
-    "influenza_ha_subtype_conversion",
-    "metacats",
-    "metagenomic_binning",
-    "metagenomic_read_mapping",
-    "msa_snp_analysis",
-    "primer_design",
-    "proteome_comparison",
-    "rnaseq",
-    "sars_genome_analysis",
-    "sars_wastewater_analysis",
-    "sequence_submission",
-    "similar_genome_finder",
-    "subspecies_classification",
-    "taxonomic_classification",
-    "tnseq",
-    "variation",
-    "viral_assembly",
-    "whole_genome_snp",
-]
-
-
-# ---------------------------------------------------------------------------
-# Phase 1 tools
+# GoWe workflow tools
 # ---------------------------------------------------------------------------
 
-CREATE_WORKFLOW_PLAN = {
+LIST_GOWE_WORKFLOWS = {
     "type": "function",
     "function": {
-        "name": "create_workflow_plan",
+        "name": "list_gowe_workflows",
         "strict": True,
         "description": (
-            "Create a structured workflow plan (DAG) from a decomposed analysis "
-            "request. Each step specifies a BV-BRC service, its intent, "
-            "dependencies on other steps, and input sources. The plan is "
-            "validated for unique step IDs, valid service names, valid "
-            "dependency references, and absence of cycles. Call this after you "
-            "have determined all the steps needed for the workflow."
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "workflow_name": {
-                    "type": "string",
-                    "description": (
-                        "Short descriptive name for the workflow "
-                        "(e.g., 'ecoli-assembly-annotation')."
-                    ),
-                },
-                "description": {
-                    "type": "string",
-                    "description": "Brief description of what the workflow accomplishes.",
-                },
-                "steps": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "step_id": {
-                                "type": "string",
-                                "description": (
-                                    "Unique identifier for this step "
-                                    "(short, descriptive, snake_case)."
-                                ),
-                            },
-                            "service_name": {
-                                "type": "string",
-                                "description": "BV-BRC service name.",
-                                "enum": SERVICE_NAMES,
-                            },
-                            "intent": {
-                                "type": "string",
-                                "description": (
-                                    "What this step accomplishes "
-                                    "(e.g., 'Assemble E. coli reads into contigs')."
-                                ),
-                            },
-                            "depends_on": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "description": (
-                                    "Step IDs this step depends on. "
-                                    "Empty array for root steps."
-                                ),
-                            },
-                            "input_sources": {
-                                "type": "array",
-                                "description": (
-                                    "Parameter-to-source mappings. Each entry "
-                                    "maps a parameter name to its source. "
-                                    "Source values: 'user_provided', "
-                                    "'output_of:<step_id>:<output_key>', "
-                                    "'search:<description>', "
-                                    "'workspace:<path_hint>'. "
-                                    "Empty array if no sources to declare."
-                                ),
-                                "items": {
-                                    "type": "object",
-                                    "properties": {
-                                        "param_name": {
-                                            "type": "string",
-                                            "description": "Parameter name.",
-                                        },
-                                        "source": {
-                                            "type": "string",
-                                            "description": (
-                                                "Where this parameter's value "
-                                                "comes from."
-                                            ),
-                                        },
-                                    },
-                                    "required": ["param_name", "source"],
-                                    "additionalProperties": False,
-                                },
-                            },
-                        },
-                        "required": [
-                            "step_id",
-                            "service_name",
-                            "intent",
-                            "depends_on",
-                            "input_sources",
-                        ],
-                        "additionalProperties": False,
-                    },
-                    "description": "List of workflow steps forming a DAG.",
-                },
-            },
-            "required": ["workflow_name", "description", "steps"],
-            "additionalProperties": False,
-        },
-    },
-}
-
-LIST_SERVICES = {
-    "type": "function",
-    "function": {
-        "name": "list_services",
-        "strict": True,
-        "description": (
-            "List all available BV-BRC services with short descriptions. "
-            "Use this when you need to discover which service to use for "
-            "a particular analysis task."
+            "List all available workflows registered in the GoWe workflow "
+            "engine. Returns workflow id, name, description, and step count "
+            "for each. Call this first to discover which workflow matches "
+            "the user's request."
         ),
         "parameters": {
             "type": "object",
@@ -181,100 +32,69 @@ LIST_SERVICES = {
     },
 }
 
-GET_SRA_METADATA = {
+GET_WORKFLOW_INPUTS = {
     "type": "function",
     "function": {
-        "name": "get_sra_metadata",
+        "name": "get_workflow_inputs",
         "strict": True,
         "description": (
-            "Retrieve metadata for one or more SRA run accession IDs (SRR IDs). "
-            "Returns organism name, sequencing platform, library strategy, sample "
-            "details, and more for each SRA ID. ALWAYS call this tool BEFORE "
-            "planning any services when the user provides SRA accessions. This "
-            "lets you verify the organism, check for mismatched samples, and "
-            "auto-fill parameters like scientific_name."
+            "Get the full input schema for a specific GoWe workflow. "
+            "Returns each input's id, type, required flag, default value, "
+            "and documentation. Call this after selecting a workflow to "
+            "understand what inputs need to be provided."
         ),
         "parameters": {
             "type": "object",
             "properties": {
-                "sra_ids": {
-                    "type": "array",
-                    "items": {"type": "string"},
+                "workflow_id": {
+                    "type": "string",
                     "description": (
-                        "List of SRA run accession IDs to look up "
-                        "(e.g., ['SRR37956035', 'SRR37956031'])."
+                        "The GoWe workflow ID (e.g., 'wf_abc123'). "
+                        "Get this from list_gowe_workflows."
                     ),
                 },
             },
-            "required": ["sra_ids"],
+            "required": ["workflow_id"],
             "additionalProperties": False,
         },
     },
 }
 
-
-# ---------------------------------------------------------------------------
-# Phase 2 tools
-# ---------------------------------------------------------------------------
-
-GET_SERVICE_SCHEMA = {
+SUBMIT_GOWE_JOB = {
     "type": "function",
     "function": {
-        "name": "get_service_schema",
-        "strict": True,
+        "name": "submit_gowe_job",
         "description": (
-            "Get the full parameter schema for a specific BV-BRC service, "
-            "including required parameters, defaults, enum constraints, and "
-            "conditional requirements. Call this BEFORE plan_service to "
-            "understand what parameters are needed."
+            "Submit a job to the GoWe workflow engine with populated inputs. "
+            "Call this after you have gathered all required input values for "
+            "the selected workflow. The inputs dict must match the workflow's "
+            "input schema."
         ),
         "parameters": {
             "type": "object",
             "properties": {
-                "service_name": {
+                "workflow_id": {
                     "type": "string",
-                    "description": "Friendly service name (e.g., 'genome_assembly', 'blast').",
-                    "enum": SERVICE_NAMES,
+                    "description": "The GoWe workflow ID to run.",
                 },
-            },
-            "required": ["service_name"],
-            "additionalProperties": False,
-        },
-    },
-}
-
-PLAN_SERVICE = {
-    "type": "function",
-    "function": {
-        "name": "plan_service",
-        "description": (
-            "Validate and plan a single BV-BRC service job. Checks required "
-            "parameters, validates enum values (with fuzzy matching), applies "
-            "defaults, and returns the validated parameter set ready for "
-            "submission. Call get_service_schema first to understand the "
-            "required parameters."
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "service_name": {
-                    "type": "string",
-                    "description": "Friendly service name (e.g., 'genome_assembly', 'blast').",
-                    "enum": SERVICE_NAMES,
-                },
-                "params": {
+                "inputs": {
                     "type": "object",
                     "description": (
-                        "Service parameters. Include all required params plus any "
-                        "optional params you want to override. Missing optional "
-                        "params get defaults applied automatically."
+                        "Input values matching the workflow's input schema. "
+                        "Include all required inputs and any optional inputs "
+                        "you want to override from defaults."
                     ),
                 },
             },
-            "required": ["service_name", "params"],
+            "required": ["workflow_id", "inputs"],
         },
     },
 }
+
+
+# ---------------------------------------------------------------------------
+# Context-gathering tools (shared with other agents)
+# ---------------------------------------------------------------------------
 
 WORKSPACE_BROWSE = {
     "type": "function",
@@ -443,114 +263,147 @@ GET_FEATURE_GROUP = {
     },
 }
 
-
-# ---------------------------------------------------------------------------
-# GoWe workflow tools (workflow selection + input population flow)
-# ---------------------------------------------------------------------------
-
-LIST_GOWE_WORKFLOWS = {
+GET_SRA_METADATA = {
     "type": "function",
     "function": {
-        "name": "list_gowe_workflows",
+        "name": "get_sra_metadata",
         "strict": True,
         "description": (
-            "List all available workflows registered in the GoWe workflow "
-            "engine. Returns workflow id, name, description, and step count "
-            "for each. Call this first to discover which workflow matches "
-            "the user's request."
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {},
-            "required": [],
-            "additionalProperties": False,
-        },
-    },
-}
-
-GET_WORKFLOW_INPUTS = {
-    "type": "function",
-    "function": {
-        "name": "get_workflow_inputs",
-        "strict": True,
-        "description": (
-            "Get the full input schema for a specific GoWe workflow. "
-            "Returns each input's id, type, required flag, default value, "
-            "and documentation. Call this after selecting a workflow to "
-            "understand what inputs need to be provided."
+            "Retrieve metadata for one or more SRA run accession IDs (SRR IDs). "
+            "Returns organism name, sequencing platform, library strategy, sample "
+            "details, and more for each SRA ID. ALWAYS call this tool BEFORE "
+            "planning any services when the user provides SRA accessions."
         ),
         "parameters": {
             "type": "object",
             "properties": {
-                "workflow_id": {
-                    "type": "string",
+                "sra_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
                     "description": (
-                        "The GoWe workflow ID (e.g., 'wf_abc123'). "
-                        "Get this from list_gowe_workflows."
+                        "List of SRA run accession IDs to look up "
+                        "(e.g., ['SRR37956035', 'SRR37956031'])."
                     ),
                 },
             },
-            "required": ["workflow_id"],
+            "required": ["sra_ids"],
             "additionalProperties": False,
         },
     },
 }
 
-SUBMIT_GOWE_JOB = {
+FIND_SIMILAR_GENOMES = {
     "type": "function",
     "function": {
-        "name": "submit_gowe_job",
+        "name": "find_similar_genomes",
         "description": (
-            "Submit a job to the GoWe workflow engine with populated inputs. "
-            "Call this after you have gathered all required input values for "
-            "the selected workflow. The inputs dict must match the workflow's "
-            "input schema."
+            "Find public genomes in BV-BRC that are similar to a query genome "
+            "using Mash/MinHash distance estimation. Returns genome IDs ranked "
+            "by distance.\n\n"
+            "Provide exactly ONE of genome_id or fasta_file (not both).\n\n"
+            "USE THIS TOOL FOR:\n"
+            "- Finding the closest public genomes to a query genome\n"
+            "- Identifying related or similar organisms by genomic distance\n"
+            "- Pre-screening reference genomes before downstream analysis\n"
+            "- Answering 'what genomes are similar to X?'\n\n"
+            "DO NOT USE THIS TOOL FOR:\n"
+            "- BLAST sequence similarity searches (use submit_gowe_job with a BLAST workflow)\n"
+            "- Phylogenetic tree building (use submit_gowe_job with a tree workflow)\n"
+            "- Genome annotation or assembly (use the appropriate workflow tools)"
         ),
         "parameters": {
             "type": "object",
             "properties": {
-                "workflow_id": {
-                    "type": "string",
-                    "description": "The GoWe workflow ID to run.",
-                },
-                "inputs": {
-                    "type": "object",
+                "genome_id": {
+                    "type": ["string", "null"],
                     "description": (
-                        "Input values matching the workflow's input schema. "
-                        "Include all required inputs and any optional inputs "
-                        "you want to override from defaults."
+                        "A BV-BRC genome ID to search against (e.g. '83332.12'). "
+                        "Mutually exclusive with fasta_file."
                     ),
                 },
+                "fasta_file": {
+                    "type": ["string", "null"],
+                    "description": (
+                        "FULL workspace path to a FASTA or contigs file "
+                        "(e.g. '/user@patricbrc.org/home/my_contigs.fasta'). "
+                        "Must be an absolute workspace path starting with /, "
+                        "NOT just a filename. Use workspace_browse to find "
+                        "the full path first if needed. "
+                        "Mutually exclusive with genome_id."
+                    ),
+                },
+                "max_pvalue": {
+                    "type": ["number", "null"],
+                    "description": (
+                        "Maximum p-value threshold (default 0.01). "
+                        "Options: 0.001, 0.01, 0.1, 1.0"
+                    ),
+                },
+                "max_distance": {
+                    "type": ["number", "null"],
+                    "description": (
+                        "Maximum Mash distance threshold (default 0.01). "
+                        "Lower = more stringent. Options: 0.01, 0.05, 0.1, 0.5, 1.0"
+                    ),
+                },
+                "max_hits": {
+                    "type": ["integer", "null"],
+                    "description": (
+                        "Maximum number of similar genomes to return (default 50). "
+                        "Options: 1, 10, 50, 100, 500"
+                    ),
+                },
+                "scope": {
+                    "type": ["string", "null"],
+                    "description": (
+                        "Which public genomes to search. "
+                        "'reference' = reference and representative only (default). "
+                        "'all' = all public genomes."
+                    ),
+                },
+                "include_bacterial": {
+                    "type": ["boolean", "null"],
+                    "description": "Include bacterial/archaeal genomes (default true).",
+                },
+                "include_viral": {
+                    "type": ["boolean", "null"],
+                    "description": "Include viral genomes (default true).",
+                },
             },
-            "required": ["workflow_id", "inputs"],
+            "required": ["genome_id", "fasta_file"],
+            "additionalProperties": False,
         },
     },
 }
 
-
-# ---------------------------------------------------------------------------
-# Submission tool (available in Phase 1 for submit-by-id requests)
-# ---------------------------------------------------------------------------
-
-SUBMIT_WORKFLOW = {
+SEARCH_LITERATURE = {
     "type": "function",
     "function": {
-        "name": "submit_workflow",
+        "name": "search_literature",
+        "strict": True,
         "description": (
-            "Submit an already-planned workflow for execution by its workflow_id. "
-            "Only use this when the user explicitly asks to submit/run/execute "
-            "a planned workflow. The workflow must have been previously planned "
-            "and persisted to the engine."
+            "Search scientific literature using the literature RAG service and return raw "
+            "source passages with bibliographic metadata. Use this when the user asks "
+            "for published evidence, papers about an organism/gene, or literature-backed "
+            "facts (PPI, mutations, phenotypes)."
         ),
         "parameters": {
             "type": "object",
             "properties": {
-                "workflow_id": {
+                "query": {
                     "type": "string",
-                    "description": "The engine-issued workflow ID (e.g. 'wf_abc123').",
+                    "description": "Natural-language query (organism/gene/topic).",
+                },
+                "top_k": {
+                    "type": ["integer", "null"],
+                    "description": "Maximum number of sources to return (default 10).",
+                },
+                "use_graph": {
+                    "type": ["boolean", "null"],
+                    "description": "Enable knowledge-graph-augmented retrieval (default false).",
                 },
             },
-            "required": ["workflow_id"],
+            "required": ["query"],
             "additionalProperties": False,
         },
     },
@@ -558,31 +411,9 @@ SUBMIT_WORKFLOW = {
 
 
 # ---------------------------------------------------------------------------
-# Tool sets organized by phase
+# Tool set for the GoWe populate flow (the only active flow)
 # ---------------------------------------------------------------------------
 
-PHASE_1_TOOLS: list[dict] = [
-    CREATE_WORKFLOW_PLAN,
-    LIST_SERVICES,
-    GET_SRA_METADATA,
-    # NOTE: SUBMIT_WORKFLOW was removed from Phase 1 tools.  Submit requests
-    # are now handled by the intent classifier + handlers/submit.py before
-    # the 3-phase pipeline runs.  The SUBMIT_WORKFLOW schema is retained
-    # below for reference and for the TOOL_DISPATCH table.
-]
-
-PHASE_2_TOOLS: list[dict] = [
-    GET_SERVICE_SCHEMA,
-    PLAN_SERVICE,
-    WORKSPACE_BROWSE,
-    READ_FILE_INFO,
-    SEARCH_DATA,
-    GET_GENOME_GROUP,
-    GET_FEATURE_GROUP,
-    GET_SRA_METADATA,  # Also available in Phase 2
-]
-
-# Workflow populate tools (GoWe-first flow: select workflow, populate inputs, submit)
 POPULATE_TOOLS: list[dict] = [
     LIST_GOWE_WORKFLOWS,
     GET_WORKFLOW_INPUTS,
@@ -590,26 +421,14 @@ POPULATE_TOOLS: list[dict] = [
     WORKSPACE_BROWSE,
     READ_FILE_INFO,
     SEARCH_DATA,
-    GET_GENOME_GROUP,
-    GET_FEATURE_GROUP,
+    # GET_GENOME_GROUP,   # disabled – group tools temporarily removed
+    # GET_FEATURE_GROUP,  # disabled – group tools temporarily removed
     GET_SRA_METADATA,
-]
-
-# All tools (for reference / backwards compatibility)
-ALL_TOOL_SCHEMAS: list[dict] = [
-    CREATE_WORKFLOW_PLAN,
-    LIST_SERVICES,
-    GET_SERVICE_SCHEMA,
-    PLAN_SERVICE,
-    WORKSPACE_BROWSE,
-    READ_FILE_INFO,
-    SEARCH_DATA,
-    GET_GENOME_GROUP,
-    GET_FEATURE_GROUP,
-    GET_SRA_METADATA,
+    FIND_SIMILAR_GENOMES,
+    SEARCH_LITERATURE,
 ]
 
 # Name -> schema lookup
 TOOL_MAP: dict[str, dict] = {
-    schema["function"]["name"]: schema for schema in ALL_TOOL_SCHEMAS
+    schema["function"]["name"]: schema for schema in POPULATE_TOOLS
 }

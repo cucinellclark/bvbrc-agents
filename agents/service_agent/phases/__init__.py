@@ -1,12 +1,8 @@
-"""Three-phase workflow construction for the Service Agent v2.
+"""Service agent workflow phases.
 
-Phase 1: Decompose (request -> WorkflowPlan)
-Phase 2: Build (WorkflowPlan -> ValidatedStep[])
-Phase 3: Compose (ValidatedStep[] -> manifest)
+Active phase: populate (GoWe-first discover/select/populate/submit).
 """
 
-from service_agent.phases.decompose import decompose
-from service_agent.phases.build import build_step
-from service_agent.phases.compose import compose_from_registry, compose_from_cwl
+from service_agent.phases.populate import populate_and_submit
 
-__all__ = ["decompose", "build_step", "compose_from_registry", "compose_from_cwl"]
+__all__ = ["populate_and_submit"]

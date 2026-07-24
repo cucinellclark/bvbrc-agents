@@ -22,6 +22,9 @@ from typing import Any
 
 # Shared utilities
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent / "shared"))
+# Also add repo root so `shared` package imports work
+if str(Path(__file__).resolve().parent.parent.parent.parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent))
 from agent_utils import (
     call_fingerprint,
     parse_tool_calls as _parse_tool_calls_raw,

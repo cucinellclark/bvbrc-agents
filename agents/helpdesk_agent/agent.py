@@ -16,6 +16,9 @@ from typing import Any
 
 # Shared utilities -- deduplicated across all agents
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "shared"))
+# Also add repo root so `shared` package imports work (shared.tools, shared.prompts)
+if str(Path(__file__).resolve().parent.parent.parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from agent_utils import (
     call_fingerprint,
     parse_tool_calls as _parse_tool_calls_raw,
@@ -29,7 +32,11 @@ from agent_messages import (
     MAX_ITERATIONS_FALLBACK,
 )
 
-from helpdesk_agent.llm_client import chat_completion, chat_completion_stream, create_client
+from helpdesk_agent.llm_client import (
+    chat_completion,
+    chat_completion_stream,
+    create_client,
+)
 from helpdesk_agent.models import AgentConfig, AgentResult, AgentState, ToolCall
 from helpdesk_agent.prompts.system import SYSTEM_PROMPT
 from helpdesk_agent.tool_registry import TOOL_SCHEMAS
@@ -40,7 +47,9 @@ def _parse_tool_calls(response: Any) -> list[ToolCall]:
     return _parse_tool_calls_raw(response, ToolCall)
 
 
-ProgressCallback = Any  # async (progress: float, total: float|None, message: str) -> None
+ProgressCallback = (
+    Any  # async (progress: float, total: float|None, message: str) -> None
+)
 
 
 async def run_agent(
@@ -89,7 +98,9 @@ async def run_agent(
         state.iteration = iteration + 1
 
         await emit_progress(
-            progress_callback, iteration, cfg.max_iterations,
+            progress_callback,
+            iteration,
+            cfg.max_iterations,
             "Searching helpdesk knowledge base...",
         )
 
@@ -107,7 +118,9 @@ async def run_agent(
         # 2. CHECK -- If no tool calls, the LLM produced a final answer
         if not tool_calls:
             await emit_progress(
-                progress_callback, iteration + 1, cfg.max_iterations,
+                progress_callback,
+                iteration + 1,
+                cfg.max_iterations,
                 "Composing answer...",
             )
             state.final_answer = content or ""
@@ -129,10 +142,12 @@ async def run_agent(
                 duplicate_count += 1
                 state.add_tool_result(
                     tc.id,
-                    json.dumps({
-                        "_duplicate": True,
-                        "_message": DUPLICATE_CALL_WARNING,
-                    }),
+                    json.dumps(
+                        {
+                            "_duplicate": True,
+                            "_message": DUPLICATE_CALL_WARNING,
+                        }
+                    ),
                 )
 
                 if duplicate_count >= 2:
@@ -150,17 +165,27 @@ async def run_agent(
                 _svc = tc.arguments.get("service_name", "service")
                 _tool_msg = f"Looking up {_svc} parameters..."
             await emit_progress(
-                progress_callback, iteration, cfg.max_iterations, _tool_msg,
+                progress_callback,
+                iteration,
+                cfg.max_iterations,
+                _tool_msg,
             )
 
             import time as _time
 
             start = _time.time()
+            # Build headers for shared tools that need auth
+            _headers = (
+                {"Authorization": cfg.bvbrc_auth_token}
+                if cfg.bvbrc_auth_token
+                else None
+            )
             result = await execute_tool(
                 tool_name=tc.name,
                 arguments=dict(tc.arguments),  # copy to avoid mutation
                 timeout_seconds=cfg.tool_timeout_seconds,
                 config=cfg,
+                headers=_headers,
             )
             duration_ms = (_time.time() - start) * 1000
 
@@ -183,7 +208,10 @@ async def run_agent(
                 elif result.get("error"):
                     _result_msg = "Query returned an error, adjusting approach..."
             await emit_progress(
-                progress_callback, iteration, cfg.max_iterations, _result_msg,
+                progress_callback,
+                iteration,
+                cfg.max_iterations,
+                _result_msg,
             )
 
             # Serialize and truncate for the LLM context
@@ -195,7 +223,9 @@ async def run_agent(
         # Force synthesis with tool_choice="none".
         state.status = "max_iterations"
         await emit_progress(
-            progress_callback, cfg.max_iterations, cfg.max_iterations,
+            progress_callback,
+            cfg.max_iterations,
+            cfg.max_iterations,
             f"Synthesizing answer from {len(state.tool_calls_executed)} tool calls...",
         )
         try:
@@ -212,12 +242,14 @@ async def run_agent(
                 MAX_ITERATIONS_FALLBACK.format(n=len(state.tool_calls_executed))
             )
         except Exception:
-            state.final_answer = (
-                MAX_ITERATIONS_FALLBACK.format(n=len(state.tool_calls_executed))
+            state.final_answer = MAX_ITERATIONS_FALLBACK.format(
+                n=len(state.tool_calls_executed)
             )
 
     await emit_progress(
-        progress_callback, cfg.max_iterations, cfg.max_iterations,
+        progress_callback,
+        cfg.max_iterations,
+        cfg.max_iterations,
         "Helpdesk response complete.",
     )
     return state.to_result()

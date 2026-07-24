@@ -67,11 +67,8 @@ GET_JOB_DETAILS = {
     "function": {
         "name": "get_job_details",
         "description": (
-            "Query BV-BRC job details by task ID. Returns job metadata "
-            "including status, app name, parameters (with output_path and "
-            "output_file), execution times, and optionally stdout/stderr. "
-            "Use this to resolve a task ID into the workspace output path "
-            "so you can then browse and analyze the output files."
+            "Query BV-BRC job details by task ID. Returns status, parameters "
+            "(including output paths), and optionally stdout/stderr logs."
         ),
         "parameters": {
             "type": "object",
@@ -105,6 +102,65 @@ GET_JOB_DETAILS = {
     },
 }
 
+SEARCH_LITERATURE = {
+    "type": "function",
+    "function": {
+        "name": "search_literature",
+        "description": "Search scientific literature using the literature RAG service and return raw source passages with metadata.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Natural-language query (organism/gene/topic).",
+                },
+                "top_k": {
+                    "type": "integer",
+                    "description": "Maximum number of sources to return (default 10).",
+                },
+                "use_graph": {
+                    "type": "boolean",
+                    "description": "Enable knowledge-graph-augmented retrieval (default false).",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+}
+
+
+FIND_SIMILAR_GENOMES = {
+    "type": "function",
+    "function": {
+        "name": "find_similar_genomes",
+        "description": (
+            "Find public BV-BRC genomes similar to a query genome using "
+            "Mash/MinHash distance estimation. Provide a genome_id OR a "
+            "workspace fasta_file path (not both). Returns genome IDs "
+            "ranked by genomic distance."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "genome_id": {
+                    "type": "string",
+                    "description": "A BV-BRC genome ID (e.g. '83332.12').",
+                },
+                "fasta_file": {
+                    "type": "string",
+                    "description": "FULL workspace path to a FASTA/contigs file (e.g. '/user@patricbrc.org/home/file.fasta'). Must start with /.",
+                },
+                "max_pvalue": {"type": "number", "description": "Max p-value (default 0.01)."},
+                "max_distance": {"type": "number", "description": "Max Mash distance (default 0.01)."},
+                "max_hits": {"type": "integer", "description": "Max results (default 50)."},
+                "scope": {"type": "string", "description": "'reference' or 'all' (default 'reference')."},
+                "include_bacterial": {"type": "boolean", "description": "Include bacterial genomes (default true)."},
+                "include_viral": {"type": "boolean", "description": "Include viral genomes (default true)."},
+            },
+            "required": ["genome_id"],
+        },
+    },
+}
 
 # ---------------------------------------------------------------------------
 # Complete tool list for the agent
@@ -115,6 +171,8 @@ TOOL_SCHEMAS: list[dict] = [
     READ_FILE_PREVIEW,
     GET_EXPECTED_OUTPUTS,
     GET_JOB_DETAILS,
+    FIND_SIMILAR_GENOMES,
+    SEARCH_LITERATURE,
 ]
 
 # Dispatch table: tool name -> schema

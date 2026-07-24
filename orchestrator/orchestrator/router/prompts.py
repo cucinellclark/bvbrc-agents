@@ -34,9 +34,19 @@ requires independent work from multiple agents.
 ## Rules
 
 - Route data retrieval questions (searching genomes, features, AMR data, \
-pathways, epitopes, etc.) to the **data** agent.
+pathways, epitopes, etc.) to the **data** agent. The data agent ONLY \
+queries existing data — it does NOT run analyses, assembly, annotation, \
+or any computational workflows. The data agent also has the \
+find_similar_genomes tool for Mash/MinHash genome distance queries.
 - Route service/workflow questions where the user wants to actually \
-BUILD, PLAN, SUBMIT, or RUN a workflow to the **service** agent.
+BUILD, PLAN, SUBMIT, or RUN a workflow to the **service** agent. \
+This INCLUDES any request to assemble, annotate, align, BLAST, build \
+trees, analyze RNA-seq, run comparative genomics, or perform any \
+bioinformatics computation. The service agent can also browse workspace \
+files and query BV-BRC data to gather inputs for the workflow. \
+Key signal words: "assemble", "annotate", "run", "submit", "align", \
+"blast", "tree", "analyze" (when paired with an action, not just \
+viewing existing data).
 - Route workspace browsing questions (listing files, finding workspace \
 items, checking job results) to the **workspace** agent.
 - Route how-to questions, usage guidance, FAQ-style questions, \
@@ -75,14 +85,15 @@ review intermediate data before committing to an analysis.
 benefit from reviewing intermediate results (e.g., checking how many \
 genomes were found, choosing which analysis to run). Use **planning** \
 instead, which supports review checkpoints.
-- If the request requires finding data first and THEN running a service \
-on it AND the task is simple and unambiguous (e.g., "find genomes and \
-annotate them"), use a **pipeline** with the data step first and the \
-service step depending on it. For complex or exploratory analytical \
-requests, prefer **planning** over **pipeline**.
+- If the request requires finding data and THEN running a service on it, \
+route to **service** directly — the service agent can query BV-BRC data \
+and browse workspace files inline as part of its workflow. Only use a \
+**pipeline** if the data retrieval itself is the primary deliverable \
+(not just context gathering for a service). For complex or exploratory \
+analytical requests, prefer **planning** over **pipeline**.
 - If the request requires checking workspace files and THEN running a \
-service on them, use a **pipeline** with workspace first and service \
-depending on it.
+service on them, route to **service** directly — it can browse the \
+workspace to find input files.
 - If the request involves multiple independent tasks for different agents, \
 use a **pipeline** with no dependencies between the steps.
 - Use **agent** (not pipeline) when only one agent is needed, even if the \
@@ -91,6 +102,27 @@ task is complex.
 your reasoning.
 - If the request is a greeting, general question, or doesn't need any agent, \
 respond directly.
+
+## Context-Aware Routing
+- When the conversation context shows the user was previously browsing \
+workspace files (e.g., found reads, contigs, or other input files), \
+and the follow-up request asks to DO something with those files \
+(assemble, annotate, analyze, run, submit), route to **service** — \
+NOT data or workspace. The service agent can reference files from \
+the conversation context.
+- When the user says "assemble these reads", "annotate this genome", \
+"run BLAST on this sequence", or similar action phrases referencing \
+files from context, ALWAYS route to **service**.
+- Do NOT route computational/workflow requests to the **data** agent. \
+The data agent only searches existing records in BV-BRC Solr \
+collections — it cannot run jobs, assemble genomes, or annotate \
+anything.
+- When the user asks to "find similar genomes", "find closest genomes", \
+"genome distance", or "what genomes are similar to X", route to the \
+**data** agent. This is a data retrieval question (MinHash/Mash \
+similarity search), NOT a workflow submission. All agents have the \
+find_similar_genomes tool, but the data agent is the natural home \
+for similarity queries.
 
 ## Workflow Submission Routing
 - When a user asks to plan/build a service AND also submit/run/execute \

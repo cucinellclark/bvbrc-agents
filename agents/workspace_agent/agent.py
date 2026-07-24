@@ -20,6 +20,9 @@ from typing import Any
 
 # Shared utilities -- deduplicated across all agents
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "shared"))
+# Also add repo root so `shared` package imports work (shared.tools, shared.prompts)
+if str(Path(__file__).resolve().parent.parent.parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from agent_utils import (
     call_fingerprint,
     parse_tool_calls as _parse_tool_calls_raw,
@@ -33,7 +36,11 @@ from agent_messages import (
     MAX_ITERATIONS_FALLBACK,
 )
 
-from workspace_agent.llm_client import chat_completion, chat_completion_stream, create_client
+from workspace_agent.llm_client import (
+    chat_completion,
+    chat_completion_stream,
+    create_client,
+)
 from workspace_agent.models import AgentConfig, AgentResult, AgentState, ToolCall
 from workspace_agent.prompts.system import SYSTEM_PROMPT
 from workspace_agent.tool_registry import TOOL_SCHEMAS
@@ -101,7 +108,9 @@ def _trim_messages_to_fit(
     first_shrinkable = None
     last_shrinkable = None
     for i, msg in enumerate(result):
-        if msg.get("role") in ("tool",) and (last_assistant_idx is None or i < last_assistant_idx):
+        if msg.get("role") in ("tool",) and (
+            last_assistant_idx is None or i < last_assistant_idx
+        ):
             if first_shrinkable is None:
                 first_shrinkable = i
             last_shrinkable = i
@@ -130,11 +139,15 @@ def _trim_messages_to_fit(
             if isinstance(data, dict):
                 # Preserve key metadata
                 if "_summary" in data:
-                    summary_parts.append(f"summary={json.dumps(data['_summary'], default=str)}")
+                    summary_parts.append(
+                        f"summary={json.dumps(data['_summary'], default=str)}"
+                    )
                 elif "result" in data and isinstance(data["result"], dict):
                     inner = data["result"]
                     if "_summary" in inner:
-                        summary_parts.append(f"summary={json.dumps(inner['_summary'], default=str)}")
+                        summary_parts.append(
+                            f"summary={json.dumps(inner['_summary'], default=str)}"
+                        )
                     count = inner.get("count", inner.get("total", "?"))
                     summary_parts.append(f"count={count}")
                     path = inner.get("path", "")
@@ -172,11 +185,16 @@ def _trim_messages_to_fit(
                 # Drop this assistant message and its tool results
                 indices_to_drop = {i}
                 for j in range(i + 1, len(result)):
-                    if result[j].get("role") == "tool" and result[j].get("tool_call_id", "") in tc_ids:
+                    if (
+                        result[j].get("role") == "tool"
+                        and result[j].get("tool_call_id", "") in tc_ids
+                    ):
                         indices_to_drop.add(j)
                     elif result[j].get("role") == "assistant":
                         break
-                result = [m for idx, m in enumerate(result) if idx not in indices_to_drop]
+                result = [
+                    m for idx, m in enumerate(result) if idx not in indices_to_drop
+                ]
                 # Recalculate last_assistant_idx
                 last_assistant_idx = None
                 for k in range(len(result) - 1, -1, -1):
@@ -196,7 +214,9 @@ def _parse_tool_calls(response: Any) -> list[ToolCall]:
     return _parse_tool_calls_raw(response, ToolCall)
 
 
-ProgressCallback = Any  # async (progress: float, total: float|None, message: str) -> None
+ProgressCallback = (
+    Any  # async (progress: float, total: float|None, message: str) -> None
+)
 
 
 async def run_agent(
@@ -240,7 +260,9 @@ async def run_agent(
     state.add_system_message(system_content)
     state.add_user_message(query)
 
-    await emit_progress(progress_callback, 0, None, "Analyzing your workspace question...")
+    await emit_progress(
+        progress_callback, 0, None, "Analyzing your workspace question..."
+    )
 
     # Build auth headers if token is available
     headers: dict[str, str] | None = None
@@ -255,7 +277,9 @@ async def run_agent(
         state.iteration = iteration + 1
 
         await emit_progress(
-            progress_callback, iteration, cfg.max_iterations,
+            progress_callback,
+            iteration,
+            cfg.max_iterations,
             "Planning next step...",
         )
 
@@ -276,7 +300,12 @@ async def run_agent(
 
         # 2. CHECK -- If no tool calls, the LLM produced a final answer
         if not tool_calls:
-            await emit_progress(progress_callback, iteration + 1, cfg.max_iterations, "Composing answer...")
+            await emit_progress(
+                progress_callback,
+                iteration + 1,
+                cfg.max_iterations,
+                "Composing answer...",
+            )
             state.final_answer = content or ""
             state.status = "completed"
             break
@@ -299,7 +328,9 @@ async def run_agent(
                 _tool_msg = f"Retrieving file metadata..."
             elif tc.name == "read_file_preview":
                 _tool_msg = f"Reading file preview..."
-            await emit_progress(progress_callback, iteration, cfg.max_iterations, _tool_msg)
+            await emit_progress(
+                progress_callback, iteration, cfg.max_iterations, _tool_msg
+            )
 
             fp = call_fingerprint(tc)
 
@@ -308,7 +339,9 @@ async def run_agent(
                 duplicate_count += 1
                 state.add_tool_result(
                     tc.id,
-                    json.dumps({"_duplicate": True, "_message": DUPLICATE_CALL_WARNING}),
+                    json.dumps(
+                        {"_duplicate": True, "_message": DUPLICATE_CALL_WARNING}
+                    ),
                 )
                 if duplicate_count >= 2:
                     break
@@ -342,7 +375,9 @@ async def run_agent(
                     _result_msg = f"Found {len(_items)} items."
                 elif result.get("error"):
                     _result_msg = f"Workspace query error, adjusting approach..."
-            await emit_progress(progress_callback, iteration, cfg.max_iterations, _result_msg)
+            await emit_progress(
+                progress_callback, iteration, cfg.max_iterations, _result_msg
+            )
 
             # Serialize and truncate for the LLM context
             result_str = truncate_result(result, max_chars=cfg.max_tool_result_chars)
@@ -354,7 +389,9 @@ async def run_agent(
         # reduce time-to-first-token for remote endpoints (Argo).
         state.status = "max_iterations"
         await emit_progress(
-            progress_callback, cfg.max_iterations, cfg.max_iterations,
+            progress_callback,
+            cfg.max_iterations,
+            cfg.max_iterations,
             f"Synthesizing answer from {len(state.tool_calls_executed)} queries...",
         )
         try:
@@ -374,9 +411,14 @@ async def run_agent(
                 MAX_ITERATIONS_FALLBACK.format(n=len(state.tool_calls_executed))
             )
         except Exception:
-            state.final_answer = (
-                MAX_ITERATIONS_FALLBACK.format(n=len(state.tool_calls_executed))
+            state.final_answer = MAX_ITERATIONS_FALLBACK.format(
+                n=len(state.tool_calls_executed)
             )
 
-    await emit_progress(progress_callback, cfg.max_iterations, cfg.max_iterations, "Workspace exploration complete.")
+    await emit_progress(
+        progress_callback,
+        cfg.max_iterations,
+        cfg.max_iterations,
+        "Workspace exploration complete.",
+    )
     return state.to_result()

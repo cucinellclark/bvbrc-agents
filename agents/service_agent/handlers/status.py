@@ -11,6 +11,9 @@ from service_agent.models import AgentConfig, AgentResult, AgentState
 
 # Shared utilities
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent / "shared"))
+# Also add repo root so `shared` package imports work
+if str(Path(__file__).resolve().parent.parent.parent.parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent))
 from agent_utils import emit_progress  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -49,7 +52,9 @@ async def handle_status(
     # Try submission_id first, fall back to workflow_id
     sub_id = state.submission_id or workflow_id
 
-    await emit_progress(progress_callback, 0, 1, f"Checking status of submission {sub_id}...")
+    await emit_progress(
+        progress_callback, 0, 1, f"Checking status of submission {sub_id}..."
+    )
 
     try:
         _ensure_mcp_path(config)
@@ -57,7 +62,8 @@ async def handle_status(
 
         client = GoWeClient(base_url=config.gowe_url)
         result = await client.get_submission(
-            sub_id, auth_token=config.bvbrc_auth_token,
+            sub_id,
+            auth_token=config.bvbrc_auth_token,
         )
 
         sub_state = result.get("state", "UNKNOWN")
@@ -90,9 +96,7 @@ async def handle_status(
                     task_state = task.get("state", "?")
                     executor = task.get("executor_type", "")
                     executor_str = f" (executor: {executor})" if executor else ""
-                    lines.append(
-                        f"    Task {task_id}: {task_state}{executor_str}"
-                    )
+                    lines.append(f"    Task {task_id}: {task_state}{executor_str}")
 
         # Include timing if available
         created = result.get("created_at")
@@ -109,8 +113,7 @@ async def handle_status(
         logger.error("Failed to get status for submission %s: %s", sub_id, e)
         state.status = "error"
         state.error_message = (
-            f"Failed to check status of submission {sub_id}: "
-            f"{type(e).__name__}: {e}"
+            f"Failed to check status of submission {sub_id}: {type(e).__name__}: {e}"
         )
 
     await emit_progress(progress_callback, 1, 1, "Done.")

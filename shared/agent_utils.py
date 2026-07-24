@@ -2,7 +2,8 @@
 
 These functions handle common patterns in the agent LLM loop:
 parsing tool calls from OpenAI responses, normalizing arguments,
-building conversation history messages, and progress callbacks.
+building conversation history messages, progress callbacks, and LLM
+retry logic.
 
 Imported by each agent via sys.path manipulation:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
@@ -11,11 +12,136 @@ Imported by each agent via sys.path manipulation:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
-from typing import Any
+from typing import Any, Callable, TypeVar
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
+
+
+# ---------------------------------------------------------------------------
+# LLM retry and error classification
+# ---------------------------------------------------------------------------
+
+# Phrases that indicate the request exceeded the model's context window.
+_CONTEXT_ERROR_PHRASES = [
+    "maximum context length",
+    "context_length_exceeded",
+    "too many tokens",
+    "prompt is too long",
+    "token limit",
+    "max_tokens",
+    "request too large",
+]
+
+# Phrases / status codes that indicate a transient (retryable) error.
+_TRANSIENT_ERROR_PHRASES = [
+    "rate_limit",
+    "rate limit",
+    "429",
+    "too many requests",
+    "server_error",
+    "502",
+    "503",
+    "504",
+    "bad gateway",
+    "service unavailable",
+    "gateway timeout",
+    "connection error",
+    "connection reset",
+    "connection refused",
+    "timed out",
+    "timeout",
+    "temporary failure",
+    "overloaded",
+]
+
+
+def is_context_window_error(exc: BaseException) -> bool:
+    """Return True if *exc* indicates the LLM's context window was exceeded.
+
+    This is used by agent loops to catch context-overflow errors and
+    gracefully synthesize a response from data collected so far, rather
+    than crashing the entire agent run.
+    """
+    error_str = str(exc).lower()
+    return any(phrase in error_str for phrase in _CONTEXT_ERROR_PHRASES)
+
+
+def _is_transient_error(exc: BaseException) -> bool:
+    """Return True if *exc* looks like a transient LLM API error."""
+    error_str = str(exc).lower()
+    # Also check for known exception types from the OpenAI SDK
+    exc_type = type(exc).__name__.lower()
+    return any(phrase in error_str for phrase in _TRANSIENT_ERROR_PHRASES) or any(
+        phrase in exc_type
+        for phrase in ["ratelimit", "timeout", "connection", "apierror"]
+    )
+
+
+async def llm_call_with_retry(
+    fn: Callable[..., Any],
+    *args: Any,
+    max_retries: int = 3,
+    base_delay: float = 2.0,
+    max_delay: float = 30.0,
+    **kwargs: Any,
+) -> Any:
+    """Call an async LLM function with exponential backoff on transient errors.
+
+    Retries on rate-limit (429), server errors (5xx), timeouts, and
+    connection errors. Does NOT retry on context-window errors or other
+    client errors (4xx) — those are re-raised immediately.
+
+    Args:
+        fn: The async callable to invoke (e.g., ``chat_completion``).
+        *args: Positional arguments forwarded to *fn*.
+        max_retries: Maximum number of retry attempts (default 3).
+        base_delay: Initial delay in seconds (default 2.0).
+        max_delay: Maximum delay cap in seconds (default 30.0).
+        **kwargs: Keyword arguments forwarded to *fn*.
+
+    Returns:
+        The return value of *fn*.
+
+    Raises:
+        The last exception if all retries are exhausted, or any
+        non-transient exception immediately.
+    """
+    last_exc: BaseException | None = None
+    for attempt in range(max_retries + 1):
+        try:
+            return await fn(*args, **kwargs)
+        except Exception as e:
+            last_exc = e
+
+            # Context-window errors are not transient — re-raise immediately
+            if is_context_window_error(e):
+                raise
+
+            # Only retry on transient errors
+            if not _is_transient_error(e):
+                raise
+
+            if attempt >= max_retries:
+                logger.error("LLM call failed after %d retries: %s", max_retries, e)
+                raise
+
+            delay = min(base_delay * (2**attempt), max_delay)
+            logger.warning(
+                "LLM call failed (attempt %d/%d), retrying in %.1fs: %s",
+                attempt + 1,
+                max_retries + 1,
+                delay,
+                e,
+            )
+            await asyncio.sleep(delay)
+
+    # Should not reach here, but satisfy type checker
+    raise last_exc  # type: ignore[misc]
 
 
 def call_fingerprint(tc: Any) -> str:

@@ -160,7 +160,7 @@ def _build_lifespan(
                 api_key=config.llm_api_key,
                 model=config.routing_model,
                 temperature=0.0,
-                max_tokens=512,  # Routing responses are small JSON
+                max_tokens=4096,  # Thinking models need headroom for reasoning tokens
                 timeout_seconds=config.llm_timeout_seconds,
             )
             _state.routing_llm = LLMClient(routing_config)

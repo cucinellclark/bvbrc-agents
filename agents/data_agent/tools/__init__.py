@@ -2,19 +2,19 @@
 Tool dispatcher for the BV-BRC Data Retrieval Agent.
 
 Maps tool names (from the LLM's tool_calls) to their async implementation
-functions. The `execute_tool` function handles argument unpacking, timeout
-enforcement, and error wrapping.
+functions.  Core implementations come from the shared tool library.
 """
 
 from __future__ import annotations
 
-import asyncio
 import json
-import traceback
 from typing import Any, Dict
 
-from data_agent.tools.search import search_data, facet_query, probe_data
-from data_agent.tools.collections import list_collections, get_collection_fields
+from shared.tools import execute_tool as _shared_execute_tool
+from shared.tools.data import search_data, facet_query, probe_data
+from shared.tools.collections import list_collections, get_collection_fields
+from shared.tools.similar_genome import find_similar_genomes
+from shared.tools.literature import search_literature
 
 # ---------------------------------------------------------------------------
 # Dispatch table: tool name -> async callable
@@ -25,9 +25,8 @@ TOOL_DISPATCH: Dict[str, Any] = {
     "get_collection_fields": get_collection_fields,
     "facet_query": facet_query,
     "probe_data": probe_data,
-    # Group tools will be added later:
-    # "get_genome_group": ...,
-    # "get_feature_group": ...,
+    "find_similar_genomes": find_similar_genomes,
+    "search_literature": search_literature,
 }
 
 
@@ -38,96 +37,50 @@ async def execute_tool(
     base_url: str | None = None,
     headers: Dict[str, str] | None = None,
 ) -> Dict[str, Any]:
+    """Execute a tool by name with the given arguments.
+
+    For API tools (search_data, facet_query, probe_data), injects
+    base_url and headers into the arguments.  For search_literature,
+    injects headers (auth) only.
+
+    Delegates to the shared ``execute_tool`` for dispatch, timeout,
+    and error handling.
     """
-    Execute a tool by name with the given arguments.
-
-    Handles:
-      - Looking up the tool function
-      - Injecting base_url/headers for API tools
-      - Timeout enforcement
-      - Error wrapping (tool errors become structured dicts, not exceptions)
-
-    Args:
-        tool_name: Name of the tool to execute.
-        arguments: Arguments from the LLM's tool_call.
-        timeout_seconds: Maximum execution time.
-        base_url: BV-BRC API base URL to inject.
-        headers: HTTP headers to inject (e.g., auth).
-
-    Returns:
-        Dict with the tool's result, or an error dict if execution failed.
-    """
-    func = TOOL_DISPATCH.get(tool_name)
-    if func is None:
-        return {
-            "error": f"Unknown tool: '{tool_name}'",
-            "available_tools": sorted(TOOL_DISPATCH.keys()),
-        }
-
-    # Inject base_url and headers for API-calling tools
+    # Inject base_url/headers for BV-BRC API tools. search_literature needs
+    # headers (auth) but not base_url — it uses config.literature_rag_url.
     api_tools = {"search_data", "facet_query", "probe_data"}
     if tool_name in api_tools:
         if base_url and "base_url" not in arguments:
             arguments["base_url"] = base_url
         if headers and "headers" not in arguments:
             arguments["headers"] = headers
+    elif tool_name == "search_literature":
+        if headers and "headers" not in arguments:
+            arguments["headers"] = headers
 
-    try:
-        result = await asyncio.wait_for(
-            func(**arguments),
-            timeout=timeout_seconds,
-        )
-        return result
-
-    except asyncio.TimeoutError:
-        return {
-            "error": f"Tool '{tool_name}' timed out after {timeout_seconds}s",
-            "tool": tool_name,
-            "arguments": arguments,
-        }
-
-    except TypeError as e:
-        # Argument mismatch (wrong params from LLM)
-        return {
-            "error": f"Invalid arguments for tool '{tool_name}': {str(e)}",
-            "tool": tool_name,
-            "arguments": arguments,
-        }
-
-    except Exception as e:
-        return {
-            "error": f"Tool '{tool_name}' failed: {type(e).__name__}: {str(e)}",
-            "tool": tool_name,
-            "arguments": arguments,
-            "traceback": traceback.format_exc(),
-        }
+    return await _shared_execute_tool(
+        tool_name=tool_name,
+        arguments=arguments,
+        dispatch_table=TOOL_DISPATCH,
+        timeout_seconds=timeout_seconds,
+        inject_config=False,
+        inject_headers=False,
+    )
 
 
 def truncate_result(result: Dict[str, Any], max_chars: int = 8000) -> str:
-    """
-    Serialize a tool result to JSON, truncating if too large.
+    """Serialize a tool result to JSON, truncating if too large.
 
-    Large results can overwhelm the LLM's context window. This function
-    serializes the result and truncates it with a note if it exceeds
-    max_chars.
-
-    Args:
-        result: The tool result dict.
-        max_chars: Maximum characters for the serialized output.
-
-    Returns:
-        JSON string of the result, possibly truncated.
+    Data-agent-specific: tries to preserve structure by reducing the
+    ``results`` list progressively.
     """
     serialized = json.dumps(result, indent=2, default=str)
 
     if len(serialized) <= max_chars:
         return serialized
 
-    # Truncate and add a note
-    # Try to preserve structure: if there are results, truncate the list
     if "results" in result and isinstance(result["results"], list):
         num_results = len(result["results"])
-        # Find how many records we can fit
         truncated = dict(result)
         for n in range(num_results, 0, -1):
             truncated["results"] = result["results"][:n]

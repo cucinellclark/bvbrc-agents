@@ -52,6 +52,13 @@ which workflow to use.
 5. After user confirmation: call get_workflow_inputs to get the input \
 schema, populate the inputs, and call submit_gowe_job.
 
+== SIMILAR GENOME FINDER ==
+If the user asks to find similar genomes, closest genomes, or genome \
+distance, call find_similar_genomes directly — do NOT use \
+list_gowe_workflows for this. It uses the MinHash service and returns \
+results immediately (no job submission needed). Provide either a \
+genome_id or a workspace fasta_file path.
+
 == GATHERING CONTEXT BEFORE PRESENTING ==
 You SHOULD use tools to gather context BEFORE presenting your \
 recommendation to the user. For example:
@@ -61,6 +68,8 @@ patterns, etc.).
 - If the user mentions an organism or genome, call search_data to \
 resolve it.
 - If the user provides SRA accessions, call get_sra_metadata.
+- If the user wants to find similar or related genomes, call \
+find_similar_genomes with a genome ID or FASTA file path.
 This lets you present a more informed recommendation and ask more \
 specific questions.
 

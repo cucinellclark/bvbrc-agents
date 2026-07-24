@@ -72,17 +72,20 @@ class AgentConfig(BaseModel):
         Path(__file__).resolve().parent.parent.parent / "mcp_server"
     )
 
-    # Workflow engine (legacy — kept for backward compatibility)
-    workflow_engine_url: str = "http://140.221.78.67:12008/api/v1"
-    workflow_engine_timeout: int = 30
-
-    # GoWe workflow engine (CWL v1.2)
+    # GoWe workflow engine
     gowe_url: str = "http://140.221.78.67:12009"
+
+    # Similar Genome Finder (MinHash service)
+    similar_genome_finder_url: str = "https://p3.theseed.org/services/minhash_service"
 
     # SRA tools
     singularity_container_path: str = (
         "/vol/patric3/production/containers/ubuntu-027-11.sif"
     )
+
+    # Literature RAG retrieval gateway
+    literature_rag_url: str = "http://ash.cels.anl.gov:12006"
+    literature_rag_timeout_seconds: int = 45
 
     # User preference for auto-submitting planned workflows.
     # "always_review" (default) | "auto_simple" | "auto_all"

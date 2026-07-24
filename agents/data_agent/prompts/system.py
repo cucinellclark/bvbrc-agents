@@ -238,25 +238,54 @@ _CONSTRAINTS = """\
 - When building genome_id filter lists from prior results, limit to 50 IDs per query \
 to avoid URL length issues. If more are needed, batch the queries.
 - If a query returns 0 results, explain what you tried and suggest alternatives.
-- Do NOT add genome_status, genome_quality, or other quality filters unless the \
-user explicitly requests them. If the user says "they don't have to be complete" \
-or "all genomes", do NOT filter by genome_status. Only add genome_status:Complete \
-when the user specifically asks for complete genomes.
+- GENOME STATUS & QUALITY FILTERING:
+
+  Valid values:
+    genome_status: Complete, WGS, Partial, Plasmid, Deprecated
+    genome_quality: Good, Poor
+
+  General queries (browsing, counting, exploring):
+    Do NOT add genome_status or genome_quality filters unless the user
+    explicitly requests them. If the user says "they don't have to be
+    complete" or "all genomes", do NOT filter by these fields.
+
+  Analysis & group creation contexts (building genome groups, feeding
+  genomes into a service, comparative analyses, phylogenetic trees):
+    Use your judgment based on the context:
+    - Prefer Complete and WGS genomes when available — these have the
+      most reliable assemblies for downstream analysis.
+    - Avoid Deprecated genomes — they have been superseded or withdrawn.
+    - Prefer Partial genomes over Deprecated — Partial assemblies are
+      incomplete but still contain valid data, while Deprecated genomes
+      should not be used.
+    - Favor Good quality genomes over Poor when the result set is large
+      enough to afford filtering.
+    - If filtering would reduce the result set to too few genomes for
+      the analysis, relax the filters (e.g., include Partial, or allow
+      Poor quality).
+    - Always mention any genome_status or genome_quality filters you
+      applied so the user is aware of what was included or excluded.
+
+  Examples:
+    genus:Salmonella AND genome_status:(Complete OR WGS) AND NOT genome_status:Deprecated AND genome_quality:Good
+    genus:Mycobacterium AND genome_quality:Good
 """
 
 # ---------------------------------------------------------------------------
 # Assembled system prompt
 # ---------------------------------------------------------------------------
-SYSTEM_PROMPT = "\n".join([
-    _PREAMBLE,
-    COLLECTION_REFERENCE,
-    _QUERY_SYNTAX,
-    _ID_RELATIONSHIPS,
-    _STRATEGY,
-    _PROBE_STRATEGY,
-    _EFFICIENCY,
-    _CONSTRAINTS,
-])
+SYSTEM_PROMPT = "\n".join(
+    [
+        _PREAMBLE,
+        COLLECTION_REFERENCE,
+        _QUERY_SYNTAX,
+        _ID_RELATIONSHIPS,
+        _STRATEGY,
+        _PROBE_STRATEGY,
+        _EFFICIENCY,
+        _CONSTRAINTS,
+    ]
+)
 
 
 # ---------------------------------------------------------------------------

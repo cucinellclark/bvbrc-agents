@@ -1,14 +1,14 @@
 """
-Core agent orchestrator for the BV-BRC Service Agent v2.
+Core agent orchestrator for the BV-BRC Service Agent.
 
 Intent-dispatched architecture:
-  1. Classify intent (lightweight LLM call or main model, configurable)
+  1. Classify intent (lightweight LLM call, configurable)
   2. Dispatch to the appropriate handler:
-     - plan   -> 3-phase pipeline (Decompose -> Build -> Compose -> Persist)
-     - submit -> direct workflow engine call
-     - status -> direct workflow engine call
-     - cancel -> direct workflow engine call
-     - modify -> reserved for future use (falls through to plan)
+     - plan   -> GoWe-first workflow: discover, select, populate, submit
+     - submit -> direct GoWe call
+     - status -> direct GoWe call
+     - cancel -> direct GoWe call
+     - modify -> reserved (falls through to plan)
      - unknown -> falls through to plan (LLM-powered fallback)
 
 Single entry point: run_agent().
@@ -16,8 +16,6 @@ Single entry point: run_agent().
 
 from __future__ import annotations
 
-import asyncio
-import json
 import logging
 import sys
 from pathlib import Path
@@ -25,17 +23,15 @@ from typing import Any
 
 # Shared utilities -- deduplicated across all agents
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "shared"))
+# Also add repo root so `shared` package imports work (shared.tools, shared.prompts)
+if str(Path(__file__).resolve().parent.parent.parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from agent_utils import emit_progress
 
 from service_agent.classifier import classify_intent
 from service_agent.handlers import handle_submit, handle_status, handle_cancel
 from service_agent.models import AgentConfig, AgentResult, AgentState
 from service_agent.phases.populate import populate_and_submit
-
-# Legacy 3-phase imports (kept for reference, not used in primary flow)
-from service_agent.phases.decompose import decompose
-from service_agent.phases.build import build_step
-from service_agent.phases.compose import compose_from_registry, compose_from_cwl
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +49,7 @@ async def run_agent(
     """Service agent entry point.  Classifies intent, then dispatches.
 
     Returns AgentResult with status:
-    - "completed": Workflow manifest ready, or lifecycle operation succeeded
+    - "completed": Workflow submitted, or lifecycle operation succeeded
     - "needs_input": Agent needs user input to continue (question in result)
     - "error": Unrecoverable error
 
@@ -64,7 +60,7 @@ async def run_agent(
         progress_callback: Optional async callback for progress updates.
 
     Returns:
-        AgentResult with manifest, question, operation_message, or error.
+        AgentResult with operation result or error.
     """
     cfg = config or AgentConfig()
     ctx = context or {}
@@ -160,12 +156,17 @@ async def _run_gowe_flow(
     submits the job.  All in a single LLM loop.
     """
     await emit_progress(
-        progress_callback, 0, 1,
+        progress_callback,
+        0,
+        1,
         "Discovering workflows and preparing job...",
     )
 
     state = await populate_and_submit(
-        query, config, state, progress_callback=progress_callback,
+        query,
+        config,
+        state,
+        progress_callback=progress_callback,
     )
 
     if state.status in ("needs_input", "error"):
@@ -173,308 +174,3 @@ async def _run_gowe_flow(
 
     await emit_progress(progress_callback, 1, 1, "Done.")
     return state.to_result()
-
-
-# ======================================================================
-# 3-Phase Planning Pipeline (legacy -- kept for reference)
-# ======================================================================
-
-
-async def _run_planning_pipeline(
-    query: str,
-    config: AgentConfig,
-    state: AgentState,
-    progress_callback: ProgressCallback | None = None,
-) -> AgentResult:
-    """Three-phase workflow construction: Decompose -> Build -> Compose.
-
-    This is the existing planning logic, extracted from the former
-    run_agent() to keep the dispatcher clean.
-    """
-
-    # ------------------------------------------------------------------
-    # Phase 1: Decompose (if no plan yet)
-    # ------------------------------------------------------------------
-    if not state.workflow_plan:
-        state.current_phase = "decompose"
-        await emit_progress(
-            progress_callback,
-            0,
-            3,
-            "Phase 1: Analyzing request and identifying services...",
-        )
-        state = await decompose(
-            query, config, state, progress_callback=progress_callback
-        )
-
-        if state.status == "needs_input":
-            return state.to_result()
-
-        if state.status == "error":
-            return state.to_result()
-
-        if state.status == "completed":
-            # submit_workflow short-circuit: decompose handled a submit
-            # request and set status to "completed" without producing a
-            # workflow plan.  Return immediately — no build/compose needed.
-            # NOTE: This path is legacy -- the classifier should catch
-            # submit requests before we reach here.  Kept as a safety net.
-            return state.to_result()
-
-        if not state.workflow_plan:
-            state.status = "error"
-            state.error_message = "Phase 1 completed without producing a plan."
-            return state.to_result()
-
-    # ------------------------------------------------------------------
-    # Phase 2: Build Steps (incrementally, batch independent steps)
-    # ------------------------------------------------------------------
-    state.current_phase = "build"
-    _total_steps = len(state.workflow_plan.steps) if state.workflow_plan else 0
-    await emit_progress(
-        progress_callback, 1, 3, f"Phase 2: Building {_total_steps} service step(s)..."
-    )
-
-    for batch in state.next_buildable_batches():
-        if len(batch) == 1:
-            await emit_progress(
-                progress_callback, 1, 3, f"Building step '{batch[0]}'..."
-            )
-            # Sequential build for single-step batches
-            state = await build_step(
-                batch[0], config, state, progress_callback=progress_callback
-            )
-
-            if state.status == "needs_input":
-                return state.to_result()
-
-            if state.status == "error":
-                return state.to_result()
-        else:
-            # Parallel build for independent steps in the same batch
-            await emit_progress(
-                progress_callback,
-                1,
-                3,
-                f"Building {len(batch)} steps in parallel: {', '.join(batch)}...",
-            )
-            results = await asyncio.gather(
-                *[
-                    _build_step_isolated(
-                        step_id, config, state, progress_callback=progress_callback
-                    )
-                    for step_id in batch
-                ],
-                return_exceptions=True,
-            )
-
-            for step_id, result in zip(batch, results):
-                if isinstance(result, Exception):
-                    state.status = "error"
-                    state.error_message = (
-                        f"Parallel build failed for step '{step_id}': "
-                        f"{type(result).__name__}: {str(result)}"
-                    )
-                    return state.to_result()
-
-                if result.status == "needs_input":
-                    state.status = "needs_input"
-                    state.question = result.question
-                    return state.to_result()
-
-                if result.status == "error":
-                    state.status = "error"
-                    state.error_message = result.error_message
-                    return state.to_result()
-
-                # Merge completed step and tool executions back
-                if step_id in result.completed_steps:
-                    state.completed_steps[step_id] = result.completed_steps[step_id]
-                state.tool_executions.extend(result.tool_executions)
-
-    # ------------------------------------------------------------------
-    # Phase 3: Compose (programmatic -- no LLM)
-    # ------------------------------------------------------------------
-    state.current_phase = "compose"
-    await emit_progress(
-        progress_callback, 2, 3, "Phase 3: Composing workflow manifest..."
-    )
-
-    # Use pre-registered workflow path for single-step, CWL generation
-    # for multi-step.  These are independent paths -- no fallback.
-    if len(state.completed_steps) == 1:
-        manifest = await compose_from_registry(state, config)
-    else:
-        manifest = compose_from_cwl(state, config)
-
-    if isinstance(manifest, dict) and "error" in manifest:
-        state.status = "error"
-        state.error_message = manifest["error"]
-        return state.to_result()
-
-    state.manifest = manifest
-    state.status = "completed"
-    state.current_phase = "done"
-
-    source = manifest.get("source")
-
-    if source == "pre_registered":
-        # Workflow already exists in GoWe -- use it directly
-        state.workflow_id = manifest["workflow_id"]
-        state.submission_inputs = manifest["submission_inputs"]
-        state.persisted = True
-        logger.info(
-            "Using pre-registered GoWe workflow: workflow_id=%s",
-            state.workflow_id,
-        )
-    elif source == "generated":
-        # CWL was generated -- register it with GoWe to get a workflow_id
-        await emit_progress(
-            progress_callback, 2, 3, "Registering CWL workflow with GoWe..."
-        )
-        try:
-            _ensure_mcp_path(config)
-            from common.gowe_client import GoWeClient
-
-            client = GoWeClient(base_url=config.gowe_url)
-            cwl_doc = manifest.get("cwl_document")
-            submission_inputs = manifest.get("submission_inputs")
-
-            if cwl_doc:
-                engine_result = await client.register_workflow(
-                    cwl_doc,
-                    config.bvbrc_auth_token or "",
-                    name=state.workflow_plan.workflow_name
-                    if state.workflow_plan
-                    else None,
-                )
-                state.workflow_id = engine_result.get("id")
-                state.cwl_document = cwl_doc
-                state.submission_inputs = submission_inputs
-                state.persisted = True
-                if state.workflow_id and isinstance(state.manifest, dict):
-                    state.manifest["workflow_id"] = state.workflow_id
-                logger.info(
-                    "Generated CWL registered with GoWe: workflow_id=%s",
-                    state.workflow_id,
-                )
-            else:
-                state.persisted = False
-                logger.warning(
-                    "No CWL document in compose output; skipping GoWe registration."
-                )
-        except Exception as e:
-            state.persisted = False
-            if isinstance(state.manifest, dict):
-                state.manifest.pop("workflow_id", None)
-            logger.warning(
-                "Failed to register CWL with GoWe: %s: %s",
-                type(e).__name__,
-                e,
-            )
-
-    await emit_progress(
-        progress_callback, 2, 3, "Workflow manifest composed successfully."
-    )
-
-    # ------------------------------------------------------------------
-    # Auto-submit (based on user preference in context)
-    # ------------------------------------------------------------------
-    preference = (
-        state.context.get("auto_submit_preference")
-        or getattr(config, "auto_submit_preference", None)
-        or "always_review"
-    )
-    if preference != "always_review" and state.workflow_id and state.persisted:
-        complexity = _assess_complexity(state)
-        should_submit = preference == "auto_all" or (
-            preference == "auto_simple" and complexity == "simple"
-        )
-        if should_submit:
-            logger.info(
-                "Auto-submitting workflow %s (preference=%s, complexity=%s)",
-                state.workflow_id,
-                preference,
-                complexity,
-            )
-            await handle_submit(
-                state.workflow_id,
-                config,
-                state,
-                progress_callback,
-            )
-            # The submit handler mutated state; mark as auto-submitted
-            state.auto_submitted = True
-            return state.to_result()
-
-    # ------------------------------------------------------------------
-    # Auto-submit (based on classifier detecting "and submit" intent)
-    # ------------------------------------------------------------------
-    if (
-        state.classified_intent
-        and state.classified_intent.submit_after_plan
-        and state.workflow_id
-        and state.persisted
-        and not state.auto_submitted
-    ):
-        logger.info(
-            "Auto-submitting workflow %s (submit_after_plan=True from classifier)",
-            state.workflow_id,
-        )
-        await handle_submit(
-            state.workflow_id,
-            config,
-            state,
-            progress_callback,
-        )
-        state.auto_submitted = True
-        return state.to_result()
-
-    await emit_progress(progress_callback, 3, 3, "Workflow planning complete.")
-    return state.to_result()
-
-
-def _assess_complexity(state: AgentState) -> str:
-    """Assess workflow complexity for auto-submit decisions.
-
-    Returns "simple" for single-step workflows with no dependencies,
-    "complex" for everything else.
-    """
-    if not state.workflow_plan:
-        return "simple"
-    steps = state.workflow_plan.steps
-    if len(steps) == 1 and not steps[0].depends_on:
-        return "simple"
-    return "complex"
-
-
-async def _build_step_isolated(
-    step_id: str,
-    config: AgentConfig,
-    parent_state: AgentState,
-    progress_callback: ProgressCallback | None = None,
-) -> AgentState:
-    """Build a step with an isolated state copy for parallel execution.
-
-    Creates a minimal state copy with the plan and completed steps from
-    the parent, runs build_step, and returns the updated state.
-    """
-    isolated_state = AgentState(
-        query=parent_state.query,
-        context=parent_state.context,
-        current_phase="build",
-        workflow_plan=parent_state.workflow_plan,
-        completed_steps=dict(parent_state.completed_steps),
-        start_time=parent_state.start_time,
-    )
-
-    return await build_step(
-        step_id, config, isolated_state, progress_callback=progress_callback
-    )
-
-
-def _ensure_mcp_path(config: AgentConfig) -> None:
-    """Add the MCP server path to sys.path if needed."""
-    mcp_path = config.mcp_server_path
-    if mcp_path and mcp_path not in sys.path:
-        sys.path.insert(0, mcp_path)

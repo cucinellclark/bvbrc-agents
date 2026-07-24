@@ -12,7 +12,12 @@ from typing import Any
 from openai import AsyncOpenAI
 
 from analysis_agent.models import AgentConfig
-from llm_config import get_excluded_params, get_temperature_override, uses_max_completion_tokens
+from llm_config import (
+    get_excluded_params,
+    get_temperature_override,
+    uses_max_completion_tokens,
+)
+from agent_utils import llm_call_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +51,9 @@ def _build_kwargs(
     # Temperature handling
     temp_override = get_temperature_override(config.llm_model)
     if "temperature" not in excluded:
-        kwargs["temperature"] = temp_override if temp_override is not None else config.temperature
+        kwargs["temperature"] = (
+            temp_override if temp_override is not None else config.temperature
+        )
 
     # Use max_completion_tokens for models that require it
     if uses_max_completion_tokens(config.llm_model):
@@ -88,7 +95,11 @@ async def chat_completion(
     """
     cfg = config or AgentConfig()
     kwargs = _build_kwargs(cfg, messages, tools, tool_choice)
-    response = await client.chat.completions.create(**kwargs)
+
+    async def _do_call():
+        return await client.chat.completions.create(**kwargs)
+
+    response = await llm_call_with_retry(_do_call, max_retries=3, base_delay=2.0)
     return response
 
 
@@ -126,6 +137,5 @@ async def chat_completion_stream(
             yield delta.content
 
     logger.info(
-        f"LLM stream response: {len(full_content)} chars, "
-        f"preview={full_content[:80]!r}"
+        f"LLM stream response: {len(full_content)} chars, preview={full_content[:80]!r}"
     )
