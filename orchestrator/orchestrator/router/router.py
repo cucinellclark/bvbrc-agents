@@ -90,6 +90,14 @@ async def route(
         page_context=request.page_context,
     )
 
+    logger.info(
+        f"Routing prompt sizes: system={len(system_prompt)} chars, "
+        f"user={len(user_prompt)} chars, "
+        f"llm_model={llm.config.model!r} @ {llm.config.base_url!r}, "
+        f"page_context={'yes' if request.page_context else 'no'} "
+        f"({len(request.page_context or '')} chars)"
+    )
+
     max_routing_attempts = 2
     try:
         raw_response = ""

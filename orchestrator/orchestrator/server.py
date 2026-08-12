@@ -441,6 +441,11 @@ def create_app(config_path: str | None = None) -> FastAPI:
                     "model": _state.config.llm_model if _state.config else None,
                     "base_url": _state.config.llm_base_url if _state.config else None,
                 },
+                "routing_llm": {
+                    "model": _state.routing_llm.config.model if _state.routing_llm else None,
+                    "base_url": _state.routing_llm.config.base_url if _state.routing_llm else None,
+                    "active": _state.routing_llm is not None,
+                },
             },
         )
 
