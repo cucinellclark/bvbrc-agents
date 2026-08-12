@@ -73,6 +73,15 @@ into another across different agent domains. Do NOT route to planning \
 for single-agent questions, even if complex. Only use planning when \
 multiple agents need to coordinate and the user would benefit from \
 reviewing a structured plan before execution.
+- Route to the **planning** agent when the user wants to run the SAME \
+workflow/service on MULTIPLE independent samples. This includes: \
+"assemble all the reads in this folder", "annotate these 5 genomes", \
+"assemble SRR123, SRR456, SRR789", or any request that implies \
+applying a service to each item in a collection separately. The \
+planning agent will identify the samples, confirm the list with the \
+user, and coordinate the batch submission. Single-sample requests \
+(one file, one SRA accession, one genome) should still go to **service** \
+directly.
 - Route to the **planning** agent when the user wants to find specific \
 data and then perform an analysis, experiment, or comparison on it — \
 especially when the request implies multiple phases (retrieve data, \
@@ -93,7 +102,9 @@ and browse workspace files inline as part of its workflow. Only use a \
 analytical requests, prefer **planning** over **pipeline**.
 - If the request requires checking workspace files and THEN running a \
 service on them, route to **service** directly — it can browse the \
-workspace to find input files.
+workspace to find input files. EXCEPTION: if the request implies \
+running a service on ALL or MULTIPLE files/samples in a folder \
+(batch operation), route to **planning** instead.
 - If the request involves multiple independent tasks for different agents, \
 use a **pipeline** with no dependencies between the steps.
 - Use **agent** (not pipeline) when only one agent is needed, even if the \

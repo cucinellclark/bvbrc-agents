@@ -352,8 +352,8 @@ async def orchestrate(
                 # pause the plan so the frontend can wait for the workflow
                 # to finish before advancing to the next step.
                 if step_result.get("submission_id") or step_result.get(
-                    "auto_submitted"
-                ):
+                    "submission_ids"
+                ) or step_result.get("auto_submitted"):
                     # Step completed (the submission itself succeeded)
                     yield Event(
                         type=EventType.PLAN_STEP_COMPLETED,
@@ -378,6 +378,7 @@ async def orchestrate(
                             "step_index": step_exec.get("step_index"),
                             "workflow_id": step_result.get("workflow_id", ""),
                             "submission_id": step_result.get("submission_id", ""),
+                            "submission_ids": step_result.get("submission_ids", []),
                             "result_summary": step_result.get("answer", "")[:500],
                         },
                     )

@@ -312,6 +312,7 @@ class AgentState(BaseModel):
 
     # GoWe-specific state
     submission_id: str | None = None  # GoWe submission ID (separate from workflow_id)
+    submission_ids: list[str] = Field(default_factory=list)  # All GoWe submission IDs (batch support)
     cwl_document: dict | None = None  # Generated CWL document
     submission_inputs: dict | None = None  # Resolved submission inputs
 
@@ -486,6 +487,7 @@ class AgentState(BaseModel):
             operation_message=self.operation_message,
             auto_submitted=self.auto_submitted,
             submission_id=self.submission_id,
+            submission_ids=self.submission_ids,
             cwl_document=self.cwl_document,
         )
 
@@ -535,6 +537,7 @@ class AgentResult(BaseModel):
 
     # GoWe-specific fields
     submission_id: str | None = None
+    submission_ids: list[str] = Field(default_factory=list)  # All submission IDs (batch)
     cwl_document: dict | None = None
 
     # Lifecycle operation output (submit, status, cancel — non-planning paths)

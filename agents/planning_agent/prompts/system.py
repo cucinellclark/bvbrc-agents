@@ -267,6 +267,51 @@ Use `"direct"` for steps you can handle yourself:
    group_type="feature_group", group_action="add_to",
    id_field="feature_id")
 
+**Batch service — same workflow on multiple independent samples:**
+Use this pattern when the user wants to run the same workflow on
+ALL files in a folder, multiple SRA accessions, or any collection
+of independent samples.
+
+1. [workspace] Browse the folder to identify all samples. For read
+   files, detect paired-end patterns (R1/R2, _1/_2). For SRA
+   accessions, use get_sra_metadata to resolve them.
+2. [review] Present the sample list to the user for confirmation.
+   Show how many samples were found, their names, and whether
+   they are paired-end or single-end. Let the user approve,
+   deselect, or adjust before proceeding.
+   (review_config: data_source_step="identify_samples",
+   review_type="data_selection",
+   prompt="I found N samples. Please confirm which to submit.")
+3. [service] Submit the jobs. The service step description MUST
+   specify:
+   a. The workflow to use (e.g., "Genome Assembly")
+   b. The exact list of samples (file paths or SRA accessions)
+   c. Whether to submit SEPARATE jobs (one per sample) or ONE
+      job with all samples combined.
+
+**How to decide separate vs combined jobs:**
+- Workflows that process ONE sample at a time (GenomeAssembly,
+  ComprehensiveGenomeAnalysis, Variation, SARS2Assembly,
+  TaxonomicClassification, MetagenomeBinning): submit SEPARATE
+  jobs — one per sample.
+- Workflows that inherently operate on MULTIPLE samples together
+  (RNASeq, ComparativeSystems, PhylogeneticTree, CoreGenomeMlst):
+  submit ONE job with all samples combined.
+- If unsure, call `list_gowe_workflows` to check the workflow
+  description, and default to separate jobs unless the workflow
+  clearly expects multiple samples.
+
+Example step 3 description for separate jobs:
+  "Submit separate Genome Assembly jobs for each of these 5 samples:
+   1. Sample_A: read1=/path/A_R1.fastq, read2=/path/A_R2.fastq
+   2. Sample_B: read1=/path/B_R1.fastq, read2=/path/B_R2.fastq
+   ... (list all samples)
+   Use one submit_gowe_job call per sample."
+
+Example step 3 description for combined job:
+  "Submit a single RNASeq job with all 6 samples as srr_libs:
+   SRR123, SRR456, SRR789, SRR012, SRR345, SRR678."
+
 ## Guidelines
 
 - Keep plans concise: 2-6 steps is typical. More than 8 steps suggests

@@ -149,9 +149,10 @@ async def populate_and_submit(
         if not tool_calls:
             if content:
                 # Check if the LLM is done (already submitted) or asking a question
-                if state.submission_id:
-                    # Already submitted, this is a summary message
+                if state.submission_ids:
+                    # One or more jobs submitted; this is the summary message
                     state.status = "completed"
+                    state.current_phase = "done"
                     state.operation_message = content
                 else:
                     state.status = "needs_input"
@@ -173,7 +174,11 @@ async def populate_and_submit(
             _msgs = {
                 "list_gowe_workflows": "Discovering available workflows...",
                 "get_workflow_inputs": "Getting workflow input schema...",
-                "submit_gowe_job": "Submitting job to GoWe...",
+                "submit_gowe_job": (
+                    f"Submitting job {len(state.submission_ids) + 1} to GoWe..."
+                    if state.submission_ids
+                    else "Submitting job to GoWe..."
+                ),
                 "workspace_browse": "Browsing workspace for inputs...",
                 "read_file_info": "Reading file metadata...",
                 "search_data": "Querying BV-BRC data...",
@@ -229,42 +234,28 @@ async def populate_and_submit(
                 and "submission_id" in result
                 and "error" not in result
             ):
+                sub_id = result.get("submission_id")
                 state.workflow_id = result.get("workflow_id")
-                state.submission_id = result.get("submission_id")
+                state.submission_id = sub_id  # backward compat: last submitted
+                state.submission_ids.append(sub_id)
                 state.auto_submitted = True
                 state.persisted = True
-                state.status = "completed"
-                state.current_phase = "done"
 
                 logger.info(
-                    "Job submitted: workflow_id=%s, submission_id=%s",
+                    "Job submitted (%d so far): workflow_id=%s, submission_id=%s",
+                    len(state.submission_ids),
                     state.workflow_id,
-                    state.submission_id,
+                    sub_id,
                 )
 
-                # Feed result back so the LLM can produce a summary
+                # Feed result back so LLM can continue (more samples) or summarize
                 result_str = truncate_result(result)
                 state.add_tool_result(tc.id, result_str)
-
-                # Let the LLM produce a final summary message
-                try:
-                    summary_response = await chat_completion(
-                        client=client,
-                        messages=state.messages,
-                        tools=POPULATE_TOOLS,
-                        config=config,
-                        tool_choice="none",
-                    )
-                    summary = get_response_content(summary_response)
-                    if summary:
-                        state.operation_message = summary
-                except Exception:
-                    state.operation_message = (
-                        f"Job submitted successfully. "
-                        f"Submission ID: {state.submission_id}"
-                    )
-
-                return state
+                # Do NOT return here -- let the LLM continue the loop.
+                # It may have more samples to submit. The loop exits when
+                # the LLM produces a text response (no tool calls) after
+                # all submissions are done.
+                continue
 
             # Feed result back for LLM to continue
             result_str = truncate_result(result)

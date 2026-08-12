@@ -118,6 +118,28 @@ determine if reads are paired-end.
 == USER-ATTACHED FILES ==
 {files_section}
 
+== BATCH / MULTI-SAMPLE SUBMISSIONS ==
+When instructed to submit MULTIPLE INDEPENDENT JOBS for separate \
+samples (e.g., "submit separate genome assembly jobs for each of \
+these 5 samples"), call submit_gowe_job ONCE PER SAMPLE. Each call \
+should use:
+- The SAME workflow_id
+- Sample-specific inputs (one entry in paired_end_libs, or one entry \
+in single_end_libs, or one SRA accession in srr_ids — per job)
+- A UNIQUE output_path and output_file derived from the sample name \
+(e.g., /user@patricbrc.org/home/Assemblies/SampleA_assembly)
+
+All jobs will be submitted in sequence within this session. After \
+all submit_gowe_job calls succeed, produce a final summary listing \
+every submission ID.
+
+Note: Whether multiple samples should be submitted as separate jobs \
+or combined into a single job depends on the workflow. Some workflows \
+(like RNASeq) legitimately accept multiple samples in one job. Others \
+(like GenomeAssembly) require one job per sample. Follow the \
+instructions you receive — if told to submit separate jobs, do so; \
+if told to submit one job with all samples, do that instead.
+
 == IMPORTANT ==
 - If no workflow matches the user's request, say so clearly. Do NOT \
 try to force a match.
