@@ -153,14 +153,16 @@ def _build_lifespan(
             f"LLM client initialized: {llm_config.model} @ {llm_config.base_url}"
         )
 
-        # --- Initialize routing LLM client (faster model) ---
-        if config.routing_model and config.routing_model != config.llm_model:
+        # --- Initialize routing LLM client ---
+        # Routing is an internal classification task and should always use
+        # a dedicated model, independent of the user's model selection.
+        if config.routing_model:
             routing_config = LLMConfig(
-                base_url=config.llm_base_url,
-                api_key=config.llm_api_key,
+                base_url=config.routing_base_url or config.llm_base_url,
+                api_key=config.routing_api_key or config.llm_api_key,
                 model=config.routing_model,
                 temperature=0.0,
-                max_tokens=4096,  # Thinking models need headroom for reasoning tokens
+                max_tokens=4096,
                 timeout_seconds=config.llm_timeout_seconds,
             )
             _state.routing_llm = LLMClient(routing_config)
@@ -319,16 +321,16 @@ def create_app(config_path: str | None = None) -> FastAPI:
         request.auth_token = token
 
         llm = _resolve_llm(request)
-        # When the request specifies an LLM override, use that model for
-        # everything — including routing.  Only fall back to the dedicated
-        # (cheaper/faster) routing model when no override is provided.
-        routing_llm = None if request.llm_override else _state.routing_llm
+        # Always use the dedicated routing LLM if available.  Routing is
+        # an internal classification task — it must not be affected by the
+        # user's model selection (which may be a model that struggles
+        # with structured JSON output).
         try:
             response = await orchestrate_to_response(
                 request,
                 _state.registry,
                 llm,
-                routing_llm=routing_llm,
+                routing_llm=_state.routing_llm,
             )
             return response
         except Exception as e:
@@ -360,7 +362,6 @@ def create_app(config_path: str | None = None) -> FastAPI:
         request.auth_token = token
 
         llm = _resolve_llm(request)
-        routing_llm = None if request.llm_override else _state.routing_llm
 
         async def event_generator() -> AsyncGenerator[dict[str, str], None]:
             try:
@@ -368,7 +369,7 @@ def create_app(config_path: str | None = None) -> FastAPI:
                     request,
                     _state.registry,
                     llm,
-                    routing_llm=routing_llm,
+                    routing_llm=_state.routing_llm,
                 ):
                     yield {
                         "event": event.type.value,

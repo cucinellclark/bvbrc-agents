@@ -82,12 +82,22 @@ class OrchestratorConfig(BaseModel):
     llm_max_tokens: int = _LLM_DEFAULTS["max_tokens"]
     llm_timeout_seconds: int = _LLM_DEFAULTS["timeout_seconds"]
 
-    # Optional faster/cheaper model for routing decisions.
-    # Routing is a simple JSON classification task — a smaller model
-    # like gpt41mini or gpt41nano is much faster and still accurate.
+    # Optional model for routing decisions.
+    # Routing is a JSON classification task — a dedicated model ensures
+    # routing always works regardless of what model the user selects.
     # When set, the orchestrator creates a separate LLM client for routing.
     # When None, the default LLM model is used for routing.
     routing_model: str | None = None
+
+    # Optional separate base URL for the routing model endpoint.
+    # When set, the routing LLM client uses this URL instead of llm_base_url.
+    # This allows the routing model to run on a different host/port.
+    # When None, falls back to llm_base_url.
+    routing_base_url: str | None = None
+
+    # Optional separate API key for the routing model endpoint.
+    # When None, falls back to llm_api_key.
+    routing_api_key: str | None = None
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> OrchestratorConfig:

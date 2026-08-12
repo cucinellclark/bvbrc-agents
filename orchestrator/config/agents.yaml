@@ -20,7 +20,7 @@ agents:
       epitope, and other BV-BRC collections. Returns structured data results
       including counts, facets, and tabular data. Can also find similar
       genomes using Mash/MinHash genomic distance estimation.
-    endpoint: "http://140.221.78.15:8053"
+    endpoint: "http://140.221.78.15:8153"
     protocol: "mcp"
     capabilities:
       - data_retrieval
@@ -44,7 +44,7 @@ agents:
       for genome assembly, annotation, BLAST, phylogenetics, and 30+ other
       BV-BRC services. Returns workflow configurations for user review.
       Handles multi-step pipelines with dependencies between services.
-    endpoint: "http://140.221.78.15:8053"
+    endpoint: "http://140.221.78.15:8153"
     protocol: "mcp"
     capabilities:
       - workflow_planning
@@ -68,7 +68,7 @@ agents:
       a natural language summary and structured data (file listings,
       metadata, UI grid payloads) for rich rendering. Read-only -- does
       not create, modify, or delete files.
-    endpoint: "http://140.221.78.15:8053"
+    endpoint: "http://140.221.78.15:8153"
     protocol: "mcp"
     capabilities:
       - workspace_browsing
@@ -92,7 +92,7 @@ agents:
       explanations, troubleshooting, and best practices. Can also look up
       service parameter schemas for detailed configuration guidance.
       Read-only -- does not run, submit, or execute any jobs.
-    endpoint: "http://140.221.78.15:8053"
+    endpoint: "http://140.221.78.15:8153"
     protocol: "mcp"
     capabilities:
       - helpdesk_guidance
@@ -117,7 +117,7 @@ agents:
       gene counts, BLAST hits, variant counts, etc.). Returns both a
       natural language summary and structured data (file listings,
       metrics, report links) for rich UI rendering.
-    endpoint: "http://140.221.78.15:8053"
+    endpoint: "http://140.221.78.15:8153"
     protocol: "mcp"
     capabilities:
       - output_analysis
@@ -142,7 +142,7 @@ agents:
       clarification questions when the request is ambiguous. Plans are
       presented to the user for review and editing before execution.
       Do NOT route simple single-agent questions here.
-    endpoint: "http://140.221.78.15:8053"
+    endpoint: "http://140.221.78.15:8153"
     protocol: "mcp"
     capabilities:
       - multi_step_planning
@@ -164,11 +164,10 @@ orchestrator:
   health_check_interval: 60
   auto_discover: true
 
-  # Use a smaller/faster model for routing decisions.
-  # Routing is a simple JSON classification task — a smaller model
-  # reduces time-to-first-action significantly with remote endpoints.
-  # Set to null or omit to use the default LLM model for routing.
-  # NOTE: Previously set to "gpt41mini" which does not exist on the
-  # Argo endpoint, causing 0-char responses and fallback misrouting.
-  # Set to null so routing uses the same model as the frontend/agents.
-  routing_model: null
+  # Dedicated model for routing decisions.  Routing is an internal JSON
+  # classification task — it always uses this model regardless of what
+  # model the user selects for their conversation.  This prevents routing
+  # failures when the user's model struggles with structured JSON output.
+  routing_model: "Qwen/Qwen3.6-35B-A3B"
+  routing_base_url: "http://mango.cels.anl.gov:8004/v1"
+  routing_api_key: "not-needed"
