@@ -23,6 +23,8 @@ workflows.  Follow these rules:
 - Use schema defaults for missing non-required inputs.
 - Skip system inputs (prefixed with ``_``).
 - Auto-generate ``output_path`` and ``output_file`` if not specified by the user.
+  The system automatically rewrites output paths to place results under the
+  chat session's workspace folder. Just provide a descriptive folder name.
 
 ### File Path Format
 - Plain workspace path strings only (e.g. ``/user@domain/home/folder/file.fasta``).

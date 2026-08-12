@@ -144,10 +144,36 @@ async def submit_gowe_job(
                 value = _clean_record_values(value)
             cleaned_inputs[key] = value
 
+        # ----- Session-based output path rewriting -----
+        # When a submission originates from a chat session, rewrite
+        # output_path so results land under
+        #   /<user>/home/.chats/<session_uuid>/<descriptive_subfolder>
+        session_id = getattr(config, "session_id", None)
+        workspace_path = getattr(config, "workspace_path", None)
+
+        if session_id and workspace_path and "output_path" in cleaned_inputs:
+            original_output_path = cleaned_inputs["output_path"]
+            # Extract the last path segment as the descriptive subfolder
+            subfolder = original_output_path.rstrip("/").rsplit("/", 1)[-1]
+            session_base = f"{workspace_path}/.chats/{session_id}"
+            cleaned_inputs["output_path"] = f"{session_base}/{subfolder}"
+            logger.info(
+                "Rewrote output_path: %s -> %s (session=%s)",
+                original_output_path,
+                cleaned_inputs["output_path"],
+                session_id,
+            )
+
+        # ----- GoWe submission labels -----
+        labels: Dict[str, str] | None = None
+        if session_id:
+            labels = {"session_id": session_id, "source": "copilot"}
+
         result = await client.create_submission(
             workflow_id=workflow_id,
             inputs=cleaned_inputs,
             auth_token=auth,
+            labels=labels,
         )
 
         submission_id = result.get("id", "")
@@ -163,6 +189,7 @@ async def submit_gowe_job(
             "submission_id": submission_id,
             "status": result.get("state", "PENDING"),
             "message": "Job submitted successfully to GoWe.",
+            "output_path": cleaned_inputs.get("output_path", ""),
         }
 
     except Exception as e:

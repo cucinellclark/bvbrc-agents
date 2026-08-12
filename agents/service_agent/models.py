@@ -92,6 +92,12 @@ class AgentConfig(BaseModel):
     # Flows from the frontend via Gateway -> Orchestrator -> MCP -> here.
     auto_submit_preference: str | None = None
 
+    # Session context (injected by orchestrator, not user-facing).
+    # Used to construct session-based output paths for GoWe submissions:
+    #   /<workspace_path>/.chats/<session_id>/<descriptive_subfolder>
+    session_id: str | None = None
+    workspace_path: str | None = None
+
 
 # ---------------------------------------------------------------------------
 # LLM tool call tracking (reused from v1)

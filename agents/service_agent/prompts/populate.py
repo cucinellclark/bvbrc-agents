@@ -92,7 +92,10 @@ cannot determine the value, ask the user.
 or container_id, indexing_url, etc.) unless the user specifically \
 provides them.
 - output_path: Use the user's workspace home folder + a descriptive \
-subfolder if not specified. Format: /username@patricbrc.org/home/FolderName
+subfolder if not specified. Format: /username@patricbrc.org/home/FolderName \
+The system will automatically rewrite the output path to place results \
+under the current chat session's workspace folder. Just provide a clean, \
+descriptive folder name as the last path segment (e.g., "GenomeAssembly_results").
 - output_file: Use a descriptive basename derived from the job if \
 not specified.
 
@@ -126,8 +129,9 @@ should use:
 - The SAME workflow_id
 - Sample-specific inputs (one entry in paired_end_libs, or one entry \
 in single_end_libs, or one SRA accession in srr_ids — per job)
-- A UNIQUE output_path and output_file derived from the sample name \
-(e.g., /user@patricbrc.org/home/Assemblies/SampleA_assembly)
+- A UNIQUE output_path and output_file derived from the sample name. \
+The system automatically places outputs under the session workspace, \
+so just use descriptive names (e.g., SampleA_assembly, SampleB_assembly).
 
 All jobs will be submitted in sequence within this session. After \
 all submit_gowe_job calls succeed, produce a final summary listing \
