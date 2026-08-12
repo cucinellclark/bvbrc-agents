@@ -179,6 +179,7 @@ def build_routing_prompt(
     query: str,
     agent_catalog: str,
     conversation_context: str | None = None,
+    page_context: str | None = None,
 ) -> tuple[str, str]:
     """Build the system and user prompts for the routing LLM.
 
@@ -186,6 +187,9 @@ def build_routing_prompt(
         query: The user's natural language query.
         agent_catalog: The agent catalog string from registry.catalog().
         conversation_context: Optional conversation summary or recent messages.
+        page_context: Optional description of the page the user is currently
+            viewing (e.g. genome details, feature info).  Helps resolve
+            references like "this genome" or "annotate this".
 
     Returns:
         Tuple of (system_prompt, user_prompt).
@@ -193,6 +197,12 @@ def build_routing_prompt(
     system = ROUTING_SYSTEM_PROMPT.format(agent_catalog=agent_catalog)
 
     user_parts = []
+    if page_context:
+        user_parts.append(
+            f"## Page Context\n"
+            f"The user is currently viewing the following page:\n"
+            f"{page_context}\n"
+        )
     if conversation_context:
         user_parts.append(f"## Conversation Context\n{conversation_context}\n")
     user_parts.append(f"## User Request\n{query}")

@@ -136,6 +136,16 @@ async def _analyze_and_plan(
     agent_catalog_text = _build_agent_catalog_text(context)
     system_prompt = build_system_prompt(agent_catalog_text)
 
+    # Add page context if available
+    if context:
+        page_context = context.get("page_context", "")
+        if page_context:
+            system_prompt += (
+                f"\n\n=== PAGE CONTEXT ===\n"
+                f"The user is currently viewing the following page:\n"
+                f"{page_context}"
+            )
+
     # Add conversation context if available
     if context:
         conv_summary = context.get("conversation_summary", "")
@@ -174,6 +184,13 @@ async def _plan_with_answers(
     system_prompt = build_system_prompt(agent_catalog_text)
 
     if context:
+        page_context = context.get("page_context", "")
+        if page_context:
+            system_prompt += (
+                f"\n\n=== PAGE CONTEXT ===\n"
+                f"The user is currently viewing the following page:\n"
+                f"{page_context}"
+            )
         conv_summary = context.get("conversation_summary", "")
         if conv_summary:
             system_prompt += f"\n\n=== CONVERSATION CONTEXT ===\n{conv_summary}"
@@ -480,7 +497,9 @@ async def _execute_review_step(
 
     state = AgentState(query=step_description, context=context)
     state.status = "step_ready"
-    state.final_answer = f"Review checkpoint: {step_description}"
+    # No visible chat message -- the frontend PlanCard renders an
+    # interactive review panel via the PLAN_REVIEW_READY SSE event.
+    state.final_answer = ""
     state.step_execution = {
         "agent": "review",
         "task": step_description,
@@ -557,14 +576,16 @@ async def _continue_review(
         ". ".join(selection_parts) if selection_parts else "Review completed"
     )
 
-    state.final_answer = f"Review step completed: {selection_summary}"
+    # No visible chat message -- the PlanCard already shows the review
+    # step as completed with the selection summary in its result row.
+    state.final_answer = ""
     state.step_execution = {
         "agent": "direct",
         "task": step_description,
         "plan_id": plan_data.get("plan_id", ""),
         "step_id": step_id,
         "step_index": current_index,
-        "direct_answer": state.final_answer,
+        "direct_answer": selection_summary,
         "review_selections": review_selections,
     }
 

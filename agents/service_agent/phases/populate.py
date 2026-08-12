@@ -86,7 +86,20 @@ async def populate_and_submit(
     system_prompt = build_populate_prompt(attached_files=attached_files)
 
     if state.context:
-        system_prompt += f"\n\n=== ADDITIONAL CONTEXT ===\n{json.dumps(state.context)}"
+        page_context = state.context.get("page_context", "")
+        if page_context:
+            system_prompt += (
+                f"\n\n=== PAGE CONTEXT ===\n"
+                f"The user is currently viewing the following page:\n"
+                f"{page_context}"
+            )
+        ctx_for_prompt = {
+            k: v for k, v in state.context.items() if k != "page_context"
+        }
+        if ctx_for_prompt:
+            system_prompt += (
+                f"\n\n=== ADDITIONAL CONTEXT ===\n{json.dumps(ctx_for_prompt)}"
+            )
 
     # Initialize messages
     state.reset_messages()

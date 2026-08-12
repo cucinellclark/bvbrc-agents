@@ -84,7 +84,16 @@ async def plan_only(
     # Build initial messages -- include planning-mode instructions
     system_content = SYSTEM_PROMPT + PLAN_ONLY_ADDENDUM
     if context:
-        system_content += f"\n\n=== ADDITIONAL CONTEXT ===\n{json.dumps(context)}"
+        page_context = context.get("page_context", "")
+        if page_context:
+            system_content += (
+                f"\n\n=== PAGE CONTEXT ===\n"
+                f"The user is currently viewing the following page:\n"
+                f"{page_context}"
+            )
+        ctx_for_prompt = {k: v for k, v in context.items() if k != "page_context"}
+        if ctx_for_prompt:
+            system_content += f"\n\n=== ADDITIONAL CONTEXT ===\n{json.dumps(ctx_for_prompt)}"
 
     state.add_system_message(system_content)
     state.add_user_message(query)
@@ -176,7 +185,16 @@ async def run_agent(
     # Build initial messages (no plan-only addendum)
     system_content = SYSTEM_PROMPT
     if context:
-        system_content += f"\n\n=== ADDITIONAL CONTEXT ===\n{json.dumps(context)}"
+        page_context = context.get("page_context", "")
+        if page_context:
+            system_content += (
+                f"\n\n=== PAGE CONTEXT ===\n"
+                f"The user is currently viewing the following page:\n"
+                f"{page_context}"
+            )
+        ctx_for_prompt = {k: v for k, v in context.items() if k != "page_context"}
+        if ctx_for_prompt:
+            system_content += f"\n\n=== ADDITIONAL CONTEXT ===\n{json.dumps(ctx_for_prompt)}"
 
     state.add_system_message(system_content)
     state.add_user_message(query)

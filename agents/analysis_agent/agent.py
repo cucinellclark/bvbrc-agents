@@ -296,12 +296,25 @@ async def run_agent(
     # Build initial messages
     system_content = SYSTEM_PROMPT
 
+    # Inject page context if provided
+    if context:
+        page_context = context.get("page_context", "")
+        if page_context:
+            system_content += (
+                f"\n\n=== PAGE CONTEXT ===\n"
+                f"The user is currently viewing the following page:\n"
+                f"{page_context}"
+            )
+
     # Inject workflow_context if provided
     workflow_context = None
     if context:
         workflow_context = context.get("workflow_context")
-        # Add any non-workflow context
-        ctx_for_prompt = {k: v for k, v in context.items() if k != "workflow_context"}
+        # Add any non-workflow, non-page context
+        ctx_for_prompt = {
+            k: v for k, v in context.items()
+            if k not in ("workflow_context", "page_context")
+        }
         if ctx_for_prompt:
             system_content += (
                 f"\n\n=== ADDITIONAL CONTEXT ===\n{json.dumps(ctx_for_prompt)}"

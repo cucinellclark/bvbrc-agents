@@ -87,6 +87,7 @@ async def route(
         query=request.query,
         agent_catalog=catalog,
         conversation_context=conversation_context,
+        page_context=request.page_context,
     )
 
     max_routing_attempts = 2

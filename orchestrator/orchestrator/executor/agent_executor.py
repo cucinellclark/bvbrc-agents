@@ -86,6 +86,10 @@ async def execute_agent_step(
     if request.auto_submit_preference:
         context_data["auto_submit_preference"] = request.auto_submit_preference
 
+    # Forward page context (description of the page the user is viewing)
+    if request.page_context:
+        context_data["page_context"] = request.page_context
+
     # Thread upstream results into context for pipeline steps
     if upstream_results:
         context_data["upstream_results"] = upstream_results
