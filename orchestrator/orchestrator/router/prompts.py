@@ -53,7 +53,9 @@ items, checking job results) to the **workspace** agent.
 troubleshooting, documentation questions, and "what does this service \
 do?" questions to the **helpdesk** agent. This includes questions like \
 "how do I use genome assembly?", "what parameters does BLAST need?", \
-"how do I upload data?", "what is the phylogenetic tree service?", etc.
+"how do I upload data?", "what is the phylogenetic tree service?", etc. \
+Also route "tell me about this page" or "describe this page" requests \
+to **helpdesk** — the page context provides the details the agent needs.
 - Route analysis/results questions to the **analysis** agent. This includes \
 requests to analyze job results, summarize service outputs, examine what \
 a completed job produced, extract metrics from output files, or interpret \
