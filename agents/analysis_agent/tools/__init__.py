@@ -29,7 +29,7 @@ from analysis_agent.output_knowledge import (
 )
 
 # Import the workspace agent's sophisticated truncate_result
-from workspace_agent.tools import truncate_result  # noqa: E402
+from shared.tools import truncate_result  # noqa: E402
 
 
 async def _get_expected_outputs_async(
