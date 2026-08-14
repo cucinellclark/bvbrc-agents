@@ -55,7 +55,7 @@ from planning_agent.prompts.system import build_system_prompt  # noqa: E402
 from planning_agent.prompts.step_query import (  # noqa: E402
     build_step_execution_prompt,
 )
-from planning_agent.tool_registry import TOOL_SCHEMAS  # noqa: E402
+from shared.tools.schemas import ALL_TOOL_SCHEMAS as TOOL_SCHEMAS  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -610,7 +610,8 @@ async def _run_planning_loop(
     - Call create_plan -> sets needs_approval status
     - Respond with text -> sets completed status (simple request)
     """
-    from planning_agent.tools import execute_tool
+    from shared.tools import execute_tool
+    from shared.tools.registry import TOOL_DISPATCH
 
     executed_fingerprints: set[str] = set()
     duplicate_count = 0
@@ -678,6 +679,8 @@ async def _run_planning_loop(
             result = await execute_tool(
                 tool_name=tc.name,
                 arguments=dict(tc.arguments),
+                dispatch_table=TOOL_DISPATCH,
+                timeout_seconds=config.tool_timeout_seconds,
                 config=config,
                 headers=_headers,
             )

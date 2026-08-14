@@ -39,8 +39,9 @@ from agent_messages import (
 from service_agent.llm_client import chat_completion, create_client
 from service_agent.models import AgentConfig, AgentState, ToolCall
 from service_agent.prompts.populate import build_populate_prompt
-from service_agent.tool_registry import POPULATE_TOOLS
-from service_agent.tools import execute_tool, truncate_result
+from shared.tools.schemas import ALL_TOOL_SCHEMAS as POPULATE_TOOLS
+from shared.tools import execute_tool, truncate_result
+from shared.tools.registry import TOOL_DISPATCH
 
 logger = logging.getLogger(__name__)
 
@@ -224,6 +225,7 @@ async def populate_and_submit(
             result = await execute_tool(
                 tool_name=tc.name,
                 arguments=dict(tc.arguments),
+                dispatch_table=TOOL_DISPATCH,
                 timeout_seconds=config.tool_timeout_seconds,
                 config=config,
                 headers=headers,

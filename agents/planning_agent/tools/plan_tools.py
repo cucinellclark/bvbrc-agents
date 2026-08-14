@@ -10,7 +10,7 @@ import uuid
 from collections import defaultdict
 from typing import Any
 
-from planning_agent.tool_registry import VALID_AGENTS
+from shared.tools.schemas import VALID_AGENTS
 
 
 def handle_ask_clarification(arguments: dict[str, Any]) -> dict[str, Any]:

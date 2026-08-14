@@ -39,7 +39,7 @@ from data_agent.llm_client import chat_completion, chat_completion_stream, creat
 from data_agent.models import AgentConfig, AgentResult, AgentState, ToolCall
 from data_agent.prompts.simulated_results import build_simulated_result
 from data_agent.prompts.system import PLAN_ONLY_ADDENDUM, SYSTEM_PROMPT
-from data_agent.tool_registry import TOOL_SCHEMAS
+from shared.tools.schemas import ALL_TOOL_SCHEMAS as TOOL_SCHEMAS
 
 
 def _parse_tool_calls(response: Any) -> list[ToolCall]:
@@ -176,7 +176,8 @@ async def run_agent(
     Returns:
         AgentResult with answer, execution trace, and sources.
     """
-    from data_agent.tools import execute_tool, truncate_result
+    from shared.tools import execute_tool, truncate_result
+    from shared.tools.registry import TOOL_DISPATCH
 
     cfg = config or AgentConfig()
     state = AgentState(query=query, context=context or {})
@@ -295,8 +296,8 @@ async def run_agent(
             result = await execute_tool(
                 tool_name=tc.name,
                 arguments=dict(tc.arguments),  # copy to avoid mutation
+                dispatch_table=TOOL_DISPATCH,
                 timeout_seconds=cfg.tool_timeout_seconds,
-                base_url=cfg.bvbrc_api_url,
                 headers=headers,
                 config=cfg,
             )

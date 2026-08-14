@@ -47,7 +47,7 @@ from analysis_agent.llm_client import (
 )  # noqa: E402
 from analysis_agent.models import AgentConfig, AgentResult, AgentState, ToolCall  # noqa: E402
 from analysis_agent.prompts import SYSTEM_PROMPT  # noqa: E402
-from analysis_agent.tool_registry import TOOL_SCHEMAS  # noqa: E402
+from shared.tools.schemas import ALL_TOOL_SCHEMAS as TOOL_SCHEMAS  # noqa: E402
 
 
 def _estimate_tokens(text: str) -> int:
@@ -287,7 +287,8 @@ async def run_agent(
     Returns:
         AgentResult with answer, structured data, and execution trace.
     """
-    from analysis_agent.tools import execute_tool, truncate_result
+    from shared.tools import execute_tool, truncate_result
+    from shared.tools.registry import TOOL_DISPATCH
 
     cfg = config or AgentConfig()
     state = AgentState(query=query, context=context or {})
@@ -424,6 +425,7 @@ async def run_agent(
             result = await execute_tool(
                 tool_name=tc.name,
                 arguments=dict(tc.arguments),
+                dispatch_table=TOOL_DISPATCH,
                 timeout_seconds=cfg.tool_timeout_seconds,
                 config=cfg,
                 headers=headers,
