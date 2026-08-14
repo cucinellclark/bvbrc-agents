@@ -2,7 +2,7 @@
 
 Provides:
   - ``TOOL_DISPATCH``: Universal dispatch table mapping tool names to async callables.
-  - ``ALL_TOOL_SCHEMAS``: All 23 tool schemas (re-exported from schemas.py).
+  - ``ALL_TOOL_SCHEMAS``: All 24 tool schemas (re-exported from schemas.py).
   - ``TOOL_SCHEMA_MAP``: Name-to-schema lookup (re-exported from schemas.py).
 
 All agents import from here. No more per-agent dispatch tables.
@@ -41,6 +41,7 @@ from shared.tools.groups import create_group
 from shared.tools.sra import get_sra_metadata
 from shared.tools.similar_genome import find_similar_genomes
 from shared.tools.literature import search_literature
+from shared.tools.jobs import list_jobs
 
 # ---------------------------------------------------------------------------
 # Helpdesk-specific tools
@@ -142,6 +143,7 @@ TOOL_DISPATCH: Dict[str, Any] = {
     # Analysis tools
     "get_expected_outputs": get_expected_outputs,
     "get_job_details": get_job_details,
+    "list_jobs": list_jobs,
     # Planning tools
     "ask_clarification": _ask_clarification_async,
     "create_plan": _create_plan_async,

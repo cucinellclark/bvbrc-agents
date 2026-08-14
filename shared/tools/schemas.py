@@ -3,7 +3,7 @@
 This is the SINGLE SOURCE OF TRUTH for tool schemas. Every agent uses these
 definitions. No per-agent schema variants.
 
-23 tools total:
+24 tools total:
   Data:      search_data, facet_query, probe_data, list_collections, get_collection_fields
   Workspace: workspace_browse, get_file_metadata, read_file_preview
   GoWe:      list_gowe_workflows, get_workflow_inputs, submit_gowe_job
@@ -12,7 +12,7 @@ definitions. No per-agent schema variants.
   Genome:    find_similar_genomes
   Literature: search_literature
   Helpdesk:  query_helpdesk, list_services, get_service_schema
-  Analysis:  get_expected_outputs, get_job_details
+  Analysis:  get_expected_outputs, get_job_details, list_jobs
   Planning:  ask_clarification, create_plan, list_agents
 """
 
@@ -916,6 +916,81 @@ GET_JOB_DETAILS = {
     },
 }
 
+LIST_JOBS = {
+    "type": "function",
+    "function": {
+        "name": "list_jobs",
+        "description": (
+            "List the user's BV-BRC jobs with optional filtering, sorting, and "
+            "pagination. Use this to answer questions like 'show my recent jobs', "
+            "'what jobs are running', 'list failed jobs', or 'find my assembly jobs'. "
+            "Returns job summaries (status, service, submit time, etc.).\n\n"
+            "USE THIS TOOL FOR:\n"
+            "- Listing recent jobs or job history\n"
+            "- Finding jobs by status (completed, running, failed)\n"
+            "- Finding jobs by service type (genome_assembly, blast, etc.)\n"
+            "- Searching jobs by name or description\n"
+            "- Paginated browsing of the job queue\n\n"
+            "DO NOT USE THIS TOOL FOR:\n"
+            "- Deep inspection of a specific job (use get_job_details with task IDs)\n"
+            "- Submitting new jobs (use submit_gowe_job)"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum number of jobs to return. Default 20.",
+                    "default": 20,
+                },
+                "offset": {
+                    "type": "integer",
+                    "description": "Number of jobs to skip for pagination. Default 0.",
+                    "default": 0,
+                },
+                "sort_by": {
+                    "type": "string",
+                    "description": (
+                        "Field to sort by. Default 'submit_time'. "
+                        "Options: submit_time, start_time, status, app, id"
+                    ),
+                    "default": "submit_time",
+                },
+                "sort_dir": {
+                    "type": "string",
+                    "description": "Sort direction: 'asc' or 'desc'. Default 'desc'.",
+                    "enum": ["asc", "desc"],
+                    "default": "desc",
+                },
+                "status": {
+                    "type": "string",
+                    "description": (
+                        "Filter by job status. Examples: 'completed', "
+                        "'failed', 'running', 'queued'."
+                    ),
+                },
+                "service": {
+                    "type": "string",
+                    "description": (
+                        "Filter by service name. Examples: 'genome_assembly', "
+                        "'blast', 'genome_annotation', 'rnaseq', 'variation'."
+                    ),
+                },
+                "search": {
+                    "type": "string",
+                    "description": "Search term to filter jobs by name or description.",
+                },
+                "include_archived": {
+                    "type": "boolean",
+                    "description": "Whether to include archived jobs. Default false.",
+                    "default": False,
+                },
+            },
+            "required": [],
+        },
+    },
+}
+
 
 # ===================================================================
 # PLANNING TOOLS
@@ -1143,7 +1218,7 @@ LIST_AGENTS = {
 # MASTER LISTS
 # ===================================================================
 
-# All 23 tools in a single list
+# All 24 tools in a single list
 ALL_TOOL_SCHEMAS: list[dict] = [
     # Data
     SEARCH_DATA,
@@ -1174,6 +1249,7 @@ ALL_TOOL_SCHEMAS: list[dict] = [
     # Analysis
     GET_EXPECTED_OUTPUTS,
     GET_JOB_DETAILS,
+    LIST_JOBS,
     # Planning
     ASK_CLARIFICATION,
     CREATE_PLAN,
