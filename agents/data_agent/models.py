@@ -275,12 +275,20 @@ class AgentConfig(BaseModel):
     bvbrc_api_url: str = "https://www.bv-brc.org/api-bulk"
     bvbrc_auth_token: str | None = None
 
+    # BV-BRC Workspace API (for group creation)
+    bvbrc_workspace_url: str = "https://p3.theseed.org/services/Workspace"
+
     # Literature RAG retrieval gateway
     literature_rag_url: str = "http://ash.cels.anl.gov:12006"
     literature_rag_timeout_seconds: int = 45
 
     # Similar Genome Finder (MinHash service)
     similar_genome_finder_url: str = "https://p3.theseed.org/services/minhash_service"
+
+    # SRA tools
+    singularity_container_path: str = (
+        "/vol/patric3/production/containers/ubuntu-176-build12-2.sif"
+    )
 
     # MCP server path (for importing data_functions, group_functions, etc.)
     mcp_server_path: str = str(

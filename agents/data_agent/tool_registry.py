@@ -159,47 +159,55 @@ GET_COLLECTION_FIELDS = {
     },
 }
 
-GET_GENOME_GROUP = {
+CREATE_GROUP = {
     "type": "function",
     "function": {
-        "name": "get_genome_group",
+        "name": "create_group",
         "description": (
-            "Retrieve the genome IDs from a named genome group in the user's "
-            "workspace. Use this when the user refers to 'my genomes' or a named "
-            "group. Returns a list of genome_id values that can be used as filters "
-            "in search_data queries."
+            "Create a genome or feature group in the user's BV-BRC workspace "
+            "from a Solr query. Runs the query to fetch matching IDs, then "
+            "creates the group. Use this when the user asks to save search "
+            "results as a group, or when a downstream service needs a genome "
+            "or feature group as input."
         ),
         "parameters": {
             "type": "object",
             "properties": {
                 "group_name": {
                     "type": "string",
-                    "description": "The name of the genome group (fuzzy matched).",
+                    "description": "Name for the new group.",
                 },
-            },
-            "required": ["group_name"],
-        },
-    },
-}
-
-GET_FEATURE_GROUP = {
-    "type": "function",
-    "function": {
-        "name": "get_feature_group",
-        "description": (
-            "Retrieve feature IDs from a named feature group in the user's "
-            "workspace. Returns a list of feature_id / patric_id values that can "
-            "be used as filters in search_data queries."
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "group_name": {
+                "group_type": {
                     "type": "string",
-                    "description": "The name of the feature group (fuzzy matched).",
+                    "enum": ["genome_group", "feature_group"],
+                    "description": "Type of group to create.",
+                },
+                "collection": {
+                    "type": "string",
+                    "description": (
+                        "Solr collection to query for IDs. "
+                        "Use 'genome' for genome groups, "
+                        "'genome_feature' for feature groups."
+                    ),
+                },
+                "query": {
+                    "type": "string",
+                    "description": (
+                        "Solr query string (same syntax as search_data). "
+                        "Example: 'genus:Salmonella AND host_name:Human'"
+                    ),
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": (
+                        "Maximum number of IDs to include in the group. "
+                        "Default 500. Some services have input limits -- "
+                        "use this to cap the group size accordingly."
+                    ),
+                    "default": 500,
                 },
             },
-            "required": ["group_name"],
+            "required": ["group_name", "group_type", "collection", "query"],
         },
     },
 }
@@ -383,6 +391,34 @@ SEARCH_LITERATURE = {
     },
 }
 
+GET_SRA_METADATA = {
+    "type": "function",
+    "function": {
+        "name": "get_sra_metadata",
+        "description": (
+            "Retrieve metadata for one or more SRA run accession IDs (SRR IDs) "
+            "from NCBI. Returns organism name, sequencing platform, library "
+            "strategy, sample details, and more for each SRA ID. Use this when "
+            "the user asks about an SRA sample or provides SRA accession IDs "
+            "(e.g., SRR..., SRX..., ERR..., DRR...)."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "sra_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "List of SRA run accession IDs to look up "
+                        "(e.g., ['SRR37956035', 'SRR37956031'])."
+                    ),
+                },
+            },
+            "required": ["sra_ids"],
+        },
+    },
+}
+
 
 # ---------------------------------------------------------------------------
 # Complete tool list for the agent
@@ -391,12 +427,12 @@ TOOL_SCHEMAS: list[dict] = [
     SEARCH_DATA,
     LIST_COLLECTIONS,
     GET_COLLECTION_FIELDS,
-    # GET_GENOME_GROUP,   # disabled – group tools temporarily removed
-    # GET_FEATURE_GROUP,  # disabled – group tools temporarily removed
+    CREATE_GROUP,
     FACET_QUERY,
     PROBE_DATA,
     FIND_SIMILAR_GENOMES,
     SEARCH_LITERATURE,
+    GET_SRA_METADATA,
 ]
 
 # Dispatch table: tool name -> schema (for future execution mapping)

@@ -236,42 +236,6 @@ SEARCH_DATA = {
     },
 }
 
-GET_GENOME_GROUP = {
-    "type": "function",
-    "function": {
-        "name": "get_genome_group",
-        "description": "Get genome IDs from a named genome group in the user's workspace.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "group_name": {
-                    "type": "string",
-                    "description": "Name of the genome group.",
-                },
-            },
-            "required": ["group_name"],
-        },
-    },
-}
-
-GET_FEATURE_GROUP = {
-    "type": "function",
-    "function": {
-        "name": "get_feature_group",
-        "description": "Get feature IDs from a named feature group in the user's workspace.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "group_name": {
-                    "type": "string",
-                    "description": "Name of the feature group.",
-                },
-            },
-            "required": ["group_name"],
-        },
-    },
-}
-
 LIST_GOWE_WORKFLOWS = {
     "type": "function",
     "function": {
@@ -379,8 +343,6 @@ TOOL_SCHEMAS: list[dict] = [
     GET_FILE_METADATA,
     READ_FILE_PREVIEW,
     SEARCH_DATA,
-    # GET_GENOME_GROUP,   # disabled – group tools temporarily removed
-    # GET_FEATURE_GROUP,  # disabled – group tools temporarily removed
     LIST_GOWE_WORKFLOWS,
     GET_WORKFLOW_INPUTS,
     FIND_SIMILAR_GENOMES,

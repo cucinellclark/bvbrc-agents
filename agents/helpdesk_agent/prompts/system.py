@@ -78,7 +78,6 @@ providing contextual help:
 - `workspace_browse` / `get_file_metadata` / `read_file_preview` -- browse
   the user's workspace to give contextual guidance (read-only)
 - `search_data` -- query BV-BRC Solr collections to look up data
-- `get_genome_group` / `get_feature_group` -- resolve user's named groups
 - `list_gowe_workflows` / `get_workflow_inputs` -- discover available
   workflows and their input schemas for documentation purposes
 

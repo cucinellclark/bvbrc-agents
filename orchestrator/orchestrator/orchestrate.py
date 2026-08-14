@@ -434,12 +434,17 @@ async def orchestrate(
             # --- DIRECT STEP COMPLETED ---
             # When a 'direct' step is executed, the planning agent
             # returns status="completed" with step_execution data.
+            # This includes continue_review responses where the PlanCard
+            # handles the UI directly — no synthesis needed.
             if (
                 ar.get("step_execution")
                 and ar.get("status") == "completed"
                 and ar["step_execution"].get("agent") == "direct"
             ):
                 step_exec = ar["step_execution"]
+                direct_answer = step_exec.get(
+                    "direct_answer", ar.get("answer", "")
+                )
 
                 yield Event(
                     type=EventType.PLAN_STEP_COMPLETED,
@@ -448,20 +453,26 @@ async def orchestrate(
                         "plan_id": step_exec.get("plan_id"),
                         "step_id": step_exec.get("step_id"),
                         "step_index": step_exec.get("step_index"),
-                        "result_summary": step_exec.get(
-                            "direct_answer", ar.get("answer", "")
-                        )[:500],
+                        "result_summary": direct_answer[:500],
                         "agent_result": {
                             "agent": "planning",
-                            "answer": step_exec.get(
-                                "direct_answer", ar.get("answer", "")
-                            ),
+                            "answer": direct_answer,
                             "status": "completed",
                         },
                     },
                 )
-                _planning_handled = True
-                break
+                # Return early — skip synthesis. The PlanCard shows
+                # the step result directly; no chat message needed.
+                yield Event(
+                    type=EventType.ORCHESTRATOR_DONE,
+                    data={
+                        "response_text": direct_answer,
+                        "decision": decision.decision,
+                        "agents_used": agents_used,
+                        "elapsed_ms": _elapsed_ms(start_time),
+                    },
+                )
+                return
 
         # ------------------------------------------------------------------
         # 3c. AUTO-SUBMIT (when ORCH_AUTO_SUBMIT is enabled)

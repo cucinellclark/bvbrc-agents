@@ -15,6 +15,8 @@ from shared.tools.data import search_data, facet_query, probe_data
 from shared.tools.collections import list_collections, get_collection_fields
 from shared.tools.similar_genome import find_similar_genomes
 from shared.tools.literature import search_literature
+from shared.tools.sra import get_sra_metadata
+from shared.tools.groups import create_group
 
 # ---------------------------------------------------------------------------
 # Dispatch table: tool name -> async callable
@@ -27,6 +29,8 @@ TOOL_DISPATCH: Dict[str, Any] = {
     "probe_data": probe_data,
     "find_similar_genomes": find_similar_genomes,
     "search_literature": search_literature,
+    "get_sra_metadata": get_sra_metadata,
+    "create_group": create_group,
 }
 
 
@@ -51,7 +55,7 @@ async def execute_tool(
     # find_similar_genomes need headers (auth) and optionally config, but
     # not base_url — they use their own service URLs from config/defaults.
     api_tools = {"search_data", "facet_query", "probe_data"}
-    auth_via_headers_tools = {"search_literature", "find_similar_genomes"}
+    auth_via_headers_tools = {"search_literature", "find_similar_genomes", "get_sra_metadata", "create_group"}
     if tool_name in api_tools:
         if base_url and "base_url" not in arguments:
             arguments["base_url"] = base_url

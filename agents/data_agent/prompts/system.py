@@ -202,6 +202,44 @@ When to probe:
 - When your first structured query returns 0 results
 """
 
+_SRA_LOOKUP = """\
+=== SRA METADATA LOOKUP ===
+
+When the user provides an SRA accession (SRR, SRX, ERR, DRR prefixes) or asks \
+about an SRA sample, use the get_sra_metadata tool to fetch metadata directly \
+from NCBI. This returns organism name, sequencing platform, library strategy, \
+read counts, and sample details.
+
+Do NOT try to look up SRA accessions using search_data against BV-BRC Solr \
+collections -- the accession may not be indexed in BV-BRC. Use get_sra_metadata \
+instead.
+
+After retrieving SRA metadata, you MAY optionally search BV-BRC for related \
+genomes (e.g., same organism) to provide additional context, but only if it \
+adds value to the user's question.
+"""
+
+_GROUP_CREATION = """\
+=== GROUP CREATION ===
+
+Use the create_group tool to save search results as a genome or feature group \
+in the user's workspace. The tool runs your Solr query, fetches the matching \
+IDs, and creates the group in one step -- you do NOT need to fetch IDs first.
+
+Parameters:
+- group_name: A descriptive name for the group.
+- group_type: "genome_group" or "feature_group".
+- collection: The Solr collection to query ("genome" for genome groups, \
+"genome_feature" for feature groups).
+- query: Solr query string (same syntax as search_data).
+- limit: Max IDs to include (default 500). Use this when a downstream \
+service has an input cap.
+
+Before creating a group, use search_data with count_only=true to check how \
+many records match. Tell the user the total count and the limit being applied \
+so they can make an informed decision.
+"""
+
 _EFFICIENCY = """\
 === EFFICIENCY ===
 
@@ -282,6 +320,8 @@ SYSTEM_PROMPT = "\n".join(
         _ID_RELATIONSHIPS,
         _STRATEGY,
         _PROBE_STRATEGY,
+        _SRA_LOOKUP,
+        _GROUP_CREATION,
         _EFFICIENCY,
         _CONSTRAINTS,
     ]

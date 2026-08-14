@@ -96,13 +96,14 @@ def build_simulated_result(tc: Any) -> dict:
             "provide your final answer now."
         )
 
-    elif tc.name in ("get_genome_group", "get_feature_group"):
-        id_field = "genome_id" if tc.name == "get_genome_group" else "feature_id"
-        base["ids"] = [f"<{id_field}_1>", f"<{id_field}_2>", f"<{id_field}_3>"]
+    elif tc.name == "create_group":
+        base["name"] = tc.arguments.get("group_name", "<group_name>")
+        base["path"] = "<workspace_path_to_group>"
         base["count"] = "<number of IDs in group>"
+        base["total_matching"] = "<total records matching query>"
         base["_note"] = (
-            f"Group IDs were recorded. Use these {id_field} values as filters "
-            "in a search_data query for your next step."
+            "Group creation was recorded. The group will contain IDs "
+            "matching your Solr query, up to the specified limit."
         )
 
     else:

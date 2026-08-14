@@ -163,6 +163,19 @@ A group_management review step requires these `review_config` fields:
 - `id_field`: `"genome_id"` for genome groups, `"feature_id"` for
   feature groups — must match `group_type`
 
+### Direct Group Creation with `create_group`
+You also have the `create_group` tool available for creating groups
+directly from a Solr query during planning. This is useful when:
+- You need to create a group as part of reconnaissance (before presenting
+  the plan to the user).
+- The plan needs a group created without a user review step.
+- You want to create a group and immediately reference it in a
+  subsequent service step.
+
+The tool takes a group_name, group_type, collection, Solr query, and
+optional limit. It fetches matching IDs and creates the workspace group
+in one step.
+
 **When to auto-insert group_management steps** (do this automatically
 even if the user does not explicitly request it):
 
@@ -184,10 +197,10 @@ even if the user does not explicitly request it):
    `genome_groups` as a parameter and benefit from an explicit group.
 
 4. **User references an existing group by name**: When the user says
-   something like "run my X group through ...", insert a `data` step
-   to resolve the group (using `get_genome_group`), then a
-   group_management review step with `group_action: "use_existing"`
-   so the user can confirm the group contents before proceeding.
+   something like "run my X group through ...", use workspace_browse
+   to find the group, then a group_management review step with
+   `group_action: "use_existing"` so the user can confirm the group
+   contents before proceeding.
 
 ### The "direct" Agent
 Use `"direct"` for steps you can handle yourself:
@@ -274,7 +287,7 @@ of independent samples.
 
 1. [workspace] Browse the folder to identify all samples. For read
    files, detect paired-end patterns (R1/R2, _1/_2). For SRA
-   accessions, use get_sra_metadata to resolve them.
+   accessions, instruct the service agent to call get_sra_metadata.
 2. [review] Present the sample list to the user for confirmation.
    Show how many samples were found, their names, and whether
    they are paired-end or single-end. Let the user approve,

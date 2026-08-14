@@ -17,8 +17,7 @@ from shared.tools.workspace import (
     read_file_preview,
 )
 from shared.tools.data import search_data
-## get_genome_group / get_feature_group disabled – group tools temporarily removed
-# from shared.tools.groups import get_genome_group, get_feature_group
+from shared.tools.groups import create_group
 from shared.tools.sra import get_sra_metadata
 from shared.tools.similar_genome import find_similar_genomes
 from shared.tools.literature import search_literature
@@ -35,8 +34,7 @@ TOOL_DISPATCH: Dict[str, Any] = {
     "workspace_browse": workspace_browse,
     "read_file_info": get_file_metadata,  # Aliased for backward compat with tool schemas
     "search_data": search_data,
-    # "get_genome_group": get_genome_group,   # disabled
-    # "get_feature_group": get_feature_group, # disabled
+    "create_group": create_group,
     "get_sra_metadata": get_sra_metadata,
     "find_similar_genomes": find_similar_genomes,
     "search_literature": search_literature,

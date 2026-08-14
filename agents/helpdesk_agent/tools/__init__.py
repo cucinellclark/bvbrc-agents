@@ -17,8 +17,6 @@ from shared.tools.workspace import (
     read_file_preview,
 )
 from shared.tools.data import search_data
-## get_genome_group / get_feature_group disabled – group tools temporarily removed
-# from shared.tools.groups import get_genome_group, get_feature_group
 from shared.tools.gowe import list_gowe_workflows, get_workflow_inputs
 from shared.tools.similar_genome import find_similar_genomes
 from shared.tools.literature import search_literature
@@ -40,9 +38,6 @@ TOOL_DISPATCH: Dict[str, Any] = {
     "read_file_preview": read_file_preview,
     # Shared data tools
     "search_data": search_data,
-    # Shared group tools — disabled
-    # "get_genome_group": get_genome_group,
-    # "get_feature_group": get_feature_group,
     # Shared GoWe tools
     "list_gowe_workflows": list_gowe_workflows,
     "get_workflow_inputs": get_workflow_inputs,

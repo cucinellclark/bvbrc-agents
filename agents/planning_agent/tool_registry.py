@@ -360,6 +360,54 @@ TOOL_SCHEMAS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "create_group",
+            "description": (
+                "Create a genome or feature group in the user's BV-BRC "
+                "workspace from a Solr query. Runs the query to fetch "
+                "matching IDs, then creates the group. Use this during "
+                "planning when a step needs to create a group for "
+                "downstream services."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "group_name": {
+                        "type": "string",
+                        "description": "Name for the new group.",
+                    },
+                    "group_type": {
+                        "type": "string",
+                        "enum": ["genome_group", "feature_group"],
+                        "description": "Type of group to create.",
+                    },
+                    "collection": {
+                        "type": "string",
+                        "description": (
+                            "Solr collection to query. Use 'genome' for "
+                            "genome groups, 'genome_feature' for feature groups."
+                        ),
+                    },
+                    "query": {
+                        "type": "string",
+                        "description": (
+                            "Solr query string (same syntax as search_data)."
+                        ),
+                    },
+                    "limit": {
+                        "type": ["integer", "null"],
+                        "description": (
+                            "Max IDs to include (default 500). Use this "
+                            "when a downstream service has an input cap."
+                        ),
+                    },
+                },
+                "required": ["group_name", "group_type", "collection", "query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "list_gowe_workflows",
             "description": (
                 "List available GoWe workflows. Use during planning to "

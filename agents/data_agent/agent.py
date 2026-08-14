@@ -280,6 +280,11 @@ async def run_agent(
                 _tool_msg = "Listing available data collections..."
             elif tc.name == "get_collection_fields":
                 _tool_msg = f"Looking up fields for {_tc_args.get('collection', 'collection')}..."
+            elif tc.name == "get_sra_metadata":
+                _tool_msg = "Fetching SRA metadata from NCBI..."
+            elif tc.name == "create_group":
+                _gname = _tc_args.get("group_name", "group")
+                _tool_msg = f"Creating group '{_gname}'..."
             await emit_progress(
                 progress_callback, iteration, cfg.max_iterations, _tool_msg
             )

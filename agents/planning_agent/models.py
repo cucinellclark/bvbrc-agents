@@ -49,7 +49,7 @@ class AgentConfig(BaseModel):
 
     # SRA tools
     singularity_container_path: str = (
-        "/vol/patric3/production/containers/ubuntu-027-11.sif"
+        "/vol/patric3/production/containers/ubuntu-176-build12-2.sif"
     )
 
     # Literature RAG retrieval gateway

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 
 from orchestrator.llm.client import LLMClient
 from orchestrator.models import OrchestratorRequest
@@ -154,10 +155,14 @@ def _parse_routing_response(
 ) -> RoutingDecision:
     """Parse the LLM's JSON response into a RoutingDecision.
 
-    Handles common LLM quirks like markdown code fences, extra text, etc.
+    Handles common LLM quirks like markdown code fences, extra text,
+    and Qwen-style ``<think>...</think>`` reasoning blocks.
     """
+    # Strip Qwen3-style <think>...</think> reasoning blocks before parsing.
+    # These contain chain-of-thought text that is not part of the JSON output.
+    text = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
+
     # Strip markdown code fences if present
-    text = raw.strip()
     if text.startswith("```"):
         # Remove ```json or ``` at start and ``` at end
         lines = text.split("\n")
@@ -200,7 +205,8 @@ def _parse_routing_response(
     if decision_type == "direct":
         return RoutingDecision(
             decision="direct",
-            direct_response=data.get("direct_response", reasoning),
+            direct_response=data.get("direct_response")
+            or "I can help with that. Could you provide a bit more detail?",
             confidence=0.9,
         )
 
@@ -272,8 +278,13 @@ def _parse_routing_response(
 
     else:
         # Unknown decision type — treat as direct
+        logger.warning(
+            f"Router returned unknown decision type '{decision_type}', "
+            "treating as direct"
+        )
         return RoutingDecision(
             decision="direct",
-            direct_response=data.get("direct_response", reasoning),
+            direct_response=data.get("direct_response")
+            or "I can help with that. Could you provide a bit more detail?",
             confidence=0.5,
         )

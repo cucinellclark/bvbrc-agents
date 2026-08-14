@@ -216,48 +216,56 @@ SEARCH_DATA = {
     },
 }
 
-GET_GENOME_GROUP = {
+CREATE_GROUP = {
     "type": "function",
     "function": {
-        "name": "get_genome_group",
+        "name": "create_group",
         "strict": True,
         "description": (
-            "Retrieve genome IDs from a named genome group in the user's "
-            "workspace. Use this when the user refers to 'my genomes' or a "
-            "named group."
+            "Create a genome or feature group in the user's BV-BRC workspace "
+            "from a Solr query. Runs the query to fetch matching IDs, then "
+            "creates the group. Use this when a service requires a genome or "
+            "feature group as input, or when the user wants to save search "
+            "results as a group."
         ),
         "parameters": {
             "type": "object",
             "properties": {
                 "group_name": {
                     "type": "string",
-                    "description": "The name of the genome group (fuzzy matched).",
+                    "description": "Name for the new group.",
                 },
-            },
-            "required": ["group_name"],
-            "additionalProperties": False,
-        },
-    },
-}
-
-GET_FEATURE_GROUP = {
-    "type": "function",
-    "function": {
-        "name": "get_feature_group",
-        "strict": True,
-        "description": (
-            "Retrieve feature IDs from a named feature group in the user's "
-            "workspace. Use this when the user refers to a named feature group."
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "group_name": {
+                "group_type": {
                     "type": "string",
-                    "description": "The name of the feature group (fuzzy matched).",
+                    "enum": ["genome_group", "feature_group"],
+                    "description": "Type of group to create.",
+                },
+                "collection": {
+                    "type": "string",
+                    "description": (
+                        "Solr collection to query for IDs. "
+                        "Use 'genome' for genome groups, "
+                        "'genome_feature' for feature groups."
+                    ),
+                },
+                "query": {
+                    "type": "string",
+                    "description": (
+                        "Solr query string (same syntax as search_data). "
+                        "Example: 'genus:Salmonella AND host_name:Human'"
+                    ),
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": (
+                        "Maximum number of IDs to include in the group. "
+                        "Default 500. Some services have input limits -- "
+                        "use this to cap the group size accordingly."
+                    ),
+                    "default": 500,
                 },
             },
-            "required": ["group_name"],
+            "required": ["group_name", "group_type", "collection", "query"],
             "additionalProperties": False,
         },
     },
@@ -421,8 +429,7 @@ POPULATE_TOOLS: list[dict] = [
     WORKSPACE_BROWSE,
     READ_FILE_INFO,
     SEARCH_DATA,
-    # GET_GENOME_GROUP,   # disabled – group tools temporarily removed
-    # GET_FEATURE_GROUP,  # disabled – group tools temporarily removed
+    CREATE_GROUP,
     GET_SRA_METADATA,
     FIND_SIMILAR_GENOMES,
     SEARCH_LITERATURE,

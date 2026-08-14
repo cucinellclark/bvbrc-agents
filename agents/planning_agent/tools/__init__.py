@@ -16,6 +16,7 @@ from typing import Any, Dict
 
 from shared.tools.workspace import workspace_browse, get_file_metadata
 from shared.tools.data import search_data
+from shared.tools.groups import create_group
 from shared.tools.gowe import list_gowe_workflows
 from shared.tools.similar_genome import find_similar_genomes
 from shared.tools.literature import search_literature
@@ -27,6 +28,7 @@ _SHARED_TOOL_DISPATCH: Dict[str, Any] = {
     "workspace_browse": workspace_browse,
     "get_file_metadata": get_file_metadata,
     "search_data": search_data,
+    "create_group": create_group,
     "list_gowe_workflows": list_gowe_workflows,
     "find_similar_genomes": find_similar_genomes,
     "search_literature": search_literature,
