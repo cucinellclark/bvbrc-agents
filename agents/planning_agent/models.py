@@ -1,68 +1,34 @@
-"""Pydantic models for the BV-BRC Planning Agent."""
+"""Pydantic models for the BV-BRC Planning Agent.
+
+Subclasses the shared base models. Adds planning-specific domain models
+(Plan, PlanStep, ClarificationQuestion, ReviewConfig).
+"""
 
 from __future__ import annotations
 
 import json
-import sys
 import time
 import uuid
-from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-# Make the shared config loader importable
-_CONFIG_DIR = str(Path(__file__).resolve().parent.parent.parent / "config")
-if _CONFIG_DIR not in sys.path:
-    sys.path.insert(0, _CONFIG_DIR)
+from shared.models import (
+    ToolCall,  # noqa: F401 -- re-export for backward compat
+    ToolExecution,  # noqa: F401
+    BaseAgentConfig,
+    BaseAgentState,
+    BaseAgentResult,
+)
 
-from llm_config import load_llm_defaults  # noqa: E402
 
-_LLM_DEFAULTS = load_llm_defaults()
-
-
-class AgentConfig(BaseModel):
+class AgentConfig(BaseAgentConfig):
     """Configuration for the planning agent.
 
-    LLM defaults are loaded from the shared Agents/config/llm.yaml.
-    Override via constructor kwargs or environment variables.
+    Inherits all fields from BaseAgentConfig. No additional fields needed.
     """
 
-    # LLM settings (defaults from shared config)
-    llm_base_url: str = _LLM_DEFAULTS["base_url"]
-    llm_api_key: str = _LLM_DEFAULTS["api_key"]
-    llm_model: str = _LLM_DEFAULTS["model"]
-    temperature: float = _LLM_DEFAULTS["temperature"]
-    max_tokens: int = _LLM_DEFAULTS["max_tokens"]
-
-    # Agent behavior
-    max_iterations: int = 1000
-
-    # BV-BRC API
-    bvbrc_auth_token: str | None = None
-    bvbrc_api_url: str = "https://p3.theseed.org/services/data_api"
-    bvbrc_workspace_url: str = "https://p3.theseed.org/services/Workspace"
-    tool_timeout_seconds: int = 30
-
-    # GoWe workflow engine
-    gowe_url: str = "http://140.221.78.67:12009"
-
-    # SRA tools
-    singularity_container_path: str = (
-        "/vol/patric3/production/containers/ubuntu-176-build12-2.sif"
-    )
-
-    # Literature RAG retrieval gateway
-    literature_rag_url: str = "http://ash.cels.anl.gov:12006"
-    literature_rag_timeout_seconds: int = 45
-
-    # Similar Genome Finder (MinHash service)
-    similar_genome_finder_url: str = "https://p3.theseed.org/services/minhash_service"
-
-    # MCP server path (for importing shared functions)
-    mcp_server_path: str = str(
-        Path(__file__).resolve().parent.parent.parent / "mcp_server"
-    )
+    pass
 
 
 # ---------------------------------------------------------------------------
@@ -127,100 +93,24 @@ class Plan(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Standard agent models (shared pattern across all agents)
+# Agent state and result
 # ---------------------------------------------------------------------------
 
 
-class ToolCall(BaseModel):
-    """A single tool call as requested by the LLM."""
-
-    id: str
-    name: str
-    arguments: dict[str, Any]
-
-
-class ToolExecution(BaseModel):
-    """Record of a tool call and its result."""
-
-    tool_call: ToolCall
-    result: Any = None
-    error: str | None = None
-    duration_ms: float | None = None
-    iteration: int = 0
-
-
-class AgentState(BaseModel):
+class AgentState(BaseAgentState):
     """Tracks the full state of a planning agent execution."""
-
-    query: str
-    context: dict[str, Any] = Field(default_factory=dict)
-    messages: list[dict[str, Any]] = Field(default_factory=list)
-    tool_executions: list[ToolExecution] = Field(default_factory=list)
-    iteration: int = 0
-    final_answer: str = ""
-    status: Literal[
-        "running",
-        "completed",
-        "needs_input",
-        "needs_approval",
-        "step_ready",
-        "error",
-        "max_iterations",
-    ] = "running"
-    start_time: float = Field(default_factory=time.time)
 
     # Planning-specific state
     plan: Plan | None = None
     clarification_questions: list[ClarificationQuestion] = Field(default_factory=list)
     step_execution: dict[str, Any] | None = None
 
-    def add_system_message(self, content: str) -> None:
-        self.messages.append({"role": "system", "content": content})
-
-    def add_user_message(self, content: str) -> None:
-        self.messages.append({"role": "user", "content": content})
-
-    def add_assistant_message(
-        self,
-        content: str | None = None,
-        tool_calls: list[dict[str, Any]] | None = None,
-    ) -> None:
-        msg: dict[str, Any] = {"role": "assistant"}
-        if content is not None:
-            msg["content"] = content
-        if tool_calls is not None:
-            msg["tool_calls"] = tool_calls
-        self.messages.append(msg)
-
-    def add_tool_result(self, tool_call_id: str, content: str) -> None:
-        self.messages.append(
-            {"role": "tool", "tool_call_id": tool_call_id, "content": content}
-        )
-
-    def record_execution(
-        self,
-        tc: ToolCall,
-        result: Any = None,
-        error: str | None = None,
-        duration_ms: float = 0.0,
-    ) -> None:
-        """Record a completed tool execution."""
-        self.tool_executions.append(
-            ToolExecution(
-                tool_call=tc,
-                result=result,
-                error=error,
-                duration_ms=duration_ms,
-                iteration=self.iteration,
-            )
-        )
-
-    def to_result(self) -> AgentResult:
+    def to_result(self) -> "AgentResult":
         """Convert current state to an AgentResult."""
         elapsed = time.time() - self.start_time
 
         return AgentResult(
-            answer=self.final_answer,
+            answer=self.final_answer or "",
             status=self.status,
             sources=[],
             tool_trace=self.tool_executions,
@@ -236,15 +126,8 @@ class AgentState(BaseModel):
         )
 
 
-class AgentResult(BaseModel):
+class AgentResult(BaseAgentResult):
     """Returned by run_agent(). Clean interface for consumers."""
-
-    answer: str
-    status: str = "completed"
-    sources: list[str] = Field(default_factory=list)
-    tool_trace: list[ToolExecution] = Field(default_factory=list)
-    iterations_used: int = 0
-    elapsed_seconds: float = 0.0
 
     # Planning-specific fields
     plan: dict[str, Any] | None = None

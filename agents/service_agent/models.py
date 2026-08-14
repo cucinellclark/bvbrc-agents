@@ -13,22 +13,20 @@ Key models:
 
 from __future__ import annotations
 
-import sys
 import time
 from collections import deque
-from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-# Make the shared config loader importable
-_CONFIG_DIR = str(Path(__file__).resolve().parent.parent.parent / "config")
-if _CONFIG_DIR not in sys.path:
-    sys.path.insert(0, _CONFIG_DIR)
-
-from llm_config import load_llm_defaults  # noqa: E402
-
-_LLM_DEFAULTS = load_llm_defaults()
+from shared.models import (
+    ToolCall,  # noqa: F401 -- re-export for backward compat
+    ToolExecution,  # noqa: F401
+    BaseAgentConfig,
+    BaseAgentState,
+    BaseAgentResult,
+)
+from shared.config import LLM_DEFAULTS
 
 
 # ---------------------------------------------------------------------------
@@ -36,90 +34,21 @@ _LLM_DEFAULTS = load_llm_defaults()
 # ---------------------------------------------------------------------------
 
 
-class AgentConfig(BaseModel):
-    """Configuration for the service agent. Supports any OpenAI-compatible endpoint.
+class AgentConfig(BaseAgentConfig):
+    """Configuration for the service agent.
 
-    LLM defaults are loaded from the shared Agents/config/llm.yaml.
-    Override via constructor kwargs, CLI args, or environment variables
-    (LLM_BASE_URL, LLM_API_KEY, LLM_MODEL).
+    Adds service-specific fields on top of BaseAgentConfig.
     """
 
-    # LLM settings (defaults from shared config)
-    llm_base_url: str = _LLM_DEFAULTS["base_url"]
-    llm_api_key: str = _LLM_DEFAULTS["api_key"]
-    llm_model: str = _LLM_DEFAULTS["model"]
-    temperature: float = _LLM_DEFAULTS["temperature"]
-    max_tokens: int = _LLM_DEFAULTS["max_tokens"]
-
     # Optional lightweight model for intent classification.
-    # When set, the service agent uses this cheaper/faster model to
-    # classify requests (plan vs submit vs status vs cancel) before
-    # running the full planning pipeline.  When None, falls back to
-    # llm_model for classification.
-    classifier_model: str | None = _LLM_DEFAULTS.get("classifier_model")
-
-    # Agent behavior
-    max_iterations: int = 1000  # Max LLM calls per phase sub-loop
-    tool_timeout_seconds: int = 30
-
-    # BV-BRC API
-    bvbrc_api_url: str = "https://www.bv-brc.org/api-bulk"
-    bvbrc_workspace_url: str = "https://p3.theseed.org/services/Workspace"
-    bvbrc_auth_token: str | None = None
-
-    # MCP server path (for importing functions via sys.path)
-    mcp_server_path: str = str(
-        Path(__file__).resolve().parent.parent.parent / "mcp_server"
-    )
-
-    # GoWe workflow engine
-    gowe_url: str = "http://140.221.78.67:12009"
-
-    # Similar Genome Finder (MinHash service)
-    similar_genome_finder_url: str = "https://p3.theseed.org/services/minhash_service"
-
-    # SRA tools
-    singularity_container_path: str = (
-        "/vol/patric3/production/containers/ubuntu-176-build12-2.sif"
-    )
-
-    # Literature RAG retrieval gateway
-    literature_rag_url: str = "http://ash.cels.anl.gov:12006"
-    literature_rag_timeout_seconds: int = 45
+    classifier_model: str | None = LLM_DEFAULTS.get("classifier_model")
 
     # User preference for auto-submitting planned workflows.
-    # "always_review" (default) | "auto_simple" | "auto_all"
-    # Flows from the frontend via Gateway -> Orchestrator -> MCP -> here.
     auto_submit_preference: str | None = None
 
     # Session context (injected by orchestrator, not user-facing).
-    # Used to construct session-based output paths for GoWe submissions:
-    #   /<workspace_path>/.chats/<session_id>/<descriptive_subfolder>
     session_id: str | None = None
     workspace_path: str | None = None
-
-
-# ---------------------------------------------------------------------------
-# LLM tool call tracking (reused from v1)
-# ---------------------------------------------------------------------------
-
-
-class ToolCall(BaseModel):
-    """A single tool call as requested by the LLM."""
-
-    id: str
-    name: str
-    arguments: dict[str, Any]
-
-
-class ToolExecution(BaseModel):
-    """Record of a tool call and its result."""
-
-    tool_call: ToolCall
-    result: Any = None
-    error: str | None = None
-    duration_ms: float | None = None
-    iteration: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -135,12 +64,6 @@ class StepPlan(BaseModel):
     intent: str  # What this step accomplishes
     depends_on: list[str] = Field(default_factory=list)
     input_sources: dict[str, Any] = Field(default_factory=dict)
-    # param_name -> source description (typically a string, but may be a list
-    # for multi-value params like srr_ids):
-    #   "user_provided"
-    #   "output_of:<step_id>:<output_key>"
-    #   "search:<query>"
-    #   "workspace:<path_hint>"
 
 
 class WorkflowPlan(BaseModel):
@@ -163,7 +86,6 @@ class WorkflowPlan(BaseModel):
 
     def compute_topological_order(self) -> list[str]:
         """Compute topological order using Kahn's algorithm. Returns step_ids."""
-        # Build adjacency and in-degree
         in_degree: dict[str, int] = {s.step_id: 0 for s in self.steps}
         adjacency: dict[str, list[str]] = {s.step_id: [] for s in self.steps}
 
@@ -172,7 +94,6 @@ class WorkflowPlan(BaseModel):
                 adjacency[dep].append(step.step_id)
                 in_degree[step.step_id] += 1
 
-        # Start with zero in-degree nodes
         queue = deque(sid for sid, deg in in_degree.items() if deg == 0)
         order: list[str] = []
 
@@ -214,13 +135,11 @@ class WorkflowPlan(BaseModel):
             for dep in step.depends_on:
                 union(step.step_id, dep)
 
-        # Group by root
         groups: dict[str, list[str]] = {}
         for step in self.steps:
             root = find(step.step_id)
             groups.setdefault(root, []).append(step.step_id)
 
-        # Order within each group by topological order
         if self.topological_order:
             topo_idx = {sid: i for i, sid in enumerate(self.topological_order)}
             for root in groups:
@@ -254,17 +173,13 @@ class ValidatedStep(BaseModel):
 
 
 class Intent(BaseModel):
-    """Result of the lightweight intent classifier.
-
-    Determines whether the user wants to plan a new workflow or perform
-    a lifecycle operation (submit, status, cancel, modify) on an existing one.
-    """
+    """Result of the lightweight intent classifier."""
 
     action: Literal["plan", "submit", "status", "cancel", "modify", "unknown"] = "plan"
-    workflow_id: str | None = None  # Resolved from context if not explicit
-    confidence: float = 1.0  # Classifier confidence (0.0-1.0)
-    reasoning: str = ""  # Brief explanation for logging/debugging
-    submit_after_plan: bool = False  # True when user says "plan AND submit/run/execute"
+    workflow_id: str | None = None
+    confidence: float = 1.0
+    reasoning: str = ""
+    submit_after_plan: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -276,10 +191,10 @@ class InformationRequest(BaseModel):
     """Structured request for user input. Returned when the agent needs more info."""
 
     status: str = "needs_input"
-    question: str  # Natural language question
-    context: str = ""  # Why this information is needed
-    options: list[str] | None = None  # Suggested options
-    partial_state: dict | None = None  # Serialized state for resumption
+    question: str
+    context: str = ""
+    options: list[str] | None = None
+    partial_state: dict | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -287,16 +202,12 @@ class InformationRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class AgentState(BaseModel):
+class AgentState(BaseAgentState):
     """Tracks the full state of a three-phase agent execution.
 
     Fully serializable so the orchestrator can pause after Phase 1 or
     mid-Phase 2, store the state, and resume after getting user input.
     """
-
-    # Original query
-    query: str = ""
-    context: dict[str, Any] = Field(default_factory=dict)
 
     # Phase tracking
     current_phase: Literal["decompose", "build", "compose", "done"] = "decompose"
@@ -317,82 +228,22 @@ class AgentState(BaseModel):
     persisted: bool = False
 
     # GoWe-specific state
-    submission_id: str | None = None  # GoWe submission ID (separate from workflow_id)
-    submission_ids: list[str] = Field(default_factory=list)  # All GoWe submission IDs (batch support)
-    cwl_document: dict | None = None  # Generated CWL document
-    submission_inputs: dict | None = None  # Resolved submission inputs
+    submission_id: str | None = None
+    submission_ids: list[str] = Field(default_factory=list)
+    cwl_document: dict | None = None
+    submission_inputs: dict | None = None
 
-    # Agent result status
-    status: Literal["in_progress", "needs_input", "completed", "error"] = "in_progress"
-    question: str | None = None  # Set when status is "needs_input"
-    error_message: str | None = None  # Set when status is "error"
+    # Agent result status (override base with service-specific literals)
+    status: Literal["in_progress", "needs_input", "completed", "error"] = "in_progress"  # type: ignore[assignment]
+    question: str | None = None
+    error_message: str | None = None
 
     # Lifecycle operation output (non-planning paths)
     operation_message: str | None = None
     auto_submitted: bool = False
 
-    # Intent from classifier (stored so post-planning logic can check it)
+    # Intent from classifier
     classified_intent: Intent | None = None
-
-    # Tracking
-    tool_executions: list[ToolExecution] = Field(default_factory=list)
-    start_time: float = Field(default_factory=time.time)
-
-    # LLM conversation for current sub-loop (Phase 1 or Phase 2 step)
-    messages: list[dict[str, Any]] = Field(default_factory=list)
-
-    # -----------------------------------------------------------------------
-    # Message helpers
-    # -----------------------------------------------------------------------
-
-    def add_system_message(self, content: str) -> None:
-        self.messages.append({"role": "system", "content": content})
-
-    def add_user_message(self, content: str) -> None:
-        self.messages.append({"role": "user", "content": content})
-
-    def add_assistant_message(
-        self,
-        content: str | None = None,
-        tool_calls: list[dict[str, Any]] | None = None,
-    ) -> None:
-        msg: dict[str, Any] = {"role": "assistant"}
-        if content is not None:
-            msg["content"] = content
-        if tool_calls is not None:
-            msg["tool_calls"] = tool_calls
-        self.messages.append(msg)
-
-    def add_tool_result(self, tool_call_id: str, content: str) -> None:
-        self.messages.append(
-            {"role": "tool", "tool_call_id": tool_call_id, "content": content}
-        )
-
-    def reset_messages(self) -> None:
-        """Clear messages for starting a new sub-loop (e.g., new step build)."""
-        self.messages = []
-
-    # -----------------------------------------------------------------------
-    # Tool execution tracking
-    # -----------------------------------------------------------------------
-
-    def record_execution(
-        self,
-        tc: ToolCall,
-        result: Any = None,
-        error: str | None = None,
-        duration_ms: float = 0.0,
-        iteration: int = 0,
-    ) -> None:
-        self.tool_executions.append(
-            ToolExecution(
-                tool_call=tc,
-                result=result,
-                error=error,
-                duration_ms=duration_ms,
-                iteration=iteration,
-            )
-        )
 
     # -----------------------------------------------------------------------
     # Phase 2 step management
@@ -409,17 +260,12 @@ class AgentState(BaseModel):
         ]
 
     def next_buildable_batches(self) -> list[list[str]]:
-        """Yield batches of step_ids that can be built in parallel.
-
-        A step is buildable when all its dependencies are in completed_steps.
-        Steps within the same batch have no dependencies on each other.
-        """
+        """Yield batches of step_ids that can be built in parallel."""
         if not self.workflow_plan:
             return []
 
         remaining = set(self.remaining_steps())
         batches: list[list[str]] = []
-        # Snapshot completed to avoid mutation during iteration
         completed = set(self.completed_steps.keys())
 
         while remaining:
@@ -431,7 +277,7 @@ class AgentState(BaseModel):
                 )
             ]
             if not batch:
-                break  # Should not happen if DAG is valid
+                break
             batches.append(batch)
             for s in batch:
                 remaining.discard(s)
@@ -440,10 +286,7 @@ class AgentState(BaseModel):
         return batches
 
     def get_upstream_outputs(self, step_id: str) -> dict[str, dict[str, str]]:
-        """Get output patterns from all dependencies of step_id.
-
-        Returns: {dep_step_id: {output_key: output_path, ...}, ...}
-        """
+        """Get output patterns from all dependencies of step_id."""
         if not self.workflow_plan:
             return {}
         step = self.workflow_plan.get_step(step_id)
@@ -464,7 +307,7 @@ class AgentState(BaseModel):
     # Result conversion
     # -----------------------------------------------------------------------
 
-    def to_result(self) -> AgentResult:
+    def to_result(self) -> "AgentResult":
         """Convert current state to an AgentResult for the caller."""
         elapsed = time.time() - self.start_time
 
@@ -507,8 +350,8 @@ class SubmissionResult(BaseModel):
     """Tracks the outcome of submitting a manifest to the workflow engine."""
 
     workflow_id: str
-    submission_id: str | None = None  # GoWe submission ID
-    status: str  # "pending", "planned", "PENDING", "RUNNING", etc.
+    submission_id: str | None = None
+    status: str
     engine_url: str
     status_url: str
     error: str | None = None
@@ -519,7 +362,7 @@ class SubmissionResult(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class AgentResult(BaseModel):
+class AgentResult(BaseAgentResult):
     """Returned by run_agent(). Clean interface for consumers.
 
     Status values:
@@ -528,25 +371,21 @@ class AgentResult(BaseModel):
       - "error": Unrecoverable error; details in `error_message`
     """
 
-    status: str = "completed"
     manifest: dict | None = None
     workflow_plan: dict | None = None
     completed_steps: dict[str, dict] = Field(default_factory=dict)
     question: str | None = None
     error_message: str | None = None
-    sources: list[str] = Field(default_factory=list)
-    tool_trace: list[ToolExecution] = Field(default_factory=list)
-    elapsed_seconds: float = 0.0
     submission: SubmissionResult | None = None
     workflow_id: str | None = None
     persisted: bool = False
 
     # GoWe-specific fields
     submission_id: str | None = None
-    submission_ids: list[str] = Field(default_factory=list)  # All submission IDs (batch)
+    submission_ids: list[str] = Field(default_factory=list)
     cwl_document: dict | None = None
 
-    # Lifecycle operation output (submit, status, cancel — non-planning paths)
+    # Lifecycle operation output
     operation_message: str | None = None
     auto_submitted: bool = False
 

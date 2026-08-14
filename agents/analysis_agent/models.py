@@ -3,105 +3,36 @@
 Key design: AgentResult carries BOTH a natural language answer AND structured
 data (output_files, metrics, previews, report_links, step_summaries) so the
 orchestrator/UI can render rich analysis views alongside the LLM's summary.
-
-Follows the same pattern as workspace_agent/models.py:
-  - sys.path manipulation for shared config
-  - load_llm_defaults for LLM settings
-  - AgentConfig, AgentState, ToolExecution, AgentResult
 """
 
 from __future__ import annotations
 
 import json
-import sys
 import time
-from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
-# Make the shared config loader importable
-_CONFIG_DIR = str(Path(__file__).resolve().parent.parent.parent / "config")
-if _CONFIG_DIR not in sys.path:
-    sys.path.insert(0, _CONFIG_DIR)
-
-from llm_config import load_llm_defaults  # noqa: E402
-
-_LLM_DEFAULTS = load_llm_defaults()
+from shared.models import (
+    ToolCall,  # noqa: F401 -- re-export for backward compat
+    ToolExecution,  # noqa: F401
+    BaseAgentConfig,
+    BaseAgentState,
+    BaseAgentResult,
+)
 
 
-class AgentConfig(BaseModel):
-    """Configuration for the analysis agent. Supports any OpenAI-compatible endpoint.
+class AgentConfig(BaseAgentConfig):
+    """Configuration for the analysis agent.
 
-    LLM defaults are loaded from the shared config/llm.yaml.
-    Override via constructor kwargs or environment variables
-    (LLM_BASE_URL, LLM_API_KEY, LLM_MODEL).
+    Adds analysis-specific fields on top of BaseAgentConfig.
     """
 
-    # LLM settings (defaults from shared config)
-    llm_base_url: str = _LLM_DEFAULTS["base_url"]
-    llm_api_key: str = _LLM_DEFAULTS["api_key"]
-    llm_model: str = _LLM_DEFAULTS["model"]
-    temperature: float = _LLM_DEFAULTS["temperature"]
-    max_tokens: int = _LLM_DEFAULTS["max_tokens"]
-
-    # Context window management
-    max_context_tokens: int = 90000  # leave headroom below the model's context limit
-    max_tool_result_chars: int = 8000  # per-tool-result truncation budget
-
-    # Agent behavior
-    max_iterations: int = 1000
-    tool_timeout_seconds: int = 30
-
-    # Analysis-specific
     max_preview_bytes: int = 8192  # 8KB, same as workspace agent
 
-    # BV-BRC workspace API
-    bvbrc_workspace_url: str = "https://p3.theseed.org/services/Workspace"
-    bvbrc_auth_token: str | None = None
 
-    # Literature RAG retrieval gateway
-    literature_rag_url: str = "http://ash.cels.anl.gov:12006"
-    literature_rag_timeout_seconds: int = 45
-
-    # Similar Genome Finder (MinHash service)
-    similar_genome_finder_url: str = "https://p3.theseed.org/services/minhash_service"
-
-    # MCP server path (for importing workspace_functions via sys.path)
-    mcp_server_path: str = str(
-        Path(__file__).resolve().parent.parent.parent / "mcp_server"
-    )
-
-
-class ToolCall(BaseModel):
-    """A single tool call as requested by the LLM."""
-
-    id: str
-    name: str
-    arguments: dict[str, Any]
-
-
-class ToolExecution(BaseModel):
-    """Record of a tool call and its result."""
-
-    tool_call: ToolCall
-    result: Any = None
-    error: str | None = None
-    duration_ms: float | None = None
-    iteration: int = 0
-
-
-class AgentState(BaseModel):
+class AgentState(BaseAgentState):
     """Tracks the full state of an analysis agent execution."""
-
-    query: str
-    context: dict[str, Any] = Field(default_factory=dict)
-    messages: list[dict[str, Any]] = Field(default_factory=list)
-    tool_calls_executed: list[ToolExecution] = Field(default_factory=list)
-    iteration: int = 0
-    final_answer: str | None = None
-    status: Literal["running", "completed", "error", "max_iterations"] = "running"
-    start_time: float = Field(default_factory=time.time)
 
     # Structured data collected during analysis.
     # Each tool execution that returns relevant data appends here.
@@ -112,45 +43,18 @@ class AgentState(BaseModel):
     collected_report_links: list[dict[str, Any]] = Field(default_factory=list)
     collected_step_summaries: list[dict[str, Any]] = Field(default_factory=list)
 
-    def add_system_message(self, content: str) -> None:
-        self.messages.append({"role": "system", "content": content})
-
-    def add_user_message(self, content: str) -> None:
-        self.messages.append({"role": "user", "content": content})
-
-    def add_assistant_message(
-        self,
-        content: str | None = None,
-        tool_calls: list[dict[str, Any]] | None = None,
-    ) -> None:
-        msg: dict[str, Any] = {"role": "assistant"}
-        if content is not None:
-            msg["content"] = content
-        if tool_calls is not None:
-            msg["tool_calls"] = tool_calls
-        self.messages.append(msg)
-
-    def add_tool_result(self, tool_call_id: str, content: str) -> None:
-        self.messages.append(
-            {"role": "tool", "tool_call_id": tool_call_id, "content": content}
-        )
-
     def record_execution(
         self,
         tc: ToolCall,
         result: Any = None,
         error: str | None = None,
         duration_ms: float = 0.0,
+        iteration: int | None = None,
     ) -> None:
         """Record a completed tool execution and extract structured data."""
-        self.tool_calls_executed.append(
-            ToolExecution(
-                tool_call=tc,
-                result=result,
-                error=error,
-                duration_ms=duration_ms,
-                iteration=self.iteration,
-            )
+        super().record_execution(
+            tc=tc, result=result, error=error, duration_ms=duration_ms,
+            iteration=iteration,
         )
 
         # Extract structured data from tool results for passthrough
@@ -220,7 +124,7 @@ class AgentState(BaseModel):
             answer=self.final_answer or "",
             status=self.status,
             sources=sources,
-            tool_trace=self.tool_calls_executed,
+            tool_trace=self.tool_executions,
             iterations_used=self.iteration,
             elapsed_seconds=round(elapsed, 2),
             # Analysis-specific structured data
@@ -232,7 +136,7 @@ class AgentState(BaseModel):
         )
 
 
-class AgentResult(BaseModel):
+class AgentResult(BaseAgentResult):
     """Returned by run_agent(). Carries both answer text and structured data.
 
     The dual-output design lets consumers choose how to present results:
@@ -241,20 +145,6 @@ class AgentResult(BaseModel):
       to render rich analysis cards
     - API: use the full structured response
     """
-
-    # Natural language summary
-    answer: str
-
-    # Agent status
-    status: str = "completed"
-
-    # Sources: service names analyzed (e.g., ["GenomeAssembly2"])
-    sources: list[str] = Field(default_factory=list)
-
-    # Trace info
-    tool_trace: list[ToolExecution] = Field(default_factory=list)
-    iterations_used: int = 0
-    elapsed_seconds: float = 0.0
 
     # Analysis-specific structured output for UI rendering
     output_files: list[dict[str, Any]] = Field(

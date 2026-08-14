@@ -1,24 +1,25 @@
-"""Pydantic models for the Data Retrieval Agent."""
+"""Pydantic models for the Data Retrieval Agent.
+
+Subclasses the shared base models. Adds data-specific fields
+(planned_calls, structured_data) and the Solr-to-RQL converter.
+"""
 
 from __future__ import annotations
 
 import json
 import re
-import sys
 import time
-from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
-# Make the shared config loader importable
-_CONFIG_DIR = str(Path(__file__).resolve().parent.parent.parent / "config")
-if _CONFIG_DIR not in sys.path:
-    sys.path.insert(0, _CONFIG_DIR)
-
-from llm_config import load_llm_defaults  # noqa: E402
-
-_LLM_DEFAULTS = load_llm_defaults()
+from shared.models import (
+    ToolCall,  # noqa: F401 -- re-export for backward compat
+    ToolExecution,  # noqa: F401
+    BaseAgentConfig,
+    BaseAgentState,
+    BaseAgentResult,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -35,13 +36,13 @@ def _solr_term_to_rql(term: str) -> str:
     """Convert a single Solr ``field:value`` term to an RQL expression.
 
     Handles:
-      - ``field:value``              → ``eq(field,value)``
-      - ``field:"multi word"``       → ``eq(field,multi word)``
-      - ``field:(v1 OR v2 OR v3)``   → ``or(eq(field,v1),eq(field,v2),eq(field,v3))``
-      - ``field:[min TO max]``       → ``between(field,min,max)``  (inclusive)
-      - ``field:{min TO max}``       → ``between(field,min,max)``  (treated same)
-      - ``field:val*``               → ``eq(field,val*)``          (wildcard passthrough)
-      - ``*:*`` or ``*``             → ``eq(*,*)``
+      - ``field:value``              -> ``eq(field,value)``
+      - ``field:"multi word"``       -> ``eq(field,multi word)``
+      - ``field:(v1 OR v2 OR v3)``   -> ``or(eq(field,v1),eq(field,v2),eq(field,v3))``
+      - ``field:[min TO max]``       -> ``between(field,min,max)``  (inclusive)
+      - ``field:{min TO max}``       -> ``between(field,min,max)``  (treated same)
+      - ``field:val*``               -> ``eq(field,val*)``          (wildcard passthrough)
+      - ``*:*`` or ``*``             -> ``eq(*,*)``
     """
     if term in ("*:*", "*"):
         return "eq(*,*)"
@@ -49,7 +50,7 @@ def _solr_term_to_rql(term: str) -> str:
     # Split on first colon to get field and value
     colon_idx = term.find(":")
     if colon_idx <= 0:
-        # No field:value structure — treat as a keyword
+        # No field:value structure -- treat as a keyword
         return f"keyword({_escape_rql_value(term)})"
 
     field = term[:colon_idx].strip()
@@ -112,9 +113,6 @@ def _tokenize_solr_query(query: str) -> list[str]:
             i += 1
             continue
         if query[i] == ")":
-            # Check if this closes a standalone group paren
-            # vs. part of field:(v1 OR v2).  We detect by checking whether
-            # the last field:value term we started is still open.
             tokens.append(")")
             i += 1
             continue
@@ -141,7 +139,7 @@ def _tokenize_solr_query(query: str) -> list[str]:
                     if i < n:
                         i += 1  # skip closing quote
                 elif query[i] == "(" and i > term_start and query[i - 1] == ":":
-                    # field:(v1 OR v2) — consume until matching ')'
+                    # field:(v1 OR v2) -- consume until matching ')'
                     depth = 1
                     i += 1
                     while i < n and depth > 0:
@@ -155,7 +153,7 @@ def _tokenize_solr_query(query: str) -> list[str]:
                                 i += 1
                         i += 1
                 elif query[i] == "[" or query[i] == "{":
-                    # Range: field:[min TO max] — consume until matching bracket
+                    # Range: field:[min TO max] -- consume until matching bracket
                     close_char = "]" if query[i] == "[" else "}"
                     i += 1
                     while i < n and query[i] != close_char:
@@ -163,7 +161,7 @@ def _tokenize_solr_query(query: str) -> list[str]:
                     if i < n:
                         i += 1
                 elif query[i] == ")":
-                    # End of a group paren — don't consume
+                    # End of a group paren -- don't consume
                     break
                 else:
                     i += 1
@@ -251,133 +249,35 @@ def solr_to_rql(solr_query: str) -> str:
     return rql
 
 
-class AgentConfig(BaseModel):
-    """Configuration for the data agent. Supports any OpenAI-compatible endpoint.
+# ---------------------------------------------------------------------------
+# Agent models
+# ---------------------------------------------------------------------------
 
-    LLM defaults are loaded from the shared Agents/config/llm.yaml.
-    Override via constructor kwargs, CLI args, or environment variables
-    (LLM_BASE_URL, LLM_API_KEY, LLM_MODEL).
+
+class AgentConfig(BaseAgentConfig):
+    """Configuration for the data agent.
+
+    Adds data-specific fields on top of BaseAgentConfig.
     """
 
-    # LLM settings (defaults from shared config)
-    llm_base_url: str = _LLM_DEFAULTS["base_url"]
-    llm_api_key: str = _LLM_DEFAULTS["api_key"]
-    llm_model: str = _LLM_DEFAULTS["model"]
-    temperature: float = _LLM_DEFAULTS["temperature"]
-    max_tokens: int = _LLM_DEFAULTS["max_tokens"]
-
-    # Agent behavior
-    max_iterations: int = 1000
     max_results_per_query: int = 100
-    tool_timeout_seconds: int = 30
-
-    # BV-BRC API
-    bvbrc_api_url: str = "https://www.bv-brc.org/api-bulk"
-    bvbrc_auth_token: str | None = None
-
-    # BV-BRC Workspace API (for group creation)
-    bvbrc_workspace_url: str = "https://p3.theseed.org/services/Workspace"
-
-    # Literature RAG retrieval gateway
-    literature_rag_url: str = "http://ash.cels.anl.gov:12006"
-    literature_rag_timeout_seconds: int = 45
-
-    # Similar Genome Finder (MinHash service)
-    similar_genome_finder_url: str = "https://p3.theseed.org/services/minhash_service"
-
-    # SRA tools
-    singularity_container_path: str = (
-        "/vol/patric3/production/containers/ubuntu-176-build12-2.sif"
-    )
-
-    # MCP server path (for importing data_functions, group_functions, etc.)
-    mcp_server_path: str = str(
-        Path(__file__).resolve().parent.parent.parent / "mcp_server"
-    )
 
 
-class ToolCall(BaseModel):
-    """A single tool call as requested by the LLM."""
+class AgentState(BaseAgentState):
+    """Tracks the full state of a data agent execution."""
 
-    id: str
-    name: str
-    arguments: dict[str, Any]
-
-
-class ToolExecution(BaseModel):
-    """Record of a tool call and its result (or simulated result in plan-only mode)."""
-
-    tool_call: ToolCall
-    result: Any = None
-    error: str | None = None
-    duration_ms: float | None = None
-    iteration: int = 0
-
-
-class AgentState(BaseModel):
-    """Tracks the full state of an agent execution."""
-
-    query: str
-    context: dict[str, Any] = Field(default_factory=dict)
-    messages: list[dict[str, Any]] = Field(default_factory=list)
-    tool_calls_executed: list[ToolExecution] = Field(default_factory=list)
     planned_calls: list[ToolCall] = Field(default_factory=list)
-    iteration: int = 0
-    final_answer: str | None = None
-    status: Literal["running", "completed", "error", "max_iterations"] = "running"
-    start_time: float = Field(default_factory=time.time)
-
-    def add_system_message(self, content: str) -> None:
-        self.messages.append({"role": "system", "content": content})
-
-    def add_user_message(self, content: str) -> None:
-        self.messages.append({"role": "user", "content": content})
-
-    def add_assistant_message(
-        self,
-        content: str | None = None,
-        tool_calls: list[dict[str, Any]] | None = None,
-    ) -> None:
-        msg: dict[str, Any] = {"role": "assistant"}
-        if content is not None:
-            msg["content"] = content
-        if tool_calls is not None:
-            msg["tool_calls"] = tool_calls
-        self.messages.append(msg)
-
-    def add_tool_result(self, tool_call_id: str, content: str) -> None:
-        self.messages.append(
-            {"role": "tool", "tool_call_id": tool_call_id, "content": content}
-        )
 
     def record_planned_call(self, tc: ToolCall) -> None:
         self.planned_calls.append(tc)
 
-    def record_execution(
-        self,
-        tc: ToolCall,
-        result: Any = None,
-        error: str | None = None,
-        duration_ms: float = 0.0,
-    ) -> None:
-        """Record a completed tool execution."""
-        self.tool_calls_executed.append(
-            ToolExecution(
-                tool_call=tc,
-                result=result,
-                error=error,
-                duration_ms=duration_ms,
-                iteration=self.iteration,
-            )
-        )
-
-    def to_result(self) -> AgentResult:
+    def to_result(self) -> "AgentResult":
         elapsed = time.time() - self.start_time
 
         # Collect unique collections from both planned and executed calls
         sources: list[str] = []
         all_calls = list(self.planned_calls) + [
-            ex.tool_call for ex in self.tool_calls_executed
+            ex.tool_call for ex in self.tool_executions
         ]
         for tc in all_calls:
             if (
@@ -400,7 +300,7 @@ class AgentState(BaseModel):
                 for tc in self.planned_calls
             ],
             sources=sources,
-            tool_trace=self.tool_calls_executed,
+            tool_trace=self.tool_executions,
             planned_tool_calls=[
                 {
                     "id": tc.id,
@@ -427,7 +327,7 @@ class AgentState(BaseModel):
         collection: str | None = None
         query_used: str | None = None
 
-        for ex in self.tool_calls_executed:
+        for ex in self.tool_executions:
             if ex.error or not isinstance(ex.result, dict):
                 continue
             tc = ex.tool_call
@@ -483,17 +383,11 @@ class AgentState(BaseModel):
         }
 
 
-class AgentResult(BaseModel):
+class AgentResult(BaseAgentResult):
     """Returned by run_agent() / plan_only(). Clean interface for consumers."""
 
-    answer: str
     plan: list[dict[str, Any]] = Field(default_factory=list)
-    sources: list[str] = Field(default_factory=list)
-    tool_trace: list[ToolExecution] = Field(default_factory=list)
     planned_tool_calls: list[dict[str, Any]] = Field(default_factory=list)
-    iterations_used: int = 0
-    status: str = "completed"
-    elapsed_seconds: float = 0.0
     structured_data: dict[str, Any] | None = None
 
     def pretty(self) -> str:

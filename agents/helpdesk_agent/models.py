@@ -1,147 +1,44 @@
-"""Pydantic models for the Helpdesk Agent."""
+"""Pydantic models for the Helpdesk Agent.
+
+Subclasses the shared base models. The helpdesk agent is the simplest --
+it has no domain-specific state or result fields beyond the base classes.
+"""
 
 from __future__ import annotations
 
 import json
-import sys
 import time
-from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
-# Make the shared config loader importable
-_CONFIG_DIR = str(Path(__file__).resolve().parent.parent.parent / "config")
-if _CONFIG_DIR not in sys.path:
-    sys.path.insert(0, _CONFIG_DIR)
-
-from llm_config import load_llm_defaults  # noqa: E402
-
-_LLM_DEFAULTS = load_llm_defaults()
+from shared.models import (
+    ToolCall,  # noqa: F401 -- re-export for backward compat
+    ToolExecution,  # noqa: F401
+    BaseAgentConfig,
+    BaseAgentState,
+    BaseAgentResult,
+)
 
 
-class AgentConfig(BaseModel):
+class AgentConfig(BaseAgentConfig):
     """Configuration for the helpdesk agent.
 
-    LLM defaults are loaded from the shared Agents/config/llm.yaml.
-    Override via constructor kwargs, CLI args, or environment variables
-    (LLM_BASE_URL, LLM_API_KEY, LLM_MODEL).
+    Inherits all fields from BaseAgentConfig. No additional fields needed.
     """
 
-    # LLM settings (defaults from shared config)
-    llm_base_url: str = _LLM_DEFAULTS["base_url"]
-    llm_api_key: str = _LLM_DEFAULTS["api_key"]
-    llm_model: str = _LLM_DEFAULTS["model"]
-    temperature: float = _LLM_DEFAULTS["temperature"]
-    max_tokens: int = _LLM_DEFAULTS["max_tokens"]
-
-    # Agent behavior
-    max_iterations: int = 1000
-    tool_timeout_seconds: int = 30
-
-    # BV-BRC API (for service schema lookups and shared tools)
-    bvbrc_api_url: str = "https://www.bv-brc.org/api-bulk"
-    bvbrc_auth_token: str | None = None
-    bvbrc_workspace_url: str = "https://p3.theseed.org/services/Workspace"
-
-    # GoWe workflow engine (for shared tools)
-    gowe_url: str = "http://140.221.78.67:12009"
-
-    # SRA tools
-    singularity_container_path: str = (
-        "/vol/patric3/production/containers/ubuntu-176-build12-2.sif"
-    )
-
-    # Literature RAG retrieval gateway
-    literature_rag_url: str = "http://ash.cels.anl.gov:12006"
-    literature_rag_timeout_seconds: int = 45
-
-    # Similar Genome Finder (MinHash service)
-    similar_genome_finder_url: str = "https://p3.theseed.org/services/minhash_service"
-
-    # MCP server path (for importing functions)
-    mcp_server_path: str = str(
-        Path(__file__).resolve().parent.parent.parent / "mcp_server"
-    )
+    pass
 
 
-class ToolCall(BaseModel):
-    """A single tool call as requested by the LLM."""
+class AgentState(BaseAgentState):
+    """Tracks the full state of a helpdesk agent execution."""
 
-    id: str
-    name: str
-    arguments: dict[str, Any]
-
-
-class ToolExecution(BaseModel):
-    """Record of a tool call and its result."""
-
-    tool_call: ToolCall
-    result: Any = None
-    error: str | None = None
-    duration_ms: float | None = None
-    iteration: int = 0
-
-
-class AgentState(BaseModel):
-    """Tracks the full state of an agent execution."""
-
-    query: str
-    context: dict[str, Any] = Field(default_factory=dict)
-    messages: list[dict[str, Any]] = Field(default_factory=list)
-    tool_calls_executed: list[ToolExecution] = Field(default_factory=list)
-    iteration: int = 0
-    final_answer: str | None = None
-    status: Literal["running", "completed", "error", "max_iterations"] = "running"
-    start_time: float = Field(default_factory=time.time)
-
-    def add_system_message(self, content: str) -> None:
-        self.messages.append({"role": "system", "content": content})
-
-    def add_user_message(self, content: str) -> None:
-        self.messages.append({"role": "user", "content": content})
-
-    def add_assistant_message(
-        self,
-        content: str | None = None,
-        tool_calls: list[dict[str, Any]] | None = None,
-    ) -> None:
-        msg: dict[str, Any] = {"role": "assistant"}
-        if content is not None:
-            msg["content"] = content
-        if tool_calls is not None:
-            msg["tool_calls"] = tool_calls
-        self.messages.append(msg)
-
-    def add_tool_result(self, tool_call_id: str, content: str) -> None:
-        self.messages.append(
-            {"role": "tool", "tool_call_id": tool_call_id, "content": content}
-        )
-
-    def record_execution(
-        self,
-        tc: ToolCall,
-        result: Any = None,
-        error: str | None = None,
-        duration_ms: float = 0.0,
-    ) -> None:
-        """Record a completed tool execution."""
-        self.tool_calls_executed.append(
-            ToolExecution(
-                tool_call=tc,
-                result=result,
-                error=error,
-                duration_ms=duration_ms,
-                iteration=self.iteration,
-            )
-        )
-
-    def to_result(self) -> AgentResult:
+    def to_result(self) -> "AgentResult":
         elapsed = time.time() - self.start_time
 
         # Collect source references from tool calls
         sources: list[str] = []
-        for ex in self.tool_calls_executed:
+        for ex in self.tool_executions:
             tc = ex.tool_call
             if tc.name == "query_helpdesk":
                 if "helpdesk_rag" not in sources:
@@ -158,22 +55,15 @@ class AgentState(BaseModel):
         return AgentResult(
             answer=self.final_answer or "",
             sources=sources,
-            tool_trace=self.tool_calls_executed,
+            tool_trace=self.tool_executions,
             iterations_used=self.iteration,
             status=self.status,
             elapsed_seconds=round(elapsed, 2),
         )
 
 
-class AgentResult(BaseModel):
+class AgentResult(BaseAgentResult):
     """Returned by run_agent(). Clean interface for consumers."""
-
-    answer: str
-    sources: list[str] = Field(default_factory=list)
-    tool_trace: list[ToolExecution] = Field(default_factory=list)
-    iterations_used: int = 0
-    status: str = "completed"
-    elapsed_seconds: float = 0.0
 
     def pretty(self) -> str:
         """Human-readable summary for CLI output."""

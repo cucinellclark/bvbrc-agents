@@ -472,7 +472,7 @@ async def run_agent(
             progress_callback,
             cfg.max_iterations,
             cfg.max_iterations,
-            f"Synthesizing analysis from {len(state.tool_calls_executed)} queries...",
+            f"Synthesizing analysis from {len(state.tool_executions)} queries...",
         )
         try:
             state.add_system_message(MAX_ITERATIONS_SYNTHESIS)
@@ -488,11 +488,11 @@ async def run_agent(
             ):
                 synthesis_content += chunk
             state.final_answer = synthesis_content or (
-                MAX_ITERATIONS_FALLBACK.format(n=len(state.tool_calls_executed))
+                MAX_ITERATIONS_FALLBACK.format(n=len(state.tool_executions))
             )
         except Exception:
             state.final_answer = MAX_ITERATIONS_FALLBACK.format(
-                n=len(state.tool_calls_executed)
+                n=len(state.tool_executions)
             )
 
     await emit_progress(
