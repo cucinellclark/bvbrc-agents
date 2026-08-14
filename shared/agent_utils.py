@@ -283,3 +283,161 @@ async def emit_progress(
             await cb(progress, total, message)
         except Exception:
             pass
+
+
+# ---------------------------------------------------------------------------
+# Message trimming (context window management)
+# ---------------------------------------------------------------------------
+
+
+def estimate_tokens(text: str) -> int:
+    """Rough token estimate: ~4 characters per token for English/JSON."""
+    return len(text) // 4
+
+
+def estimate_messages_tokens(
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]] | None = None,
+) -> int:
+    """Estimate the total token count of a messages list + tool schemas."""
+    total = 0
+    for msg in messages:
+        content = msg.get("content", "")
+        if content:
+            total += estimate_tokens(
+                content if isinstance(content, str) else json.dumps(content, default=str)
+            )
+        tool_calls = msg.get("tool_calls")
+        if tool_calls:
+            total += estimate_tokens(json.dumps(tool_calls, default=str))
+    if tools:
+        total += estimate_tokens(json.dumps(tools, default=str))
+    return total
+
+
+def trim_messages_to_fit(
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]] | None,
+    max_tokens: int,
+) -> list[dict[str, Any]]:
+    """Trim conversation history to fit within max_tokens.
+
+    Strategy (preserves correctness of tool-call / tool-result pairing):
+      1. Always keep the system message(s) and the initial user message.
+      2. Always keep the most recent assistant+tool-result exchange (the LLM
+         needs it to know what just happened).
+      3. When over budget, progressively replace older tool-result messages
+         with a compact summary, starting from the oldest.
+      4. If an assistant message references tool_calls whose results are
+         dropped, drop that assistant message too (the LLM would be confused
+         by dangling references).
+    """
+    current = estimate_messages_tokens(messages, tools)
+    if current <= max_tokens:
+        return messages
+
+    result = list(messages)
+
+    # Find the boundary: everything from the last assistant message onward is pinned
+    last_assistant_idx = None
+    for i in range(len(result) - 1, -1, -1):
+        if result[i].get("role") == "assistant":
+            last_assistant_idx = i
+            break
+
+    # Shrinkable region: tool results between the first user message and the
+    # last assistant block.
+    first_shrinkable = None
+    last_shrinkable = None
+    for i, msg in enumerate(result):
+        if msg.get("role") in ("tool",) and (
+            last_assistant_idx is None or i < last_assistant_idx
+        ):
+            if first_shrinkable is None:
+                first_shrinkable = i
+            last_shrinkable = i
+
+    if first_shrinkable is None:
+        return result
+
+    # Progressively compress old tool results until we fit
+    for i in range(first_shrinkable, (last_shrinkable or first_shrinkable) + 1):
+        if estimate_messages_tokens(result, tools) <= max_tokens:
+            break
+
+        msg = result[i]
+        if msg.get("role") != "tool":
+            continue
+
+        content = msg.get("content", "")
+        if len(content) <= 200:
+            continue
+
+        try:
+            data = json.loads(content)
+            summary_parts = []
+            if isinstance(data, dict):
+                if "_summary" in data:
+                    summary_parts.append(
+                        f"summary={json.dumps(data['_summary'], default=str)}"
+                    )
+                elif "result" in data and isinstance(data["result"], dict):
+                    inner = data["result"]
+                    if "_summary" in inner:
+                        summary_parts.append(
+                            f"summary={json.dumps(inner['_summary'], default=str)}"
+                        )
+                    count = inner.get("count", inner.get("total", "?"))
+                    summary_parts.append(f"count={count}")
+                    path = inner.get("path", "")
+                    if path:
+                        summary_parts.append(f"path={path}")
+                else:
+                    count = data.get("count", data.get("total", ""))
+                    if count:
+                        summary_parts.append(f"count={count}")
+                    error = data.get("error", "")
+                    if error:
+                        summary_parts.append(f"error={error}")
+
+            compressed = "[Previous tool result compressed] " + "; ".join(summary_parts)
+        except (json.JSONDecodeError, TypeError):
+            compressed = "[Previous tool result compressed]"
+
+        result[i] = {
+            "role": "tool",
+            "tool_call_id": msg.get("tool_call_id", ""),
+            "content": compressed,
+        }
+
+    # If still over budget, drop old assistant+tool exchanges entirely
+    while estimate_messages_tokens(result, tools) > max_tokens:
+        dropped = False
+        for i, msg in enumerate(result):
+            if msg.get("role") == "assistant" and i != last_assistant_idx:
+                tc_ids = set()
+                for tc in msg.get("tool_calls", []):
+                    tc_ids.add(tc.get("id", ""))
+                indices_to_drop = {i}
+                for j in range(i + 1, len(result)):
+                    if (
+                        result[j].get("role") == "tool"
+                        and result[j].get("tool_call_id", "") in tc_ids
+                    ):
+                        indices_to_drop.add(j)
+                    elif result[j].get("role") == "assistant":
+                        break
+                result = [
+                    m for idx, m in enumerate(result) if idx not in indices_to_drop
+                ]
+                last_assistant_idx = None
+                for k in range(len(result) - 1, -1, -1):
+                    if result[k].get("role") == "assistant":
+                        last_assistant_idx = k
+                        break
+                dropped = True
+                break
+        if not dropped:
+            break
+
+    return result
