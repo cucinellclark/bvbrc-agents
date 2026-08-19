@@ -26,6 +26,7 @@ import time
 from typing import Any, Callable, Dict
 
 from shared.agent_utils import (
+    build_user_content,
     call_fingerprint,
     parse_tool_calls as _parse_tool_calls_raw,
     get_response_content,
@@ -153,7 +154,8 @@ async def run_agent_loop(
                 )
 
         state.add_system_message(system_content)
-        state.add_user_message(state.query)
+        images = context.get("images", []) if context else []
+        state.add_user_message(build_user_content(state.query, images))
 
     await emit_progress(progress_callback, 0, None, start_message)
 

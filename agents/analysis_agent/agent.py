@@ -22,6 +22,7 @@ for _p in (_REPO_ROOT, _SHARED_DIR, _CONFIG_DIR):
         sys.path.insert(0, _p)
 
 from shared.agent_loop import run_agent_loop
+from shared.agent_utils import build_user_content
 from shared.models import ToolCall
 
 from analysis_agent.llm_client import (
@@ -183,7 +184,8 @@ async def run_agent(
         wf_message = _build_workflow_context_message(workflow_context)
         state.add_user_message(wf_message)
 
-    state.add_user_message(query)
+    images = context.get("images", []) if context else []
+    state.add_user_message(build_user_content(query, images))
 
     # The shared loop will detect that messages are already populated
     # and skip its own system prompt / user message setup.

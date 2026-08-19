@@ -266,6 +266,36 @@ def build_tool_calls_message(tool_calls: list) -> list[dict[str, Any]]:
     ]
 
 
+def build_user_content(
+    query: str, images: list[str] | None = None
+) -> str | list[dict[str, Any]]:
+    """Build user message content, with multimodal blocks if images present.
+
+    When *images* is empty or ``None`` the plain *query* string is returned
+    (backward-compatible with all existing agents).  When images are provided
+    the return value is an OpenAI-compatible list of content blocks::
+
+        [
+            {"type": "text", "text": "<query>"},
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64,..."}},
+            ...
+        ]
+
+    Args:
+        query: The user's text query.
+        images: Optional list of base64 data-URI strings.
+
+    Returns:
+        Plain string or list of content-block dicts.
+    """
+    if not images:
+        return query
+    content: list[dict[str, Any]] = [{"type": "text", "text": query}]
+    for img in images:
+        content.append({"type": "image_url", "image_url": {"url": img}})
+    return content
+
+
 async def emit_progress(
     cb: Any, progress: float, total: float | None, message: str
 ) -> None:

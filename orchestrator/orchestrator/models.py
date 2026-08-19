@@ -60,9 +60,10 @@ class LLMOverride(BaseModel):
     looking up the user-selected model from MongoDB.
     """
 
-    base_url: str | None = None   # e.g. "http://mango.cels.anl.gov:8004/v1"
-    api_key: str | None = None    # e.g. "EMPTY"
-    model: str | None = None      # e.g. "RedHatAI/Llama-4-Scout-17B-16E-Instruct-FP8-dynamic"
+    base_url: str | None = None    # e.g. "http://mango.cels.anl.gov:8004/v1"
+    api_key: str | None = None     # e.g. "EMPTY"
+    model: str | None = None       # e.g. "Qwen/Qwen3.6-35B-A3B"
+    max_tokens: int | None = None  # Per-model token limit from MongoDB
 
 
 class OrchestratorRequest(BaseModel):
@@ -101,6 +102,10 @@ class OrchestratorRequest(BaseModel):
 
     # User-attached text files (inline content from browser upload)
     attached_files: list[dict[str, Any]] = Field(default_factory=list)
+
+    # User-attached images (base64 data URIs from browser upload/screenshot/paste)
+    # Forwarded to agents as multimodal content blocks for vision-capable LLMs.
+    images: list[str] = Field(default_factory=list)
 
     # Workflow context from completion webhook (for analysis agent)
     # Contains workflow_id, workflow_name, status, steps, output_paths

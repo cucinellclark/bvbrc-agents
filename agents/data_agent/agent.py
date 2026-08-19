@@ -24,6 +24,7 @@ for _p in (_REPO_ROOT, _SHARED_DIR, _CONFIG_DIR):
 
 # Shared utilities
 from shared.agent_utils import (
+    build_user_content,
     parse_tool_calls as _parse_tool_calls_raw,
     get_response_content,
     build_tool_calls_message,
@@ -74,6 +75,7 @@ async def plan_only(
 
     # Build initial messages -- include planning-mode instructions
     system_content = SYSTEM_PROMPT + PLAN_ONLY_ADDENDUM
+    images: list[str] = []
     if context:
         page_context = context.get("page_context", "")
         if page_context:
@@ -82,12 +84,16 @@ async def plan_only(
                 f"The user is currently viewing the following page:\n"
                 f"{page_context}"
             )
-        ctx_for_prompt = {k: v for k, v in context.items() if k != "page_context"}
+        images = context.get("images", []) or []
+        ctx_for_prompt = {
+            k: v for k, v in context.items()
+            if k not in ("page_context", "images")
+        }
         if ctx_for_prompt:
             system_content += f"\n\n=== ADDITIONAL CONTEXT ===\n{json.dumps(ctx_for_prompt)}"
 
     state.add_system_message(system_content)
-    state.add_user_message(query)
+    state.add_user_message(build_user_content(query, images))
 
     for iteration in range(cfg.max_iterations):
         state.iteration = iteration + 1

@@ -273,6 +273,7 @@ def create_app(config_path: str | None = None) -> FastAPI:
                     override.base_url or default_cfg.base_url,
                     override.api_key or default_cfg.api_key,
                     override.model or default_cfg.model,
+                    override.max_tokens or default_cfg.max_tokens,
                 )
                 cache = _state.llm_cache
                 if cache is not None:
@@ -285,7 +286,7 @@ def create_app(config_path: str | None = None) -> FastAPI:
                     api_key=cache_key[1],
                     model=cache_key[2],
                     temperature=default_cfg.temperature,
-                    max_tokens=default_cfg.max_tokens,
+                    max_tokens=override.max_tokens or default_cfg.max_tokens,
                     timeout_seconds=default_cfg.timeout_seconds,
                 )
                 logger.info(

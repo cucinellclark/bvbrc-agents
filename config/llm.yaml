@@ -29,7 +29,10 @@ llm:
   temperature: 0.0
 
   # Maximum tokens the model can generate per response
-  max_tokens: 4096
+  # NOTE: Thinking/reasoning models (e.g. Qwen3) need higher limits because
+  # reasoning tokens count against this budget. Per-model overrides from
+  # MongoDB take precedence when the full override chain is active.
+  max_tokens: 16384
 
   # Request timeout in seconds
   timeout_seconds: 60

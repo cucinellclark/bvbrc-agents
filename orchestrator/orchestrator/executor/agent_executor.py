@@ -96,15 +96,22 @@ async def execute_agent_step(
 
     # Forward LLM override so agents can use the user-selected model
     if request.llm_override:
-        context_data["llm_override"] = {
+        llm_override_data: dict[str, Any] = {
             "base_url": request.llm_override.base_url,
             "api_key": request.llm_override.api_key,
             "model": request.llm_override.model,
         }
+        if request.llm_override.max_tokens is not None:
+            llm_override_data["max_tokens"] = request.llm_override.max_tokens
+        context_data["llm_override"] = llm_override_data
 
     # Forward attached files so agents can use file content
     if request.attached_files:
         context_data["attached_files"] = request.attached_files
+
+    # Forward images for multimodal content (base64 data URIs)
+    if request.images:
+        context_data["images"] = request.images
 
     # Forward workflow context for the analysis agent
     if request.workflow_context:

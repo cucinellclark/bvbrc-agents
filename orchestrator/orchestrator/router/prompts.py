@@ -116,6 +116,19 @@ your reasoning.
 - If the request is a greeting, general question, or doesn't need any agent, \
 respond directly.
 
+## Image / Screenshot Handling
+- When the user's request mentions a screenshot, image, or attached picture, \
+ALWAYS route to an **agent** — NEVER respond directly. You (the router) do \
+not have access to attached images, but the downstream agents DO. Images are \
+forwarded to the agent as multimodal content blocks and the agent's LLM can \
+see them.
+- Typical image requests include: "what is shown in this screenshot?", \
+"describe this page", "what errors are visible?", "analyze this image". \
+Route these to **helpdesk** unless another agent is more appropriate \
+(e.g., "run this workflow shown in the screenshot" → **service**).
+- Do NOT generate a direct_response saying you cannot view images. The agents \
+can view them — your job is only to route.
+
 ## Context-Aware Routing
 - When the conversation context shows the user was previously browsing \
 workspace files (e.g., found reads, contigs, or other input files), \
@@ -182,6 +195,7 @@ def build_routing_prompt(
     agent_catalog: str,
     conversation_context: str | None = None,
     page_context: str | None = None,
+    has_images: bool = False,
 ) -> tuple[str, str]:
     """Build the system and user prompts for the routing LLM.
 
@@ -192,6 +206,9 @@ def build_routing_prompt(
         page_context: Optional description of the page the user is currently
             viewing (e.g. genome details, feature info).  Helps resolve
             references like "this genome" or "annotate this".
+        has_images: Whether the user's request includes attached images
+            (screenshots, uploads). When True, the router must route to an
+            agent — the images will be forwarded to the agent for processing.
 
     Returns:
         Tuple of (system_prompt, user_prompt).
@@ -199,6 +216,13 @@ def build_routing_prompt(
     system = ROUTING_SYSTEM_PROMPT.format(agent_catalog=agent_catalog)
 
     user_parts = []
+    if has_images:
+        user_parts.append(
+            "## Attached Images\n"
+            "The user has attached one or more images (screenshot or upload). "
+            "These images will be forwarded to the selected agent for visual "
+            "analysis. You MUST route to an agent — do NOT respond directly.\n"
+        )
     if page_context:
         user_parts.append(
             f"## Page Context\n"

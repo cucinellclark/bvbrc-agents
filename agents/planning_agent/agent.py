@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "shared")
 if str(Path(__file__).resolve().parent.parent.parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from agent_utils import (  # noqa: E402
+    build_user_content,
     call_fingerprint,
     parse_tool_calls as _parse_tool_calls_raw,
     get_response_content,
@@ -137,6 +138,7 @@ async def _analyze_and_plan(
     system_prompt = build_system_prompt(agent_catalog_text)
 
     # Add page context if available
+    images: list[str] = []
     if context:
         page_context = context.get("page_context", "")
         if page_context:
@@ -145,6 +147,7 @@ async def _analyze_and_plan(
                 f"The user is currently viewing the following page:\n"
                 f"{page_context}"
             )
+        images = context.get("images", []) or []
 
     # Add conversation context if available
     if context:
@@ -153,7 +156,7 @@ async def _analyze_and_plan(
             system_prompt += f"\n\n=== CONVERSATION CONTEXT ===\n{conv_summary}"
 
     state.add_system_message(system_prompt)
-    state.add_user_message(query)
+    state.add_user_message(build_user_content(query, images))
 
     await emit_progress(progress_callback, 0, None, "Analyzing your request...")
 
@@ -183,6 +186,7 @@ async def _plan_with_answers(
     agent_catalog_text = _build_agent_catalog_text(context)
     system_prompt = build_system_prompt(agent_catalog_text)
 
+    images: list[str] = []
     if context:
         page_context = context.get("page_context", "")
         if page_context:
@@ -194,6 +198,7 @@ async def _plan_with_answers(
         conv_summary = context.get("conversation_summary", "")
         if conv_summary:
             system_prompt += f"\n\n=== CONVERSATION CONTEXT ===\n{conv_summary}"
+        images = context.get("images", []) or []
 
     state.add_system_message(system_prompt)
 
@@ -202,7 +207,7 @@ async def _plan_with_answers(
     # may have set (e.g. "Submitted clarification responses.").
     workflow_ctx = context.get("workflow_context", {})
     original_query = workflow_ctx.get("original_query", "") or query
-    state.add_user_message(original_query)
+    state.add_user_message(build_user_content(original_query, images))
 
     # Add clarification answers as assistant/user exchange
     answers = workflow_ctx.get("clarification_answers", [])

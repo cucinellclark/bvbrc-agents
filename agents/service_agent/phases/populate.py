@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent / "s
 if str(Path(__file__).resolve().parent.parent.parent.parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent))
 from agent_utils import (
+    build_user_content,
     call_fingerprint,
     parse_tool_calls as _parse_tool_calls_raw,
     get_response_content,
@@ -86,6 +87,7 @@ async def populate_and_submit(
     attached_files = state.context.get("attached_files", []) if state.context else []
     system_prompt = build_populate_prompt(attached_files=attached_files)
 
+    images: list[str] = []
     if state.context:
         page_context = state.context.get("page_context", "")
         if page_context:
@@ -94,8 +96,10 @@ async def populate_and_submit(
                 f"The user is currently viewing the following page:\n"
                 f"{page_context}"
             )
+        images = state.context.get("images", []) or []
         ctx_for_prompt = {
-            k: v for k, v in state.context.items() if k != "page_context"
+            k: v for k, v in state.context.items()
+            if k not in ("page_context", "images")
         }
         if ctx_for_prompt:
             system_prompt += (
@@ -105,7 +109,7 @@ async def populate_and_submit(
     # Initialize messages
     state.reset_messages()
     state.add_system_message(system_prompt)
-    state.add_user_message(query)
+    state.add_user_message(build_user_content(query, images))
 
     client = create_client(config)
 

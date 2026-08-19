@@ -89,6 +89,7 @@ async def route(
         agent_catalog=catalog,
         conversation_context=conversation_context,
         page_context=request.page_context,
+        has_images=bool(request.images),
     )
 
     logger.info(
@@ -107,7 +108,7 @@ async def route(
                 prompt=user_prompt,
                 system_prompt=system_prompt,
                 temperature=0.0,
-                max_tokens=4096,
+                max_tokens=16384,
             )
             logger.info(
                 f"Routing LLM raw response (attempt {attempt}/{max_routing_attempts}): "
