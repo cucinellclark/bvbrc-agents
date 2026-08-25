@@ -79,7 +79,7 @@ async def search_data(
     solr_query_fn, _, _ = _get_solr_functions()
 
     token = _extract_token(headers)
-    return await solr_query_fn(
+    result = await solr_query_fn(
         collection=collection,
         query=query,
         select=select,
@@ -89,6 +89,19 @@ async def search_data(
         token=token,
         base_url=base_url,
     )
+
+    # Attach actionable URLs so the LLM can embed clickable markdown
+    # links in its response (viewer page, TSV download, FASTA download).
+    if isinstance(result, dict) and not result.get("error") and collection and query:
+        try:
+            from shared.tools.url_utils import solr_to_rql, enrich_search_result
+
+            rql_query = solr_to_rql(query)
+            enrich_search_result(result, collection, rql_query)
+        except Exception:
+            pass  # URL enrichment is best-effort; don't break tool results
+
+    return result
 
 
 async def facet_query(

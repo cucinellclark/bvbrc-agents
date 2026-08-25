@@ -36,7 +36,7 @@ def test_shared_tools_importable():
     )
     from shared.tools.workspace import workspace_browse, get_file_metadata
     from shared.tools.data import search_data
-    from shared.tools.groups import get_genome_group, get_feature_group
+    from shared.tools.groups import create_group, list_groups, get_group_ids
     from shared.tools.sra import get_sra_metadata
 
     assert callable(list_gowe_workflows)
@@ -45,8 +45,9 @@ def test_shared_tools_importable():
     assert callable(workspace_browse)
     assert callable(get_file_metadata)
     assert callable(search_data)
-    assert callable(get_genome_group)
-    assert callable(get_feature_group)
+    assert callable(create_group)
+    assert callable(list_groups)
+    assert callable(get_group_ids)
     assert callable(get_sra_metadata)
 
 
@@ -61,8 +62,9 @@ def test_service_agent_tools_dispatch():
         "workspace_browse",
         "read_file_info",
         "search_data",
-        "get_genome_group",
-        "get_feature_group",
+        "create_group",
+        "list_groups",
+        "get_group_ids",
         "get_sra_metadata",
         "find_similar_genomes",
         "search_literature",
@@ -74,7 +76,7 @@ def test_tool_registry_populate_tools():
     """Verify the tool registry only contains GoWe populate flow tools."""
     from service_agent.tool_registry import POPULATE_TOOLS, TOOL_MAP
 
-    assert len(POPULATE_TOOLS) == 11
+    assert len(POPULATE_TOOLS) == 10
     assert "list_gowe_workflows" in TOOL_MAP
     assert "get_workflow_inputs" in TOOL_MAP
     assert "submit_gowe_job" in TOOL_MAP

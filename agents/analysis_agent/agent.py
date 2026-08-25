@@ -22,7 +22,7 @@ for _p in (_REPO_ROOT, _SHARED_DIR, _CONFIG_DIR):
         sys.path.insert(0, _p)
 
 from shared.agent_loop import run_agent_loop
-from shared.agent_utils import build_user_content
+from shared.agent_utils import build_user_content, format_recent_messages
 from shared.models import ToolCall
 
 from analysis_agent.llm_client import (
@@ -166,9 +166,21 @@ async def run_agent(
                 f"The user is currently viewing the following page:\n"
                 f"{page_context}"
             )
+        # Inject bounded conversation context from recent_messages
+        recent_msgs = context.get("recent_messages")
+        if recent_msgs:
+            formatted = format_recent_messages(recent_msgs)
+            if formatted:
+                system_content += (
+                    f"\n\n=== CONVERSATION CONTEXT ===\n{formatted}"
+                )
+
         ctx_for_prompt = {
             k: v for k, v in context.items()
-            if k not in ("workflow_context", "page_context", "images")
+            if k not in (
+                "workflow_context", "page_context", "images",
+                "conversation_summary", "recent_messages",
+            )
         }
         if ctx_for_prompt:
             system_content += (

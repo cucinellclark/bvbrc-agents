@@ -1,14 +1,14 @@
 """
-Condensed GoWe workflow-engine skill prompt for agents that need to
-discover, configure, or submit GoWe workflows.
+Condensed workflow-engine skill prompt for agents that need to
+discover, configure, or submit bioinformatics workflows.
 
 Inject ``GOWE_SKILL_PROMPT`` into any agent's system prompt.
 """
 
 GOWE_SKILL_PROMPT = """
-## GoWe Workflow Engine Reference (Skill)
+## Workflow Engine Reference (Skill)
 
-You have access to GoWe tools for discovering and submitting bioinformatics
+You have access to tools for discovering and submitting bioinformatics
 workflows.  Follow these rules:
 
 ### Workflow

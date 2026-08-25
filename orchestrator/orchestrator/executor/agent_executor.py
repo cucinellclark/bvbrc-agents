@@ -67,10 +67,14 @@ async def execute_agent_step(
     if agent.config.chat_tool_params:
         arguments.update(agent.config.chat_tool_params)
 
-    # Pass context if available
+    # Pass context if available.
+    # NOTE: conversation_summary is intentionally NOT forwarded to agents.
+    # It is unbounded (full session history) and bloats the agent's system
+    # prompt, causing LLM timeouts on long conversations.  Agents receive
+    # the router's curated task description as their query (step.task) plus
+    # recent_messages (token-budgeted to ~4000 tokens by the gateway) for
+    # conversation context.
     context_data: dict[str, Any] = {}
-    if request.conversation_summary:
-        context_data["conversation_summary"] = request.conversation_summary
     if request.recent_messages:
         context_data["recent_messages"] = request.recent_messages[-5:]
     if request.workspace_path:

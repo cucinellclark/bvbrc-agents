@@ -107,6 +107,8 @@ exploration only and suggest they use the appropriate BV-BRC tools.
 specifically requests it.
 """
 
+from shared.prompts.response_format_skill import RESPONSE_FORMAT_SKILL_PROMPT
+
 SYSTEM_PROMPT = "".join([
     _PREAMBLE,
     _WORKSPACE_STRUCTURE,
@@ -115,4 +117,5 @@ SYSTEM_PROMPT = "".join([
     _STRATEGY,
     _RESPONSE_FORMAT,
     _CONSTRAINTS,
+    RESPONSE_FORMAT_SKILL_PROMPT,
 ])

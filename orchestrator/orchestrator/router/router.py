@@ -70,16 +70,21 @@ async def route(
         )
 
     # --- Build conversation context ---
+    # Only use recent_messages (already token-budgeted by the gateway's
+    # selectRecentMessages, ~4000 tokens).  conversation_summary is
+    # unbounded and can contain the full content of every message in the
+    # session, which overflows the routing LLM's context window on long
+    # conversations.  The router only needs enough context to classify
+    # intent — the current query (in ## User Request) plus a few
+    # truncated recent messages is sufficient.
     context_parts: list[str] = []
-    if request.conversation_summary:
-        context_parts.append(request.conversation_summary)
     if request.recent_messages:
         recent = request.recent_messages[-5:]  # Last 5 messages
         for msg in recent:
             role = msg.get("role", "user")
             content = msg.get("content", "")
             if content:
-                context_parts.append(f"{role}: {content[:200]}")
+                context_parts.append(f"{role}: {content[:500]}")
     conversation_context = "\n".join(context_parts) if context_parts else None
 
     # --- Call the routing LLM ---

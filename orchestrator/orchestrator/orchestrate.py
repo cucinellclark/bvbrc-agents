@@ -206,7 +206,10 @@ async def orchestrate(
         #     forward the agent's clarification question to the frontend.
         # ------------------------------------------------------------------
         for ar in agent_results:
-            if ar.get("status") == "needs_input":
+            if ar.get("status") == "needs_input" and not ar.get("clarification_questions"):
+                # Skip NEEDS_INPUT for planning-agent clarification results —
+                # those are handled by the dedicated ASK_QUESTIONS path in 3b
+                # which carries the structured questions list.
                 question = ar.get("question") or ar.get("answer", "")
                 if question:
                     yield Event(
@@ -246,7 +249,7 @@ async def orchestrate(
                 yield Event(
                     type=EventType.ORCHESTRATOR_DONE,
                     data={
-                        "response_text": "",
+                        "response_text": ar.get("answer", ""),
                         "decision": decision.decision,
                         "agents_used": agents_used,
                         "elapsed_ms": _elapsed_ms(start_time),
@@ -276,40 +279,6 @@ async def orchestrate(
                 )
                 return  # Skip synthesis — plan card is the response
 
-            # --- REVIEW STEP ---
-            if (
-                ar.get("step_execution")
-                and ar.get("status") == "step_ready"
-                and ar["step_execution"].get("agent") == "review"
-            ):
-                step_exec = ar["step_execution"]
-                review_config = step_exec.get("review_config", {})
-
-                yield Event(
-                    type=EventType.PLAN_REVIEW_READY,
-                    agent_name="planning",
-                    data={
-                        "plan_id": step_exec.get("plan_id"),
-                        "step_id": step_exec.get("step_id"),
-                        "step_index": step_exec.get("step_index"),
-                        "review_config": review_config,
-                        "source_data": step_exec.get("source_data", {}),
-                        "prompt": review_config.get(
-                            "prompt", "Review the results before continuing."
-                        ),
-                    },
-                )
-                yield Event(
-                    type=EventType.ORCHESTRATOR_DONE,
-                    data={
-                        "response_text": ar.get("answer", ""),
-                        "decision": decision.decision,
-                        "agents_used": agents_used,
-                        "elapsed_ms": _elapsed_ms(start_time),
-                    },
-                )
-                return
-
             # --- STEP READY ---
             if ar.get("step_execution") and ar.get("status") == "step_ready":
                 step_exec = ar["step_execution"]
@@ -336,8 +305,19 @@ async def orchestrate(
                     ],
                 )
 
+                # Strip workflow_context before delegating to the
+                # target agent.  workflow_context carries the full plan
+                # (all steps, original query, plan description) which is
+                # meant for the planning agent only.  Forwarding it to
+                # the delegated agent leaks the full plan into its
+                # system prompt, causing it to "helpfully" execute work
+                # from future steps instead of just its own step.
+                step_request = request.model_copy(
+                    update={"workflow_context": None}
+                )
+
                 step_agent_results: list[dict[str, Any]] = []
-                async for event in execute_plan(single_step_plan, registry, request):
+                async for event in execute_plan(single_step_plan, registry, step_request):
                     yield event  # Forward all agent events
                     if event.type == EventType.AGENT_RESULT:
                         step_agent_results.append(event.data.get("result_for_ui", {}))
@@ -413,6 +393,30 @@ async def orchestrate(
                         agent_name=step_exec.get("agent"),
                         data=step_completed_data,
                     )
+
+                elif step_status == "needs_input":
+                    # The delegated agent called ask_clarification — it
+                    # needs user input before it can finish this step.
+                    # Emit a dedicated event so the frontend pauses the
+                    # plan and shows the question.  The answer text
+                    # (which describes the question) will flow through
+                    # synthesis to become a visible chat message.
+                    question_text = (
+                        step_result.get("question")
+                        or step_result.get("answer", "")
+                    )
+                    yield Event(
+                        type=EventType.PLAN_STEP_NEEDS_INPUT,
+                        agent_name=step_exec.get("agent"),
+                        data={
+                            "plan_id": step_exec.get("plan_id"),
+                            "step_id": step_exec.get("step_id"),
+                            "step_index": step_exec.get("step_index"),
+                            "question": question_text,
+                            "agent": step_exec.get("agent"),
+                        },
+                    )
+
                 else:
                     yield Event(
                         type=EventType.PLAN_STEP_FAILED,
@@ -434,8 +438,7 @@ async def orchestrate(
             # --- DIRECT STEP COMPLETED ---
             # When a 'direct' step is executed, the planning agent
             # returns status="completed" with step_execution data.
-            # This includes continue_review responses where the PlanCard
-            # handles the UI directly — no synthesis needed.
+            # No synthesis needed — the step result is emitted directly.
             if (
                 ar.get("step_execution")
                 and ar.get("status") == "completed"

@@ -47,6 +47,7 @@ class EventType(str, Enum):
     PLAN_CREATED = "plan_created"
     PLAN_STEP_STARTED = "plan_step_started"
     PLAN_STEP_COMPLETED = "plan_step_completed"
+    PLAN_STEP_NEEDS_INPUT = "plan_step_needs_input"
     PLAN_STEP_FAILED = "plan_step_failed"
     PLAN_REVIEW_READY = "plan_review_ready"
     PLAN_WORKFLOW_SUBMITTED = "plan_workflow_submitted"

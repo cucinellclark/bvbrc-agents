@@ -27,6 +27,7 @@ if str(Path(__file__).resolve().parent.parent.parent) not in sys.path:
 from agent_utils import (  # noqa: E402
     build_user_content,
     call_fingerprint,
+    format_recent_messages,
     parse_tool_calls as _parse_tool_calls_raw,
     get_response_content,
     build_tool_calls_message,
@@ -106,8 +107,6 @@ async def run_agent(
         return await _execute_step(query, cfg, ctx, progress_callback)
     elif plan_action == "answer_questions":
         return await _plan_with_answers(query, cfg, ctx, progress_callback)
-    elif plan_action == "continue_review":
-        return await _continue_review(query, cfg, ctx, progress_callback)
     else:
         return await _analyze_and_plan(query, cfg, ctx, progress_callback)
 
@@ -149,11 +148,13 @@ async def _analyze_and_plan(
             )
         images = context.get("images", []) or []
 
-    # Add conversation context if available
+    # Add bounded conversation context from recent_messages
     if context:
-        conv_summary = context.get("conversation_summary", "")
-        if conv_summary:
-            system_prompt += f"\n\n=== CONVERSATION CONTEXT ===\n{conv_summary}"
+        recent_msgs = context.get("recent_messages")
+        if recent_msgs:
+            formatted = format_recent_messages(recent_msgs)
+            if formatted:
+                system_prompt += f"\n\n=== CONVERSATION CONTEXT ===\n{formatted}"
 
     state.add_system_message(system_prompt)
     state.add_user_message(build_user_content(query, images))
@@ -195,9 +196,11 @@ async def _plan_with_answers(
                 f"The user is currently viewing the following page:\n"
                 f"{page_context}"
             )
-        conv_summary = context.get("conversation_summary", "")
-        if conv_summary:
-            system_prompt += f"\n\n=== CONVERSATION CONTEXT ===\n{conv_summary}"
+        recent_msgs = context.get("recent_messages")
+        if recent_msgs:
+            formatted = format_recent_messages(recent_msgs)
+            if formatted:
+                system_prompt += f"\n\n=== CONVERSATION CONTEXT ===\n{formatted}"
         images = context.get("images", []) or []
 
     state.add_system_message(system_prompt)
@@ -294,26 +297,31 @@ async def _execute_step(
             progress_callback,
         )
 
-    # For 'review' steps, gather source data and return for user review
+    # Legacy 'review' steps are no longer supported — skip them
     if target_agent == "review":
-        return await _execute_review_step(
-            config,
-            context,
-            plan_data,
-            step,
-            current_index,
-            completed_results,
-            progress_callback,
-        )
+        state = AgentState(query=query, context=context)
+        state.status = "completed"
+        state.final_answer = ""
+        step_id = step.get("step_id", f"step_{current_index}")
+        state.step_execution = {
+            "agent": "direct",
+            "task": step.get("description", "Skipped review step"),
+            "plan_id": plan_data.get("plan_id", ""),
+            "step_id": step_id,
+            "step_index": current_index,
+            "direct_answer": "Review step skipped — plans no longer use review checkpoints.",
+        }
+        return state.to_result()
 
     # For agent-delegated steps, formulate the query
     client = create_client(config)
 
     # Gather original query from plan description or conversation context
     original_query = plan_data.get("description", query)
-    conv_summary = context.get("conversation_summary", "")
-    if conv_summary and not original_query:
-        original_query = conv_summary[:500]
+    if not original_query:
+        recent_msgs = context.get("recent_messages")
+        if recent_msgs:
+            original_query = format_recent_messages(recent_msgs, max_per_message=200, max_messages=3)
 
     # Build the step execution prompt
     step_prompt = build_step_execution_prompt(
@@ -449,149 +457,6 @@ async def _execute_direct_step(
         "step_id": step_id,
         "step_index": step_index,
         "direct_answer": answer,
-    }
-
-    return state.to_result()
-
-
-async def _execute_review_step(
-    config: AgentConfig,
-    context: dict[str, Any],
-    plan_data: dict[str, Any],
-    step: dict[str, Any],
-    step_index: int,
-    completed_results: dict[str, dict],
-    progress_callback: ProgressCallback | None,
-) -> AgentResult:
-    """Execute a 'review' step -- gather source data for user review.
-
-    Looks up the data_source_step in completed_results, extracts
-    structured data, and returns step_ready with agent="review" so
-    the orchestrator can emit a PLAN_REVIEW_READY event.
-    """
-    step_id = step.get("step_id", f"step_{step_index}")
-    step_description = step.get("description", "")
-    review_config = step.get("review_config", {})
-    data_source_step = review_config.get("data_source_step", "")
-
-    await emit_progress(
-        progress_callback,
-        step_index,
-        len(plan_data.get("steps", [])),
-        f"Preparing review: {step_description[:60]}...",
-    )
-
-    # Gather source data from the referenced prior step
-    source_data: dict[str, Any] = {}
-    if data_source_step and data_source_step in completed_results:
-        source_result = completed_results[data_source_step]
-        source_data = {
-            "answer": source_result.get("answer", ""),
-            "structured_data": source_result.get("structured_data"),
-            "status": source_result.get("status", ""),
-        }
-    elif completed_results:
-        # Fallback: use the most recent completed step's data
-        last_key = list(completed_results.keys())[-1]
-        source_result = completed_results[last_key]
-        source_data = {
-            "answer": source_result.get("answer", ""),
-            "structured_data": source_result.get("structured_data"),
-            "status": source_result.get("status", ""),
-        }
-
-    state = AgentState(query=step_description, context=context)
-    state.status = "step_ready"
-    # No visible chat message -- the frontend PlanCard renders an
-    # interactive review panel via the PLAN_REVIEW_READY SSE event.
-    state.final_answer = ""
-    state.step_execution = {
-        "agent": "review",
-        "task": step_description,
-        "plan_id": plan_data.get("plan_id", ""),
-        "step_id": step_id,
-        "step_index": step_index,
-        "review_config": review_config,
-        "source_data": source_data,
-    }
-
-    return state.to_result()
-
-
-# ---------------------------------------------------------------------------
-# Mode 4: Continue after Review
-# ---------------------------------------------------------------------------
-
-
-async def _continue_review(
-    query: str,
-    config: AgentConfig,
-    context: dict[str, Any],
-    progress_callback: ProgressCallback | None,
-) -> AgentResult:
-    """Complete a review step with the user's selections.
-
-    The user's review decisions (selected IDs, chosen workflow, parameters)
-    are stored as this step's result, which downstream steps can reference
-    via completed_step_results.
-    """
-    workflow_ctx = context.get("workflow_context", {})
-    plan_data = workflow_ctx.get("plan", {})
-    current_index = workflow_ctx.get("current_step_index", 0)
-    review_selections = workflow_ctx.get("review_selections", {})
-
-    steps = plan_data.get("steps", [])
-    step = steps[current_index] if current_index < len(steps) else {}
-    step_id = step.get("step_id", f"step_{current_index}")
-    step_description = step.get("description", "Review completed")
-
-    await emit_progress(
-        progress_callback,
-        current_index,
-        len(steps),
-        "Processing your review selections...",
-    )
-
-    state = AgentState(query=query, context=context)
-    state.status = "completed"
-
-    # Build a summary of the user's selections for downstream context
-    selection_parts: list[str] = []
-    if review_selections.get("selected_ids"):
-        ids = review_selections["selected_ids"]
-        selection_parts.append(f"Selected {len(ids)} items")
-    if review_selections.get("chosen_workflow"):
-        selection_parts.append(
-            f"Chose workflow: {review_selections['chosen_workflow']}"
-        )
-    if review_selections.get("filters"):
-        selection_parts.append(
-            f"Applied filters: {json.dumps(review_selections['filters'])}"
-        )
-    # Group management selections
-    if review_selections.get("group_path"):
-        selection_parts.append(f"Genome group path: {review_selections['group_path']}")
-    if review_selections.get("group_name"):
-        selection_parts.append(f"Group name: {review_selections['group_name']}")
-    if review_selections.get("group_type"):
-        selection_parts.append(f"Group type: {review_selections['group_type']}")
-    if review_selections.get("group_action"):
-        selection_parts.append(f"Action: {review_selections['group_action']}")
-    selection_summary = (
-        ". ".join(selection_parts) if selection_parts else "Review completed"
-    )
-
-    # No visible chat message -- the PlanCard already shows the review
-    # step as completed with the selection summary in its result row.
-    state.final_answer = ""
-    state.step_execution = {
-        "agent": "direct",
-        "task": step_description,
-        "plan_id": plan_data.get("plan_id", ""),
-        "step_id": step_id,
-        "step_index": current_index,
-        "direct_answer": selection_summary,
-        "review_selections": review_selections,
     }
 
     return state.to_result()

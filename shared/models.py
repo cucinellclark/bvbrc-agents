@@ -102,6 +102,14 @@ class BaseAgentConfig(BaseModel):
         Path(__file__).resolve().parent.parent / "mcp_server"
     )
 
+    # Session context (injected by orchestrator via agent_chat_tool).
+    # Used by submit_gowe_job to rewrite output_path under the chat
+    # session's workspace folder.  Defined on BaseAgentConfig so that
+    # ALL agents (not just the service agent) can pass session context
+    # through to GoWe submissions.
+    session_id: str | None = None
+    workspace_path: str | None = None
+
 
 # ---------------------------------------------------------------------------
 # Base agent state
@@ -133,6 +141,7 @@ class BaseAgentState(BaseModel):
     tool_executions: list[ToolExecution] = Field(default_factory=list)
     iteration: int = 0
     final_answer: str | None = None
+    question: str | None = None
     status: AgentStatus = "running"
     start_time: float = Field(default_factory=time.time)
 
@@ -215,6 +224,7 @@ class BaseAgentResult(BaseModel):
 
     answer: str = ""
     status: str = "completed"
+    question: str | None = None
     sources: list[str] = Field(default_factory=list)
     tool_trace: list[ToolExecution] = Field(default_factory=list)
     iterations_used: int = 0

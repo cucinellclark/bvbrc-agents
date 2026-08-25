@@ -28,6 +28,7 @@ if str(Path(__file__).resolve().parent.parent.parent.parent) not in sys.path:
 from agent_utils import (
     build_user_content,
     call_fingerprint,
+    format_recent_messages,
     parse_tool_calls as _parse_tool_calls_raw,
     get_response_content,
     build_tool_calls_message,
@@ -97,9 +98,22 @@ async def populate_and_submit(
                 f"{page_context}"
             )
         images = state.context.get("images", []) or []
+
+        # Inject bounded conversation context from recent_messages
+        recent_msgs = state.context.get("recent_messages")
+        if recent_msgs:
+            formatted = format_recent_messages(recent_msgs)
+            if formatted:
+                system_prompt += (
+                    f"\n\n=== CONVERSATION CONTEXT ===\n{formatted}"
+                )
+
         ctx_for_prompt = {
             k: v for k, v in state.context.items()
-            if k not in ("page_context", "images")
+            if k not in (
+                "page_context", "images",
+                "conversation_summary", "recent_messages",
+            )
         }
         if ctx_for_prompt:
             system_prompt += (
@@ -121,6 +135,10 @@ async def populate_and_submit(
     # Track duplicates
     executed_fingerprints: set[str] = set()
     duplicate_count = 0
+
+    # Track failed submission attempts to prevent retry loops
+    failed_submission_count = 0
+    MAX_FAILED_SUBMISSIONS = 2
 
     for iteration in range(config.max_iterations):
         await emit_progress(
@@ -193,9 +211,9 @@ async def populate_and_submit(
                 "list_gowe_workflows": "Discovering available workflows...",
                 "get_workflow_inputs": "Getting workflow input schema...",
                 "submit_gowe_job": (
-                    f"Submitting job {len(state.submission_ids) + 1} to GoWe..."
+                    f"Submitting job {len(state.submission_ids) + 1}..."
                     if state.submission_ids
-                    else "Submitting job to GoWe..."
+                    else "Submitting job..."
                 ),
                 "workspace_browse": "Browsing workspace for inputs...",
                 "read_file_info": "Reading file metadata...",
@@ -245,6 +263,47 @@ async def populate_and_submit(
                 duration_ms=duration_ms,
                 iteration=iteration,
             )
+
+            # Circuit breaker: if submit_gowe_job failed, track it and
+            # bail out after MAX_FAILED_SUBMISSIONS to prevent retry loops.
+            if tc.name == "submit_gowe_job" and error:
+                failed_submission_count += 1
+                logger.warning(
+                    "submit_gowe_job failed (%d/%d): %s",
+                    failed_submission_count,
+                    MAX_FAILED_SUBMISSIONS,
+                    error,
+                )
+                if failed_submission_count >= MAX_FAILED_SUBMISSIONS:
+                    # Feed the error back so the LLM can produce a
+                    # user-facing explanation, then force a text response.
+                    result_str = truncate_result(result)
+                    state.add_tool_result(tc.id, result_str)
+                    state.add_system_message(
+                        "Job submission has failed multiple times. "
+                        "Do NOT retry. Respond to the user with a clear "
+                        "explanation of the error and suggest they try "
+                        "again later or contact support."
+                    )
+                    try:
+                        final_resp = await chat_completion(
+                            client=client,
+                            messages=state.messages,
+                            tools=POPULATE_TOOLS,
+                            config=config,
+                            tool_choice="none",
+                        )
+                        final_content = get_response_content(final_resp)
+                    except Exception:
+                        final_content = None
+
+                    state.status = "error"
+                    state.error_message = (
+                        final_content
+                        or f"Job submission failed after "
+                        f"{failed_submission_count} attempts: {error}"
+                    )
+                    return state
 
             # Check if this was a successful submission
             if (

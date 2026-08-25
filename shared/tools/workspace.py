@@ -145,6 +145,16 @@ async def workspace_browse(
             num_results=num_results,
             tool_name="workspace_browse",
         )
+
+        # Attach a workspace browser URL so the LLM can include a
+        # clickable markdown link in its response.
+        if isinstance(result, dict) and not result.get("error"):
+            from shared.tools.url_utils import build_workspace_url
+
+            ws_url = build_workspace_url(resolved_path)
+            if ws_url:
+                result["workspace_browser_url"] = ws_url
+
         return result
 
     except Exception as e:
@@ -187,6 +197,18 @@ async def get_file_metadata(
             metadata_only=True,
             token=token,
         )
+
+        # Attach a workspace browser URL for the file's parent directory.
+        if isinstance(result, dict) and not result.get("error"):
+            from shared.tools.url_utils import build_workspace_url
+
+            # Link to the file's parent folder so the user can see it
+            # in the workspace browser.
+            parent_path = "/".join(resolved_path.rstrip("/").split("/")[:-1])
+            ws_url = build_workspace_url(parent_path or resolved_path)
+            if ws_url:
+                result["workspace_browser_url"] = ws_url
+
         return result
 
     except Exception as e:

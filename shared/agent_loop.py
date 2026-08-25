@@ -28,6 +28,7 @@ from typing import Any, Callable, Dict
 from shared.agent_utils import (
     build_user_content,
     call_fingerprint,
+    format_recent_messages,
     parse_tool_calls as _parse_tool_calls_raw,
     get_response_content,
     build_tool_calls_message,
@@ -127,7 +128,10 @@ async def run_agent_loop(
     if result_message_fn is None:
         result_message_fn = _default_result_message
     if excluded_context_keys is None:
-        excluded_context_keys = {"page_context", "images"}
+        excluded_context_keys = {
+            "page_context", "images",
+            "conversation_summary", "recent_messages",
+        }
 
     # Build initial messages if the caller hasn't already set them up.
     # Some agents (e.g., analysis) need to inject extra user messages
@@ -143,6 +147,16 @@ async def run_agent_loop(
                     f"The user is currently viewing the following page:\n"
                     f"{page_context}"
                 )
+
+            # Inject bounded conversation context from recent_messages.
+            recent_msgs = context.get("recent_messages")
+            if recent_msgs:
+                formatted = format_recent_messages(recent_msgs)
+                if formatted:
+                    system_content += (
+                        f"\n\n=== CONVERSATION CONTEXT ===\n{formatted}"
+                    )
+
             ctx_for_prompt = {
                 k: v for k, v in context.items()
                 if k not in excluded_context_keys
@@ -264,6 +278,27 @@ async def run_agent_loop(
             await emit_progress(
                 progress_callback, iteration, config.max_iterations, res_msg
             )
+
+            # --- ask_clarification detection ---
+            # When an agent explicitly calls ask_clarification with a
+            # valid result, the agent is requesting user input.  Exit
+            # the loop with status "needs_input" so the orchestrator
+            # can pause plan execution and surface the question to the
+            # user.  This mirrors the planning agent's handling in
+            # agents/planning_agent/agent.py.
+            if (
+                tc.name == "ask_clarification"
+                and isinstance(result, dict)
+                and result.get("status") == "valid"
+            ):
+                questions = result.get("questions", [])
+                state.status = "needs_input"
+                state.question = json.dumps(questions)
+                state.final_answer = content or "I have some questions before I can proceed."
+                result_str = truncate_result(result, max_chars=max_tool_result_chars)
+                state.add_tool_result(tc.id, result_str)
+                should_exit = True
+                break
 
             # Optional hook for special tool result handling
             if on_tool_result is not None:

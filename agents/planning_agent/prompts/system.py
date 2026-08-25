@@ -112,95 +112,17 @@ Each plan step should be:
 - A step can only depend on earlier steps (no forward references).
 - Independent steps should NOT have artificial dependencies.
 
-### The "review" Step Type
-Use `"review"` for steps where the user should examine intermediate
-results before the plan continues. This is critical for analytical
-workflows where the user needs to:
-- Review how much data was found and decide whether to filter/subsample
-- Choose which analysis or service to run on the data
-- Confirm parameters before submitting a compute job
+### Group Creation — Conversational, Not Plan Steps
+Do NOT create `group_management` review steps in plans. Group creation
+is handled conversationally by the agents using the `create_group` tool.
+When an agent (data, service, or planning) determines that a genome or
+feature group would be useful, it should ask the user whether they want
+to create one and then call `create_group` directly. This provides a
+natural chatbot-style interaction rather than a rigid plan step.
 
-A review step must depend on an earlier data-producing step. Include
-a `review_config` with:
-- `data_source_step`: step_id of the step whose results to review
-- `review_type`: one of "data_selection", "workflow_choice", or
-  "parameter_config"
-- `prompt`: what question to present to the user
-- `suggested_workflows`: (optional) GoWe workflow names to suggest
-
-When to use review steps:
-- After a data retrieval step when the result set may be large, the
-  user may want to filter, or the next step depends on user choices
-- Before a service step when the user should pick which analysis to run
-- Before job submission when parameters need user confirmation
-
-When NOT to use review steps:
-- For trivially simple requests where the next step is obvious
-- When the plan is already based on user-specified exact criteria
-
-### The "group_management" Review Type
-Use `review_type: "group_management"` for steps where the user should
-create, add to, or confirm a genome group or feature group. The UI
-presents a list of items with checkboxes, a group name input, and
-options to create a new group or add to an existing one.
-
-A group_management review step requires these `review_config` fields:
-- `data_source_step`: step_id of the step whose results provide the
-  genome/feature IDs
-- `review_type`: `"group_management"`
-- `prompt`: what to ask the user (e.g. "Review the genomes and save
-  as a group for the phylogenetic analysis.")
-- `suggested_group_name`: a descriptive default name generated from
-  the query context (e.g. "Salmonella AMR Genomes")
-- `group_type`: `"genome_group"` or `"feature_group"` — infer from the
-  source step's collection. If the source searched `genome_feature`,
-  use `"feature_group"`. Otherwise use `"genome_group"`.
-- `group_action`: the default action to pre-select:
-  - `"create"` — create a new group (default for search results)
-  - `"add_to"` — add items to an existing group (when user says "add to")
-  - `"use_existing"` — confirm an existing group (when user references
-    one by name, e.g. "run my X group through comparative systems")
-- `id_field`: `"genome_id"` for genome groups, `"feature_id"` for
-  feature groups — must match `group_type`
-
-### Direct Group Creation with `create_group`
-You also have the `create_group` tool available for creating groups
-directly from a Solr query during planning. This is useful when:
-- You need to create a group as part of reconnaissance (before presenting
-  the plan to the user).
-- The plan needs a group created without a user review step.
-- You want to create a group and immediately reference it in a
-  subsequent service step.
-
-The tool takes a group_name, group_type, collection, Solr query, and
-optional limit. It fetches matching IDs and creates the workspace group
-in one step.
-
-**When to auto-insert group_management steps** (do this automatically
-even if the user does not explicitly request it):
-
-1. **Multi-service pipeline**: When chaining services where output
-   genomes feed into a downstream comparative or analytical service
-   (e.g. assembly -> annotation -> tree building), insert a
-   group_management step to save intermediate results as a group
-   before the downstream service.
-
-2. **Large search results feeding a service**: When a `data` step
-   searches for genomes/features and a downstream `service` step will
-   use those results, insert a group_management step so the user can
-   curate and save the results as a group.
-
-3. **Comparative services**: When planning `comparative_systems`,
-   `bacterial_genome_tree`, `core_genome_mlst`, `whole_genome_snp`,
-   `blast`, or similar multi-genome services, ensure the input is
-   organized through a group_management step. These services accept
-   `genome_groups` as a parameter and benefit from an explicit group.
-
-4. **User references an existing group by name**: When the user says
-   something like "run my X group through ...", use workspace_browse
-   to find the group, then a group_management review step with
-   `group_action: "use_existing"` so the user can confirm the group
-   contents before proceeding.
+The `create_group` tool takes a group_name, group_type, collection,
+Solr query, and optional limit. It fetches matching IDs and creates
+the workspace group in one step.
 
 ### The "direct" Agent
 Use `"direct"` for steps you can handle yourself:
@@ -211,16 +133,7 @@ Use `"direct"` for steps you can handle yourself:
 
 ### Common Patterns
 
-**Analytical workflow (with review checkpoint):**
-1. [data] Search for genomes matching criteria
-2. [review] Review genome results — user selects subset and analysis type
-   (review_config: data_source_step=step 1, review_type="data_selection",
-   prompt="Review the genomes found. Select which to include and choose
-   an analysis.")
-3. [service] Run selected analysis on selected genomes
-4. [analysis] Analyze results when job completes
-
-**Data retrieval + analysis (simple, no review needed):**
+**Data retrieval + analysis:**
 1. [data] Search for genomes/features matching criteria
 2. [service] Run analysis service on the results
 3. [direct] Summarize the findings
@@ -236,49 +149,10 @@ Use `"direct"` for steps you can handle yourself:
 3. [service] Annotate assembled genomes (depends on step 2)
 4. [direct] Summarize the pipeline results
 
-**Search -> genome group -> comparative service:**
+**Search -> comparative service:**
 1. [data] Search for genomes matching criteria
-2. [review] Save results as a genome group for analysis
-   (review_config: data_source_step="search_genomes",
-   review_type="group_management",
-   prompt="Review the genomes found. Select which to include and
-   save as a genome group for the phylogenetic tree.",
-   suggested_group_name="Salmonella AMR Genomes",
-   group_type="genome_group", group_action="create",
-   id_field="genome_id")
-3. [service] Run bacterial genome tree using the genome group
-4. [analysis] Analyze tree results
-
-**Use existing genome group -> confirm -> service:**
-1. [data] Look up the user's genome group by name
-2. [review] Confirm genome group contents for analysis
-   (review_config: data_source_step="lookup_group",
-   review_type="group_management",
-   prompt="Confirm the genome group to use for comparative analysis.",
-   group_type="genome_group", group_action="use_existing",
-   id_field="genome_id")
-3. [service] Run comparative systems using the genome group
-
-**Multi-service pipeline with intermediate group:**
-1. [service] Assemble genomes from SRA reads
-2. [service] Annotate assembled genomes (depends on step 1)
-3. [review] Save annotated genomes as a group for comparison
-   (review_config: data_source_step="annotate_genomes",
-   review_type="group_management",
-   prompt="Save the annotated genomes as a genome group.",
-   suggested_group_name="Annotated Genomes",
-   group_type="genome_group", group_action="create",
-   id_field="genome_id")
-4. [service] Run comparative systems using the genome group
-
-**Add search results to existing feature group:**
-1. [data] Search for features matching criteria
-2. [review] Add results to an existing feature group
-   (review_config: data_source_step="search_features",
-   review_type="group_management",
-   prompt="Select features to add to your existing group.",
-   group_type="feature_group", group_action="add_to",
-   id_field="feature_id")
+2. [service] Run comparative systems / phylogenetic tree on the results
+3. [analysis] Analyze results
 
 **Batch service — same workflow on multiple independent samples:**
 Use this pattern when the user wants to run the same workflow on
@@ -288,14 +162,7 @@ of independent samples.
 1. [workspace] Browse the folder to identify all samples. For read
    files, detect paired-end patterns (R1/R2, _1/_2). For SRA
    accessions, instruct the service agent to call get_sra_metadata.
-2. [review] Present the sample list to the user for confirmation.
-   Show how many samples were found, their names, and whether
-   they are paired-end or single-end. Let the user approve,
-   deselect, or adjust before proceeding.
-   (review_config: data_source_step="identify_samples",
-   review_type="data_selection",
-   prompt="I found N samples. Please confirm which to submit.")
-3. [service] Submit the jobs. The service step description MUST
+2. [service] Submit the jobs. The service step description MUST
    specify:
    a. The workflow to use (e.g., "Genome Assembly")
    b. The exact list of samples (file paths or SRA accessions)
@@ -319,7 +186,7 @@ Example step 3 description for separate jobs:
    1. Sample_A: read1=/path/A_R1.fastq, read2=/path/A_R2.fastq
    2. Sample_B: read1=/path/B_R1.fastq, read2=/path/B_R2.fastq
    ... (list all samples)
-   Use one submit_gowe_job call per sample."
+   Submit one job per sample."
 
 Example step 3 description for combined job:
   "Submit a single RNASeq job with all 6 samples as srr_libs:
@@ -360,10 +227,12 @@ def build_system_prompt(agent_catalog_text: str = "") -> str:
     from shared.prompts.data_skill import DATA_SKILL_PROMPT
     from shared.prompts.workspace_skill import WORKSPACE_SKILL_PROMPT
     from shared.prompts.gowe_skill import GOWE_SKILL_PROMPT
+    from shared.prompts.response_format_skill import RESPONSE_FORMAT_SKILL_PROMPT
 
     prompt += "\n\n" + DATA_SKILL_PROMPT
     prompt += "\n\n" + WORKSPACE_SKILL_PROMPT
     prompt += "\n\n" + GOWE_SKILL_PROMPT
+    prompt += "\n\n" + RESPONSE_FORMAT_SKILL_PROMPT
 
     prompt += """
 
@@ -379,7 +248,7 @@ gathering real context BEFORE asking questions or creating plans:
 - `get_file_metadata` — get details about a specific file or group.
 - `search_data` — query BV-BRC Solr collections (genomes, features, etc.)
   to check data availability or counts.
-- `list_gowe_workflows` — discover available GoWe workflows and their
+- `list_gowe_workflows` — discover available workflows and their
   descriptions.
 
 ### When to Use Reconnaissance

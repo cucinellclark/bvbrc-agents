@@ -312,6 +312,8 @@ to avoid URL length issues. If more are needed, batch the queries.
 # ---------------------------------------------------------------------------
 # Assembled system prompt
 # ---------------------------------------------------------------------------
+from shared.prompts.response_format_skill import RESPONSE_FORMAT_SKILL_PROMPT
+
 SYSTEM_PROMPT = "\n".join(
     [
         _PREAMBLE,
@@ -324,6 +326,7 @@ SYSTEM_PROMPT = "\n".join(
         _GROUP_CREATION,
         _EFFICIENCY,
         _CONSTRAINTS,
+        RESPONSE_FORMAT_SKILL_PROMPT,
     ]
 )
 

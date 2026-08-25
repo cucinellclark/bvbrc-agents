@@ -93,7 +93,7 @@ def build_step_execution_prompt(
                     sd_lines.append(f"Record IDs ({len(ids)} total): {json.dumps(ids)}")
                 if structured.get("facets"):
                     sd_lines.append(f"Facets: {json.dumps(structured['facets'])}")
-                # Group management results (from group_management review steps)
+                # Group results (from create_group tool calls)
                 if structured.get("group_path"):
                     sd_lines.append(
                         f"Genome/feature group path: {structured['group_path']}"

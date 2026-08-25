@@ -123,6 +123,7 @@ class AgentState(BaseAgentState):
         return AgentResult(
             answer=self.final_answer or "",
             status=self.status,
+            question=self.question,
             sources=sources,
             tool_trace=self.tool_executions,
             iterations_used=self.iteration,

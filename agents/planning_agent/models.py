@@ -1,7 +1,7 @@
 """Pydantic models for the BV-BRC Planning Agent.
 
 Subclasses the shared base models. Adds planning-specific domain models
-(Plan, PlanStep, ClarificationQuestion, ReviewConfig).
+(Plan, PlanStep, ClarificationQuestion).
 """
 
 from __future__ import annotations
@@ -45,40 +45,17 @@ class ClarificationQuestion(BaseModel):
     required: bool = True
 
 
-class ReviewConfig(BaseModel):
-    """Configuration for a review/checkpoint step.
-
-    Review steps pause plan execution to present intermediate results
-    to the user for review, filtering, or decision-making before the
-    plan continues.
-    """
-
-    data_source_step: str
-    review_type: str  # "data_selection" | "workflow_choice" | "parameter_config" | "group_management"
-    prompt: str
-    suggested_workflows: list[str] = Field(default_factory=list)
-
-    # Group management fields (used when review_type == "group_management")
-    suggested_group_name: str | None = (
-        None  # Pre-filled name, e.g. "Salmonella AMR Genomes"
-    )
-    group_type: str | None = None  # "genome_group" | "feature_group"
-    group_action: str | None = None  # "create" | "add_to" | "use_existing"
-    id_field: str | None = None  # "genome_id" | "feature_id"
-
-
 class PlanStep(BaseModel):
     """A single step in a plan, assigned to an agent."""
 
     step_id: str
     description: str
-    agent: str  # "data" | "service" | ... | "review" | "direct"
+    agent: str  # "data" | "service" | "workspace" | "helpdesk" | "analysis" | "direct"
     reasoning: str
     depends_on: list[str] = Field(default_factory=list)
     status: Literal["pending", "running", "completed", "failed", "skipped"] = "pending"
     result_summary: str | None = None
     result_data: dict[str, Any] | None = None
-    review_config: ReviewConfig | None = None
 
 
 class Plan(BaseModel):

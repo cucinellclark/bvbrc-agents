@@ -46,9 +46,7 @@ class AgentConfig(BaseAgentConfig):
     # User preference for auto-submitting planned workflows.
     auto_submit_preference: str | None = None
 
-    # Session context (injected by orchestrator, not user-facing).
-    session_id: str | None = None
-    workspace_path: str | None = None
+    # session_id and workspace_path are inherited from BaseAgentConfig.
 
 
 # ---------------------------------------------------------------------------

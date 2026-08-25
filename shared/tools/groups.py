@@ -1,11 +1,14 @@
 """
-Shared group-creation tool for BV-BRC genome and feature groups.
+Shared group tools for BV-BRC genome and feature groups.
 
-Creates a group from a Solr query: runs the query to collect matching IDs,
-then writes the group to the user's workspace via the Workspace JSON-RPC API.
+Provides three tools for the agent toolbox:
 
-Any agent can import ``create_group`` to build groups in one step without
-needing the LLM to separately query data and then construct a group.
+  ``list_groups``     – List all genome or feature groups in the user's workspace.
+  ``get_group_ids``   – Retrieve the member IDs of a group by name.
+  ``create_group``    – Create a group from a Solr query.
+
+All three delegate to the core implementations in
+``mcp_server/functions/group_functions.py`` via the lazy-import bridge.
 """
 
 from __future__ import annotations
@@ -14,6 +17,30 @@ import sys
 from typing import Any, Dict, List, Optional
 
 from shared.tools._mcp_imports import get_group_functions, get_json_rpc
+
+
+# ---------------------------------------------------------------------------
+# Shared helpers (api / token resolution, same pattern as workspace.py)
+# ---------------------------------------------------------------------------
+
+_api_instance = None
+
+
+def _get_api(config: Any = None) -> Any:
+    """Create or reuse a ``JsonRpcCaller`` for workspace API calls."""
+    global _api_instance
+    if _api_instance is None:
+        json_rpc_mod = get_json_rpc(getattr(config, "mcp_server_path", None))
+        ws_url = (
+            getattr(config, "bvbrc_workspace_url", None)
+            or "https://p3.theseed.org/services/Workspace"
+        )
+        timeout = getattr(config, "tool_timeout_seconds", 30)
+        _api_instance = json_rpc_mod.JsonRpcCaller(
+            service_url=ws_url,
+            timeout=timeout,
+        )
+    return _api_instance
 
 
 # ---------------------------------------------------------------------------
@@ -149,7 +176,144 @@ async def _fetch_ids_by_query(
 
 
 # ---------------------------------------------------------------------------
-# Public tool function
+# Public tool: list_groups
+# ---------------------------------------------------------------------------
+
+
+async def list_groups(
+    group_type: str,
+    config: Any = None,
+    headers: Optional[Dict[str, str]] = None,
+    **kwargs: Any,
+) -> Dict[str, Any]:
+    """List all genome or feature groups in the user's workspace.
+
+    Searches the user's entire home directory for groups of the requested
+    type.  Returns a flat list of group names, paths, and creation dates.
+
+    Args:
+        group_type: ``"genome_group"`` or ``"feature_group"``.
+        config: Agent configuration object.
+        headers: HTTP headers with auth token.
+
+    Returns:
+        Dict with ``groups`` (list of name/path dicts), ``count``, and
+        ``message``; or ``error``.
+    """
+    if group_type not in _GROUP_TYPE_CONFIG:
+        return {
+            "error": f"Invalid group_type: '{group_type}'. "
+            f"Must be one of: {', '.join(_GROUP_TYPE_CONFIG.keys())}",
+        }
+
+    token = _extract_token(headers)
+    if not token:
+        return {"error": "Authentication required. No auth token provided."}
+
+    gf = get_group_functions(getattr(config, "mcp_server_path", None))
+    api = _get_api(config)
+
+    try:
+        result = await gf.list_groups(
+            api=api,
+            group_type=group_type,
+            token=token,
+        )
+    except Exception as e:
+        return {
+            "error": f"Failed to list groups: {type(e).__name__}: {e}",
+            "source": "bvbrc-workspace",
+        }
+
+    if "error" in result:
+        return result
+
+    # Flatten the MCP response to a simpler structure for agents.
+    # The MCP version returns {result: {items, ui_grid, ...}, call: {...}}.
+    inner = result.get("result", result)
+    items = inner.get("items", [])
+    group_names = inner.get("group_names", [n.get("name", "") for n in items])
+    count = inner.get("count", len(items))
+    display = _GROUP_TYPE_CONFIG[group_type]["display_name"]
+
+    if group_names:
+        message = f"Found {count} {display}(s): {', '.join(group_names)}."
+    else:
+        message = f"No {display}s found in workspace."
+
+    return {
+        "groups": [{"name": n} for n in group_names],
+        "count": count,
+        "group_type": group_type,
+        "message": message,
+        "source": "bvbrc-workspace",
+    }
+
+
+# ---------------------------------------------------------------------------
+# Public tool: get_group_ids
+# ---------------------------------------------------------------------------
+
+
+async def get_group_ids(
+    group_name: str,
+    group_type: str,
+    config: Any = None,
+    headers: Optional[Dict[str, str]] = None,
+    **kwargs: Any,
+) -> Dict[str, Any]:
+    """Get the member IDs of a genome or feature group by name.
+
+    The group is looked up by name automatically — the system searches
+    the user's default group folder and will find the group even if the
+    name casing doesn't match exactly.
+
+    If the name is ambiguous (matches multiple groups), returns a list of
+    candidates so the user can clarify.
+
+    Args:
+        group_name: Name of the group (e.g. ``"My E. coli genomes"``).
+            Do NOT provide a workspace path — just the name.
+        group_type: ``"genome_group"`` or ``"feature_group"``.
+        config: Agent configuration object.
+        headers: HTTP headers with auth token.
+
+    Returns:
+        Dict with ``genome_ids`` or ``feature_ids`` (list), ``count``,
+        ``name``, ``path``; or ``error`` / disambiguation candidates.
+    """
+    if not group_name or not group_name.strip():
+        return {"error": "Group name is required."}
+
+    if group_type not in _GROUP_TYPE_CONFIG:
+        return {
+            "error": f"Invalid group_type: '{group_type}'. "
+            f"Must be one of: {', '.join(_GROUP_TYPE_CONFIG.keys())}",
+        }
+
+    token = _extract_token(headers)
+    if not token:
+        return {"error": "Authentication required. No auth token provided."}
+
+    gf = get_group_functions(getattr(config, "mcp_server_path", None))
+    api = _get_api(config)
+
+    try:
+        return await gf.get_group_ids(
+            api=api,
+            name=group_name.strip(),
+            group_type=group_type,
+            token=token,
+        )
+    except Exception as e:
+        return {
+            "error": f"Failed to get group IDs: {type(e).__name__}: {e}",
+            "source": "bvbrc-workspace",
+        }
+
+
+# ---------------------------------------------------------------------------
+# Public tool: create_group
 # ---------------------------------------------------------------------------
 
 

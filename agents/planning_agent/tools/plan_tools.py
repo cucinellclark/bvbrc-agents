@@ -130,42 +130,6 @@ def handle_create_plan(arguments: dict[str, Any]) -> dict[str, Any]:
         if not reasoning:
             errors.append(f"Step '{step_id}': reasoning is required.")
 
-        # Review step validation
-        if agent == "review":
-            review_config = step.get("review_config")
-            if not review_config:
-                errors.append(
-                    f"Step '{step_id}': review steps require a review_config "
-                    f"with data_source_step, review_type, and prompt."
-                )
-            else:
-                src = review_config.get("data_source_step", "")
-                if src and src not in seen_ids:
-                    later_ids = {s.get("step_id", "") for s in steps[i + 1 :]}
-                    if src in later_ids:
-                        errors.append(
-                            f"Step '{step_id}': review_config.data_source_step "
-                            f"'{src}' is a forward reference."
-                        )
-                    else:
-                        errors.append(
-                            f"Step '{step_id}': review_config.data_source_step "
-                            f"'{src}' does not match any step_id."
-                        )
-                if not review_config.get("review_type"):
-                    errors.append(
-                        f"Step '{step_id}': review_config.review_type is required."
-                    )
-                if not review_config.get("prompt"):
-                    errors.append(
-                        f"Step '{step_id}': review_config.prompt is required."
-                    )
-            if not depends_on:
-                errors.append(
-                    f"Step '{step_id}': review steps must depend on at least "
-                    f"one prior step (the data source to review)."
-                )
-
         # Check dependency references
         for dep in depends_on:
             if dep == step_id:
@@ -243,8 +207,6 @@ def handle_create_plan(arguments: dict[str, Any]) -> dict[str, Any]:
             "result_summary": None,
             "result_data": None,
         }
-        if step.get("review_config"):
-            validated_step["review_config"] = step["review_config"]
         validated_steps.append(validated_step)
 
     return {

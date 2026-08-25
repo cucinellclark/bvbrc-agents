@@ -21,232 +21,9 @@ from shared.models import (
     BaseAgentResult,
 )
 
-
-# ---------------------------------------------------------------------------
-# Solr-to-RQL converter
-# ---------------------------------------------------------------------------
-
-
-def _escape_rql_value(value: str) -> str:
-    """Escape characters that are meaningful in RQL function argument lists."""
-    return value.replace("\\", "\\\\").replace(",", "\\,").replace(")", "\\)")
-
-
-def _solr_term_to_rql(term: str) -> str:
-    """Convert a single Solr ``field:value`` term to an RQL expression.
-
-    Handles:
-      - ``field:value``              -> ``eq(field,value)``
-      - ``field:"multi word"``       -> ``eq(field,multi word)``
-      - ``field:(v1 OR v2 OR v3)``   -> ``or(eq(field,v1),eq(field,v2),eq(field,v3))``
-      - ``field:[min TO max]``       -> ``between(field,min,max)``  (inclusive)
-      - ``field:{min TO max}``       -> ``between(field,min,max)``  (treated same)
-      - ``field:val*``               -> ``eq(field,val*)``          (wildcard passthrough)
-      - ``*:*`` or ``*``             -> ``eq(*,*)``
-    """
-    if term in ("*:*", "*"):
-        return "eq(*,*)"
-
-    # Split on first colon to get field and value
-    colon_idx = term.find(":")
-    if colon_idx <= 0:
-        # No field:value structure -- treat as a keyword
-        return f"keyword({_escape_rql_value(term)})"
-
-    field = term[:colon_idx].strip()
-    raw_value = term[colon_idx + 1 :].strip()
-
-    if not raw_value:
-        return f"keyword({_escape_rql_value(field)})"
-
-    # Range query: field:[min TO max] or field:{min TO max} (mixed brackets too)
-    range_match = re.match(r"^[\[\{]\s*(.+?)\s+TO\s+(.+?)\s*[\]\}]$", raw_value)
-    if range_match:
-        low, high = range_match.group(1), range_match.group(2)
-        low_rql = _escape_rql_value(low.strip('"'))
-        high_rql = _escape_rql_value(high.strip('"'))
-        return f"between({field},{low_rql},{high_rql})"
-
-    # Grouped OR values: field:(val1 OR val2 OR val3)
-    if raw_value.startswith("(") and raw_value.endswith(")"):
-        inner = raw_value[1:-1].strip()
-        # Split on " OR " (the boolean operator, not substring inside quotes)
-        parts = re.split(r"\s+OR\s+", inner)
-        if len(parts) > 1:
-            eq_parts = []
-            for p in parts:
-                p = p.strip().strip('"')
-                eq_parts.append(f"eq({field},{_escape_rql_value(p)})")
-            return "or(" + ",".join(eq_parts) + ")"
-        # Single value in parens
-        val = inner.strip('"')
-        return f"eq({field},{_escape_rql_value(val)})"
-
-    # Quoted value: field:"multi word value"
-    if raw_value.startswith('"') and raw_value.endswith('"'):
-        val = raw_value[1:-1]
-        return f"eq({field},{_escape_rql_value(val)})"
-
-    # Plain value (may include wildcard)
-    return f"eq({field},{_escape_rql_value(raw_value)})"
-
-
-def _tokenize_solr_query(query: str) -> list[str]:
-    """Split a Solr query into tokens preserving quoted strings and brackets.
-
-    Returns a list of tokens: field:value terms, boolean operators (AND, OR,
-    NOT), and grouping parentheses.
-    """
-    tokens: list[str] = []
-    i = 0
-    n = len(query)
-
-    while i < n:
-        # Skip whitespace
-        if query[i].isspace():
-            i += 1
-            continue
-
-        # Grouping parentheses (standalone, not part of field:(v1 OR v2))
-        if query[i] == "(" and (i == 0 or query[i - 1] != ":"):
-            tokens.append("(")
-            i += 1
-            continue
-        if query[i] == ")":
-            tokens.append(")")
-            i += 1
-            continue
-
-        # Boolean operators
-        for kw in ("AND", "OR", "NOT"):
-            if (
-                query[i : i + len(kw)] == kw
-                and (i + len(kw) >= n or not query[i + len(kw)].isalnum())
-                and (i == 0 or not query[i - 1].isalnum())
-            ):
-                tokens.append(kw)
-                i += len(kw)
-                break
-        else:
-            # Accumulate a field:value term
-            term_start = i
-            while i < n and not query[i].isspace():
-                if query[i] == '"':
-                    # Skip quoted string
-                    i += 1
-                    while i < n and query[i] != '"':
-                        i += 1
-                    if i < n:
-                        i += 1  # skip closing quote
-                elif query[i] == "(" and i > term_start and query[i - 1] == ":":
-                    # field:(v1 OR v2) -- consume until matching ')'
-                    depth = 1
-                    i += 1
-                    while i < n and depth > 0:
-                        if query[i] == "(":
-                            depth += 1
-                        elif query[i] == ")":
-                            depth -= 1
-                        elif query[i] == '"':
-                            i += 1
-                            while i < n and query[i] != '"':
-                                i += 1
-                        i += 1
-                elif query[i] == "[" or query[i] == "{":
-                    # Range: field:[min TO max] -- consume until matching bracket
-                    close_char = "]" if query[i] == "[" else "}"
-                    i += 1
-                    while i < n and query[i] != close_char:
-                        i += 1
-                    if i < n:
-                        i += 1
-                elif query[i] == ")":
-                    # End of a group paren -- don't consume
-                    break
-                else:
-                    i += 1
-
-            token = query[term_start:i].strip()
-            if token:
-                tokens.append(token)
-
-    return tokens
-
-
-def _parse_solr_expr(tokens: list[str], pos: int = 0) -> tuple[str, int]:
-    """Recursive-descent parser for Solr boolean expressions.
-
-    Returns (rql_string, next_position).
-    """
-    left, pos = _parse_solr_unary(tokens, pos)
-
-    while pos < len(tokens) and tokens[pos] in ("AND", "OR"):
-        op = tokens[pos]
-        pos += 1
-        # Collect all terms at the same precedence level
-        parts = [left]
-        rql_op = "and" if op == "AND" else "or"
-        right, pos = _parse_solr_unary(tokens, pos)
-        parts.append(right)
-        # Continue collecting same-level operators
-        while pos < len(tokens) and tokens[pos] == op:
-            pos += 1
-            next_part, pos = _parse_solr_unary(tokens, pos)
-            parts.append(next_part)
-        left = f"{rql_op}(" + ",".join(parts) + ")"
-
-    return left, pos
-
-
-def _parse_solr_unary(tokens: list[str], pos: int) -> tuple[str, int]:
-    """Parse NOT prefix and parenthesized groups."""
-    if pos >= len(tokens):
-        return "eq(*,*)", pos
-
-    if tokens[pos] == "NOT":
-        pos += 1
-        inner, pos = _parse_solr_unary(tokens, pos)
-        return f"not({inner})", pos
-
-    if tokens[pos] == "(":
-        pos += 1  # skip '('
-        inner, pos = _parse_solr_expr(tokens, pos)
-        if pos < len(tokens) and tokens[pos] == ")":
-            pos += 1  # skip ')'
-        return inner, pos
-
-    # Leaf: a field:value term
-    term = tokens[pos]
-    pos += 1
-    return _solr_term_to_rql(term), pos
-
-
-def solr_to_rql(solr_query: str) -> str:
-    """Convert a Solr/Lucene query string to BV-BRC RQL format.
-
-    Handles the subset of Solr syntax produced by the data agent LLM:
-      - ``field:value``, ``field:"multi word"``, ``field:(v1 OR v2)``
-      - ``AND``, ``OR``, ``NOT`` boolean operators
-      - Parenthesized grouping
-      - Range queries ``field:[min TO max]``
-      - Wildcards ``field:val*``
-
-    Returns an RQL string suitable for BV-BRC viewer URLs and the data API's
-    ``application/rqlquery+x-www-form-urlencoded`` content type.
-    """
-    if not solr_query or not solr_query.strip():
-        return "eq(*,*)"
-
-    solr_query = solr_query.strip()
-    if solr_query in ("*:*", "*"):
-        return "eq(*,*)"
-
-    tokens = _tokenize_solr_query(solr_query)
-    if not tokens:
-        return "eq(*,*)"
-
-    rql, _ = _parse_solr_expr(tokens, 0)
-    return rql
+# Solr-to-RQL converter lives in shared/tools/url_utils.py (used by
+# search_data() for URL enrichment and by _extract_structured_data).
+from shared.tools.url_utils import solr_to_rql  # noqa: F401 -- re-export
 
 
 # ---------------------------------------------------------------------------
@@ -292,6 +69,8 @@ class AgentState(BaseAgentState):
 
         return AgentResult(
             answer=self.final_answer or "",
+            status=self.status,
+            question=self.question,
             plan=[
                 {
                     "tool": tc.name,
@@ -310,7 +89,6 @@ class AgentState(BaseAgentState):
                 for tc in self.planned_calls
             ],
             iterations_used=self.iteration,
-            status=self.status,
             elapsed_seconds=round(elapsed, 2),
             structured_data=structured_data,
         )
@@ -374,13 +152,22 @@ class AgentState(BaseAgentState):
                 # Fall back to raw Solr query if conversion fails
                 rql_query = query_used
 
-        return {
+        result = {
             "record_ids": record_ids,
             "record_count": record_count,
             "facets": facets,
             "collection": collection,
             "query_used": rql_query,
         }
+
+        # Attach actionable URLs so the LLM can include markdown links
+        # in its response (viewer page, TSV download, FASTA download).
+        if rql_query and collection:
+            from shared.tools.url_utils import enrich_search_result
+
+            enrich_search_result(result, collection, rql_query)
+
+        return result
 
 
 class AgentResult(BaseAgentResult):

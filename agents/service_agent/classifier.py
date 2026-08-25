@@ -163,27 +163,15 @@ async def classify_intent(
 
 
 def _build_context_summary(context: dict[str, Any]) -> str:
-    """Extract workflow references and recent conversation from context."""
-    parts: list[str] = []
+    """Extract recent conversation from context for intent classification."""
+    from agent_utils import format_recent_messages
 
-    # Conversation summary (if available)
-    summary = context.get("conversation_summary")
-    if summary:
-        parts.append(summary)
-
-    # Recent messages (last 3 for brevity)
+    # Use bounded recent_messages (conversation_summary is no longer
+    # forwarded to agents — it was unbounded and caused LLM timeouts).
     recent = context.get("recent_messages")
-    if recent and isinstance(recent, list):
-        for msg in recent[-3:]:
-            role = msg.get("role", "?")
-            content = msg.get("content", "")
-            if content:
-                # Truncate long messages
-                if len(content) > 200:
-                    content = content[:200] + "..."
-                parts.append(f"{role}: {content}")
-
-    return "\n".join(parts)
+    if recent:
+        return format_recent_messages(recent, max_per_message=200, max_messages=3)
+    return ""
 
 
 def _build_classifier_kwargs(

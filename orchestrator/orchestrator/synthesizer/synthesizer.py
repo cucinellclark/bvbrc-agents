@@ -151,11 +151,14 @@ async def synthesize(
 
     # --- LLM synthesis for complex cases (streamed) ---
     try:
-        # Build conversation context
-        context_parts: list[str] = []
-        if request.conversation_summary:
-            context_parts.append(request.conversation_summary)
-        conversation_context = "\n".join(context_parts) if context_parts else None
+        # Build bounded conversation context from recent_messages
+        # (conversation_summary is unbounded and not forwarded to agents)
+        conversation_context: str | None = None
+        if request.recent_messages:
+            from shared.agent_utils import format_recent_messages
+            conversation_context = format_recent_messages(
+                request.recent_messages, max_per_message=500, max_messages=5,
+            ) or None
 
         system_prompt, user_prompt = build_synthesis_prompt(
             query=request.query,

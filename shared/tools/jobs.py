@@ -111,6 +111,12 @@ async def list_jobs(
             search=search,
             include_archived=include_archived,
         )
+
+        # Attach a link to the BV-BRC jobs page so the LLM can include
+        # a clickable markdown link in its response.
+        if isinstance(result, dict) and not result.get("error"):
+            result["jobs_page_url"] = "https://www.bv-brc.org/job/"
+
         return result
 
     except Exception as e:

@@ -204,6 +204,7 @@ class AgentState(BaseAgentState):
         return AgentResult(
             answer=self.final_answer or "",
             status=self.status,
+            question=self.question,
             # Structured data for UI rendering
             items=self.collected_items,
             metadata=self.collected_metadata,

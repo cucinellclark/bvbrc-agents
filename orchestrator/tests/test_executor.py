@@ -200,7 +200,9 @@ class TestExecuteAgentStep:
         step = Step(agent_key="data", task="find genomes")
         request = OrchestratorRequest(
             query="find genomes",
-            conversation_summary="Previously discussed E. coli",
+            recent_messages=[
+                {"role": "user", "content": "Previously discussed E. coli"},
+            ],
             auth_token="test_token",
         )
 

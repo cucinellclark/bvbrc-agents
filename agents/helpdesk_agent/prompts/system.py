@@ -3,6 +3,7 @@
 from shared.prompts.data_skill import DATA_SKILL_PROMPT
 from shared.prompts.workspace_skill import WORKSPACE_SKILL_PROMPT
 from shared.prompts.gowe_skill import GOWE_SKILL_PROMPT
+from shared.prompts.response_format_skill import RESPONSE_FORMAT_SKILL_PROMPT
 
 SYSTEM_PROMPT = (
     """\
@@ -79,7 +80,7 @@ providing contextual help:
   the user's workspace to give contextual guidance (read-only)
 - `search_data` -- query BV-BRC Solr collections to look up data
 - `list_gowe_workflows` / `get_workflow_inputs` -- discover available
-  workflows and their input schemas for documentation purposes
+  workflows and their input schemas for guidance purposes
 
 Use these tools when the user's question involves specific files, data, or
 workflows in their environment.
@@ -94,4 +95,8 @@ workflows in their environment.
 
 """
     + GOWE_SKILL_PROMPT
+    + """
+
+"""
+    + RESPONSE_FORMAT_SKILL_PROMPT
 )

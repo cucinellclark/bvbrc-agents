@@ -79,9 +79,8 @@ async def handle_submit(
         state.status = "completed"
         state.current_phase = "done"
         state.operation_message = (
-            f"Workflow **{workflow_id}** has been submitted for execution. "
-            f"Submission ID: **{submission_id}**. "
-            f"Current state: **{status}**."
+            f"Your job has been submitted and is being processed. "
+            f"You will be notified when it completes."
         )
 
         logger.info(

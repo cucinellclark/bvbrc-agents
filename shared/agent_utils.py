@@ -316,6 +316,38 @@ async def emit_progress(
 
 
 # ---------------------------------------------------------------------------
+# Conversation context formatting (for system prompt injection)
+# ---------------------------------------------------------------------------
+
+
+def format_recent_messages(
+    recent_messages: list[dict[str, Any]] | None,
+    max_per_message: int = 500,
+    max_messages: int = 5,
+) -> str:
+    """Format a ``recent_messages`` list into a compact conversation context.
+
+    Used by agents to inject bounded conversation context into their system
+    prompt.  Each message is truncated to *max_per_message* characters to
+    keep the context concise.
+
+    Returns an empty string if *recent_messages* is falsy or empty.
+    """
+    if not recent_messages:
+        return ""
+    parts: list[str] = []
+    for msg in recent_messages[-max_messages:]:
+        role = msg.get("role", "user")
+        content = msg.get("content", "")
+        if not content:
+            continue
+        if len(content) > max_per_message:
+            content = content[:max_per_message] + "..."
+        parts.append(f"{role}: {content}")
+    return "\n".join(parts)
+
+
+# ---------------------------------------------------------------------------
 # Message trimming (context window management)
 # ---------------------------------------------------------------------------
 

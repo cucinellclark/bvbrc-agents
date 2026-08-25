@@ -3,11 +3,11 @@
 This is the SINGLE SOURCE OF TRUTH for tool schemas. Every agent uses these
 definitions. No per-agent schema variants.
 
-24 tools total:
+26 tools total:
   Data:      search_data, facet_query, probe_data, list_collections, get_collection_fields
   Workspace: workspace_browse, get_file_metadata, read_file_preview
   GoWe:      list_gowe_workflows, get_workflow_inputs, submit_gowe_job
-  Groups:    create_group
+  Groups:    create_group, list_groups, get_group_ids
   SRA:       get_sra_metadata
   Genome:    find_similar_genomes
   Literature: search_literature
@@ -68,8 +68,10 @@ WORKSPACE_TYPES = [
     "docx",
     "embl",
     "feature_dna_fasta",
+    "feature_group",
     "feature_protein_fasta",
     "genbank_file",
+    "genome_group",
     "gff",
     "gif",
     "graph",
@@ -104,7 +106,6 @@ VALID_AGENTS = [
     "workspace",
     "helpdesk",
     "analysis",
-    "review",
     "direct",
 ]
 
@@ -474,10 +475,9 @@ LIST_GOWE_WORKFLOWS = {
     "function": {
         "name": "list_gowe_workflows",
         "description": (
-            "List all available workflows registered in the GoWe workflow "
-            "engine. Returns workflow id, name, description, and step count "
-            "for each. Call this first to discover which workflow matches "
-            "the user's request."
+            "List all available bioinformatics workflows. Returns workflow "
+            "id, name, description, and step count for each. Call this "
+            "first to discover which workflow matches the user's request."
         ),
         "parameters": {
             "type": "object",
@@ -492,7 +492,7 @@ GET_WORKFLOW_INPUTS = {
     "function": {
         "name": "get_workflow_inputs",
         "description": (
-            "Get the full input schema for a specific GoWe workflow. "
+            "Get the full input schema for a specific workflow. "
             "Returns each input's id, type, required flag, default value, "
             "and documentation. Call this after selecting a workflow to "
             "understand what inputs need to be provided."
@@ -503,7 +503,7 @@ GET_WORKFLOW_INPUTS = {
                 "workflow_id": {
                     "type": "string",
                     "description": (
-                        "The GoWe workflow ID (e.g., 'wf_abc123'). "
+                        "The workflow ID (e.g., 'wf_abc123'). "
                         "Get this from list_gowe_workflows."
                     ),
                 },
@@ -518,17 +518,16 @@ SUBMIT_GOWE_JOB = {
     "function": {
         "name": "submit_gowe_job",
         "description": (
-            "Submit a job to the GoWe workflow engine with populated inputs. "
-            "Call this after you have gathered all required input values for "
-            "the selected workflow. The inputs dict must match the workflow's "
-            "input schema."
+            "Submit a job with populated inputs. Call this after you have "
+            "gathered all required input values for the selected workflow. "
+            "The inputs dict must match the workflow's input schema."
         ),
         "parameters": {
             "type": "object",
             "properties": {
                 "workflow_id": {
                     "type": "string",
-                    "description": "The GoWe workflow ID to run.",
+                    "description": "The workflow ID to run.",
                 },
                 "inputs": {
                     "type": "object",
@@ -602,6 +601,67 @@ CREATE_GROUP = {
     },
 }
 
+LIST_GROUPS = {
+    "type": "function",
+    "function": {
+        "name": "list_groups",
+        "description": (
+            "List all genome groups or feature groups in the user's BV-BRC "
+            "workspace. Returns group names and count. Use this to discover "
+            "which groups exist before retrieving their contents with "
+            "get_group_ids."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "group_type": {
+                    "type": "string",
+                    "enum": ["genome_group", "feature_group"],
+                    "description": (
+                        "Type of groups to list. Use 'genome_group' for "
+                        "genome groups, 'feature_group' for feature groups."
+                    ),
+                },
+            },
+            "required": ["group_type"],
+        },
+    },
+}
+
+GET_GROUP_IDS = {
+    "type": "function",
+    "function": {
+        "name": "get_group_ids",
+        "description": (
+            "Get the member IDs (genome IDs or feature IDs) from a genome "
+            "group or feature group by name. The group is looked up by name "
+            "automatically -- you do NOT need to provide a workspace path. "
+            "If the name is ambiguous, returns candidates for clarification."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "group_name": {
+                    "type": "string",
+                    "description": (
+                        "Name of the group (e.g. 'My E. coli genomes'). "
+                        "Do NOT provide a workspace path -- just the name."
+                    ),
+                },
+                "group_type": {
+                    "type": "string",
+                    "enum": ["genome_group", "feature_group"],
+                    "description": (
+                        "Type of group. Use 'genome_group' for genome "
+                        "groups, 'feature_group' for feature groups."
+                    ),
+                },
+            },
+            "required": ["group_name", "group_type"],
+        },
+    },
+}
+
 
 # ===================================================================
 # SRA TOOLS
@@ -659,7 +719,7 @@ FIND_SIMILAR_GENOMES = {
             "DO NOT USE THIS TOOL FOR:\n"
             "- BLAST sequence similarity searches (use submit_gowe_job with a BLAST workflow)\n"
             "- Phylogenetic tree building (use submit_gowe_job with a tree workflow)\n"
-            "- Genome annotation or assembly (use the appropriate workflow tools)"
+            "- Genome annotation or assembly (use the appropriate workflow submission tools)"
         ),
         "parameters": {
             "type": "object",
@@ -933,7 +993,7 @@ LIST_JOBS = {
             "- Paginated browsing of the job queue\n\n"
             "DO NOT USE THIS TOOL FOR:\n"
             "- Deep inspection of a specific job (use get_job_details with task IDs)\n"
-            "- Submitting new jobs (use submit_gowe_job)"
+            "- Submitting new jobs (use the workflow submission tools)"
         ),
         "parameters": {
             "type": "object",
@@ -1001,9 +1061,12 @@ ASK_CLARIFICATION = {
     "function": {
         "name": "ask_clarification",
         "description": (
-            "Ask the user clarification questions before creating a plan. "
-            "Use this when the request is ambiguous or missing key details "
-            "needed to determine which agents and steps are required. "
+            "Ask the user clarification questions when information is "
+            "missing or ambiguous.  Use this during plan creation when "
+            "the request lacks key details, OR during plan step execution "
+            "when you cannot complete your assigned task without "
+            "additional input from the user.  Calling this tool pauses "
+            "plan execution and presents the questions to the user.  "
             "Each question should have 2-5 suggested options."
         ),
         "parameters": {
@@ -1089,7 +1152,6 @@ CREATE_PLAN = {
                                     "'workspace' for browsing workspace files, "
                                     "'helpdesk' for documentation/FAQ, "
                                     "'analysis' for post-job analysis, "
-                                    "'review' for user review/checkpoint, "
                                     "'direct' for steps you can answer yourself"
                                 ),
                             },
@@ -1105,82 +1167,6 @@ CREATE_PLAN = {
                                     "this step can run"
                                 ),
                                 "default": [],
-                            },
-                            "review_config": {
-                                "type": "object",
-                                "description": (
-                                    "Required when agent is 'review'. "
-                                    "Configures the review checkpoint."
-                                ),
-                                "properties": {
-                                    "data_source_step": {
-                                        "type": "string",
-                                        "description": (
-                                            "step_id of the step whose "
-                                            "results to present for review"
-                                        ),
-                                    },
-                                    "review_type": {
-                                        "type": "string",
-                                        "enum": [
-                                            "data_selection",
-                                            "workflow_choice",
-                                            "parameter_config",
-                                            "group_management",
-                                        ],
-                                        "description": (
-                                            "Type of review: "
-                                            "'data_selection' to filter/select data, "
-                                            "'workflow_choice' to pick an analysis, "
-                                            "'parameter_config' to set parameters, "
-                                            "'group_management' to create/add-to/confirm "
-                                            "a genome or feature group"
-                                        ),
-                                    },
-                                    "prompt": {
-                                        "type": "string",
-                                        "description": (
-                                            "Question/instruction to present "
-                                            "to the user during review"
-                                        ),
-                                    },
-                                    "suggested_workflows": {
-                                        "type": "array",
-                                        "items": {"type": "string"},
-                                        "description": (
-                                            "GoWe workflow names to suggest "
-                                            "(for workflow_choice reviews)"
-                                        ),
-                                        "default": [],
-                                    },
-                                    "suggested_group_name": {
-                                        "type": "string",
-                                        "description": (
-                                            "Pre-filled group name suggestion "
-                                            "(for group_management reviews)."
-                                        ),
-                                    },
-                                    "group_type": {
-                                        "type": "string",
-                                        "enum": ["genome_group", "feature_group"],
-                                        "description": "Type of group to manage.",
-                                    },
-                                    "group_action": {
-                                        "type": "string",
-                                        "enum": ["create", "add_to", "use_existing"],
-                                        "description": "Default action for group management.",
-                                    },
-                                    "id_field": {
-                                        "type": "string",
-                                        "enum": ["genome_id", "feature_id"],
-                                        "description": "ID field name for the items.",
-                                    },
-                                },
-                                "required": [
-                                    "data_source_step",
-                                    "review_type",
-                                    "prompt",
-                                ],
                             },
                         },
                         "required": [
@@ -1218,7 +1204,7 @@ LIST_AGENTS = {
 # MASTER LISTS
 # ===================================================================
 
-# All 24 tools in a single list
+# All 26 tools in a single list
 ALL_TOOL_SCHEMAS: list[dict] = [
     # Data
     SEARCH_DATA,
@@ -1236,6 +1222,8 @@ ALL_TOOL_SCHEMAS: list[dict] = [
     SUBMIT_GOWE_JOB,
     # Groups
     CREATE_GROUP,
+    LIST_GROUPS,
+    GET_GROUP_IDS,
     # SRA
     GET_SRA_METADATA,
     # Genome similarity

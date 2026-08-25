@@ -97,10 +97,14 @@ subsequent calls.
 # Assembled system prompt
 # ---------------------------------------------------------------------------
 
+from shared.prompts.response_format_skill import RESPONSE_FORMAT_SKILL_PROMPT
+
 SYSTEM_PROMPT = "".join([
     _ROLE,
     "\n",
     _SERVICE_KNOWLEDGE,
     "\n",
     _WORKFLOW_HANDLING,
+    "\n",
+    RESPONSE_FORMAT_SKILL_PROMPT,
 ])

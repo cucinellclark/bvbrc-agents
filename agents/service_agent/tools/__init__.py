@@ -17,7 +17,7 @@ from shared.tools.workspace import (
     read_file_preview,
 )
 from shared.tools.data import search_data
-from shared.tools.groups import create_group
+from shared.tools.groups import create_group, list_groups, get_group_ids
 from shared.tools.sra import get_sra_metadata
 from shared.tools.similar_genome import find_similar_genomes
 from shared.tools.literature import search_literature
@@ -35,6 +35,8 @@ TOOL_DISPATCH: Dict[str, Any] = {
     "read_file_info": get_file_metadata,  # Aliased for backward compat with tool schemas
     "search_data": search_data,
     "create_group": create_group,
+    "list_groups": list_groups,
+    "get_group_ids": get_group_ids,
     "get_sra_metadata": get_sra_metadata,
     "find_similar_genomes": find_similar_genomes,
     "search_literature": search_literature,

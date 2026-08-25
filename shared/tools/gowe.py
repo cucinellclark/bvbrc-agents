@@ -19,6 +19,15 @@ from shared.tools._mcp_imports import get_gowe_client
 logger = logging.getLogger(__name__)
 
 
+def _extract_user_from_token(auth_token: str | None) -> str | None:
+    """Extract the ``un=<user>`` value from a BV-BRC auth token string."""
+    if not auth_token:
+        return None
+    import re
+    match = re.search(r"(?:^|[|&])un=([^|&]+)", auth_token)
+    return match.group(1).strip() if match else None
+
+
 def _get_client(config: Any = None):
     """Build a ``GoWeClient`` from config."""
     mod = get_gowe_client(getattr(config, "mcp_server_path", None))
@@ -67,7 +76,7 @@ async def list_gowe_workflows(
         return {"workflows": result, "count": len(result)}
 
     except Exception as e:
-        return {"error": f"Failed to list GoWe workflows: {type(e).__name__}: {e}"}
+        return {"error": f"Failed to list workflows: {type(e).__name__}: {e}"}
 
 
 async def get_workflow_inputs(
@@ -144,25 +153,53 @@ async def submit_gowe_job(
                 value = _clean_record_values(value)
             cleaned_inputs[key] = value
 
-        # ----- Session-based output path rewriting -----
-        # When a submission originates from a chat session, rewrite
-        # output_path so results land under
-        #   /<user>/home/.chats/<session_uuid>/<descriptive_subfolder>
+        # ----- Output path rewriting -----
+        # Always ensure output_path is a valid absolute workspace path.
+        # When session context is available, place results under the
+        # chat session folder: /<user>/home/.chats/<session_uuid>/<subfolder>
+        # Otherwise, fall back to the user's home directory.
         session_id = getattr(config, "session_id", None)
         workspace_path = getattr(config, "workspace_path", None)
 
-        if session_id and workspace_path and "output_path" in cleaned_inputs:
+        if "output_path" in cleaned_inputs:
             original_output_path = cleaned_inputs["output_path"]
             # Extract the last path segment as the descriptive subfolder
             subfolder = original_output_path.rstrip("/").rsplit("/", 1)[-1]
-            session_base = f"{workspace_path}/.chats/{session_id}"
-            cleaned_inputs["output_path"] = f"{session_base}/{subfolder}"
-            logger.info(
-                "Rewrote output_path: %s -> %s (session=%s)",
-                original_output_path,
-                cleaned_inputs["output_path"],
-                session_id,
-            )
+
+            if session_id and workspace_path:
+                # Primary path: place under session folder
+                session_base = f"{workspace_path}/.chats/{session_id}"
+                cleaned_inputs["output_path"] = f"{session_base}/{subfolder}"
+                logger.info(
+                    "Rewrote output_path: %s -> %s (session=%s)",
+                    original_output_path,
+                    cleaned_inputs["output_path"],
+                    session_id,
+                )
+            elif not original_output_path.startswith("/"):
+                # Fallback: session context missing but output_path is
+                # relative (bare folder name).  Construct an absolute path
+                # from the auth token's username so BV-BRC doesn't reject
+                # the submission.
+                user = _extract_user_from_token(auth)
+                if user:
+                    cleaned_inputs["output_path"] = f"/{user}/home/{subfolder}"
+                    logger.warning(
+                        "Session context missing (session_id=%s, "
+                        "workspace_path=%s). Fell back to user home: "
+                        "%s -> %s",
+                        session_id,
+                        workspace_path,
+                        original_output_path,
+                        cleaned_inputs["output_path"],
+                    )
+                else:
+                    logger.error(
+                        "Cannot rewrite relative output_path %r: no "
+                        "session context and cannot extract user from "
+                        "auth token.",
+                        original_output_path,
+                    )
 
         # ----- GoWe submission labels -----
         labels: Dict[str, str] | None = None
@@ -188,14 +225,14 @@ async def submit_gowe_job(
             "workflow_id": workflow_id,
             "submission_id": submission_id,
             "status": result.get("state", "PENDING"),
-            "message": "Job submitted successfully to GoWe.",
+            "message": "Job submitted successfully.",
             "output_path": cleaned_inputs.get("output_path", ""),
         }
 
     except Exception as e:
         logger.error("Failed to submit job: %s", e)
         return {
-            "error": f"GoWe submission failed: {type(e).__name__}: {e}",
+            "error": f"Job submission failed: {type(e).__name__}: {e}",
             "workflow_id": workflow_id,
         }
 
