@@ -170,6 +170,15 @@ use decision "direct" to ask which one to submit.
 - If no planned workflows exist in the context, use decision "direct" \
 to inform the user and suggest planning one first.
 
+## Preserving User Data in Task Descriptions
+- For **pipeline** steps, each step's "task" is the only input the agent \
+receives. You MUST copy any user-supplied data verbatim into the relevant \
+step's "task" field: FASTA sequences, amino-acid strings, SRA accessions, \
+genome IDs, file paths, and any other literal data. Never summarise away \
+data the agent will need.
+- For **single-agent** routing this is less critical (the system forwards \
+the original query), but you should still include key identifiers.
+
 ## Response Format
 
 You MUST respond with ONLY a valid JSON object (no markdown, no explanation \

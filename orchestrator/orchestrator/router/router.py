@@ -218,7 +218,17 @@ def _parse_routing_response(
 
     elif decision_type == "agent":
         agent_key = data.get("agent_key", "")
-        task = data.get("task", query)
+        # Always use the original user query so pasted data (FASTA sequences,
+        # file paths, accession IDs, etc.) is never lost.  The router's
+        # summarised "task" is only used for logging/debugging.
+        router_task = data.get("task", "")
+        if router_task and router_task != query:
+            logger.info(
+                "Router produced a summarised task; using original query instead. "
+                "Router task: %s",
+                router_task[:120],
+            )
+        task = query
 
         # Validate agent exists
         if agent_key not in registry.agents:

@@ -14,7 +14,7 @@ from orchestrator.registry.agent_handle import AgentHandle
 from orchestrator.registry.agent_registry import AgentRegistry
 from orchestrator.router.models import Plan, RoutingDecision, Step
 from orchestrator.router.prompts import build_routing_prompt
-from orchestrator.router.router import route, _parse_routing_response, _fallback_routing
+from orchestrator.router.router import route, _parse_routing_response
 
 
 # --- Fixtures ---
@@ -58,9 +58,10 @@ def _make_registry_with_agents() -> AgentRegistry:
 
 
 def _make_llm_client(response: str = "") -> LLMClient:
-    """Create a mock LLM client."""
+    """Create a mock LLM client with a config attribute."""
     client = MagicMock(spec=LLMClient)
     client.complete = AsyncMock(return_value=response)
+    client.config = MagicMock(model="test-model", base_url="http://test:8004/v1")
     return client
 
 
@@ -142,19 +143,39 @@ class TestParseRoutingResponse:
         assert result.decision == "direct"
         assert result.direct_response == "Hello! How can I help?"
 
-    def test_parse_agent_routing(self):
+    def test_parse_agent_routing_uses_original_query(self):
+        """Single-agent routing must use the original query, not the router's summary."""
         registry = _make_registry_with_agents()
+        original_query = "find ecoli"
         raw = json.dumps({
             "decision": "agent",
             "reasoning": "data query",
             "agent_key": "data",
             "task": "Find E. coli genomes",
         })
-        result = _parse_routing_response(raw, "find ecoli", registry)
+        result = _parse_routing_response(raw, original_query, registry)
         assert result.decision == "agent"
         assert result.plan is not None
         assert result.plan.steps[0].agent_key == "data"
-        assert result.plan.steps[0].task == "Find E. coli genomes"
+        assert result.plan.steps[0].task == original_query
+
+    def test_parse_agent_routing_preserves_fasta(self):
+        """Pasted FASTA sequences must survive routing (not be summarised away)."""
+        registry = _make_registry_with_agents()
+        fasta_query = (
+            "Convert this HA sequence to H3 numbering.\n"
+            ">HA\n"
+            "MKTIIALSYILCLVFAQKLPGNDNSTATLCLGHHAVPNGTIVKTITNDQIEV"
+        )
+        raw = json.dumps({
+            "decision": "agent",
+            "reasoning": "service request",
+            "agent_key": "service",
+            "task": "Convert HA sequence to H3 numbering and submit",
+        })
+        result = _parse_routing_response(raw, fasta_query, registry)
+        assert result.plan.steps[0].task == fasta_query
+        assert ">HA" in result.plan.steps[0].task
 
     def test_parse_with_markdown_fences(self):
         registry = _make_registry_with_agents()
@@ -168,16 +189,13 @@ class TestParseRoutingResponse:
         result = _parse_routing_response(raw, "search", registry)
         assert result.decision == "agent"
 
-    def test_parse_invalid_json_fallback(self):
+    def test_parse_invalid_json_raises(self):
         registry = _make_registry_with_agents()
         raw = "This is not valid JSON at all"
-        result = _parse_routing_response(raw, "find genomes", registry)
-        # Should fall back to keyword routing
-        assert result.decision == "agent"
-        assert result.plan is not None
-        assert result.plan.steps[0].agent_key == "data"
+        with pytest.raises(ValueError, match="No JSON"):
+            _parse_routing_response(raw, "find genomes", registry)
 
-    def test_parse_unknown_agent_fallback(self):
+    def test_parse_unknown_agent_raises(self):
         registry = _make_registry_with_agents()
         raw = json.dumps({
             "decision": "agent",
@@ -185,40 +203,8 @@ class TestParseRoutingResponse:
             "agent_key": "nonexistent_agent",
             "task": "do something",
         })
-        result = _parse_routing_response(raw, "find genomes", registry)
-        # Should fall back to keyword routing
-        assert result.decision == "agent"
-
-
-# --- Tests: _fallback_routing ---
-
-
-class TestFallbackRouting:
-    def test_data_keywords(self):
-        registry = _make_registry_with_agents()
-        result = _fallback_routing("find all E. coli genomes", registry)
-        assert result.decision == "agent"
-        assert result.plan.steps[0].agent_key == "data"
-        assert result.confidence < 1.0
-
-    def test_service_keywords(self):
-        registry = _make_registry_with_agents()
-        result = _fallback_routing("run blast alignment and build a phylogenetic tree", registry)
-        assert result.decision == "agent"
-        assert result.plan.steps[0].agent_key == "service"
-
-    def test_ambiguous_defaults_to_data(self):
-        registry = _make_registry_with_agents()
-        result = _fallback_routing("help me with something", registry)
-        # Should default to data agent as fallback
-        assert result.decision == "agent"
-        assert result.plan.steps[0].agent_key == "data"
-
-    def test_no_healthy_agents(self):
-        config = OrchestratorConfig(agents={}, health_check_interval=0)
-        registry = AgentRegistry(config)
-        result = _fallback_routing("find genomes", registry)
-        assert result.decision == "direct"
+        with pytest.raises(ValueError, match="unknown agent"):
+            _parse_routing_response(raw, "find genomes", registry)
 
 
 # --- Tests: route() ---
@@ -270,7 +256,7 @@ class TestRoute:
 
     @pytest.mark.asyncio
     async def test_llm_routing_data_query(self):
-        """Test LLM routes a data query to the data agent."""
+        """Test LLM routes a data query; step.task is the original query."""
         registry = _make_registry_with_agents()
         llm_response = json.dumps({
             "decision": "agent",
@@ -279,11 +265,13 @@ class TestRoute:
             "task": "Find E. coli genomes in BV-BRC",
         })
         llm = _make_llm_client(llm_response)
-        request = OrchestratorRequest(query="Find E. coli genomes")
+        original_query = "Find E. coli genomes"
+        request = OrchestratorRequest(query=original_query)
 
         result = await route(request, registry, llm)
         assert result.decision == "agent"
         assert result.plan.steps[0].agent_key == "data"
+        assert result.plan.steps[0].task == original_query
         llm.complete.assert_called_once()
 
     @pytest.mark.asyncio
@@ -303,17 +291,17 @@ class TestRoute:
         assert "Hello" in result.direct_response
 
     @pytest.mark.asyncio
-    async def test_llm_failure_fallback(self):
-        """Test fallback when LLM call fails."""
+    async def test_llm_failure_returns_error(self):
+        """Test error response when LLM call fails."""
         registry = _make_registry_with_agents()
         llm = _make_llm_client()
         llm.complete = AsyncMock(side_effect=Exception("LLM unavailable"))
         request = OrchestratorRequest(query="find genomes")
 
         result = await route(request, registry, llm)
-        # Should fall back to keyword routing
-        assert result.decision == "agent"
-        assert result.plan.steps[0].agent_key == "data"
+        assert result.decision == "direct"
+        assert "error" in result.direct_response.lower()
+        assert result.confidence == 0.0
 
     @pytest.mark.asyncio
     async def test_routing_with_conversation_context(self):
@@ -337,7 +325,8 @@ class TestRoute:
 
         result = await route(request, registry, llm)
         assert result.decision == "agent"
-        # Verify context was included in the prompt
+        # Verify recent_messages context was included in the prompt
         call_args = llm.complete.call_args
         prompt = call_args.kwargs.get("prompt", "")
-        assert "previously searched" in prompt.lower()
+        assert "e. coli" in prompt.lower()
+        assert "amr" in prompt.lower()

@@ -71,9 +71,10 @@ async def execute_agent_step(
     # NOTE: conversation_summary is intentionally NOT forwarded to agents.
     # It is unbounded (full session history) and bloats the agent's system
     # prompt, causing LLM timeouts on long conversations.  Agents receive
-    # the router's curated task description as their query (step.task) plus
-    # recent_messages (token-budgeted to ~4000 tokens by the gateway) for
-    # conversation context.
+    # For single-agent routing, step.task is the original user query
+    # (router does not rewrite it). Pipeline steps still use per-step
+    # task text. recent_messages is token-budgeted to ~4000 tokens by
+    # the gateway for conversation context.
     context_data: dict[str, Any] = {}
     if request.recent_messages:
         context_data["recent_messages"] = request.recent_messages[-5:]
