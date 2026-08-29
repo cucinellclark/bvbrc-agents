@@ -330,7 +330,7 @@ async def run_agent_loop(
 
         if chat_completion_stream_fn is not None:
             try:
-                state.add_system_message(MAX_ITERATIONS_SYNTHESIS)
+                state.add_user_message(MAX_ITERATIONS_SYNTHESIS)
                 messages_for_synth = state.messages
                 if trim_messages:
                     messages_for_synth = trim_messages_to_fit(

@@ -105,7 +105,13 @@ async def populate_and_submit(
             formatted = format_recent_messages(recent_msgs)
             if formatted:
                 system_prompt += (
-                    f"\n\n=== CONVERSATION CONTEXT ===\n{formatted}"
+                    f"\n\n=== CONVERSATION CONTEXT ===\n"
+                    f"The following is PRIOR conversation history for "
+                    f"reference only. You are starting a FRESH workflow "
+                    f"execution. You MUST call submit_gowe_job to submit "
+                    f"any new job — do NOT assume a job was submitted "
+                    f"based on this history.\n"
+                    f"{formatted}"
                 )
 
         ctx_for_prompt = {
@@ -150,7 +156,7 @@ async def populate_and_submit(
 
         # If stuck in a loop, force text response
         if duplicate_count >= 3:
-            state.add_system_message(STUCK_MESSAGE)
+            state.add_user_message(STUCK_MESSAGE)
             try:
                 response = await chat_completion(
                     client=client,
@@ -184,15 +190,64 @@ async def populate_and_submit(
         # No tool calls -> LLM produced text (question, answer, or done message)
         if not tool_calls:
             if content:
-                # Check if the LLM is done (already submitted) or asking a question
                 if state.submission_ids:
-                    # One or more jobs submitted; this is the summary message
+                    # One or more jobs submitted; this is the summary message.
                     state.status = "completed"
                     state.current_phase = "done"
                     state.operation_message = content
-                else:
-                    state.status = "needs_input"
-                    state.question = content
+                    return state
+
+                # No jobs submitted yet.  Check whether the LLM fetched
+                # the input schema (get_workflow_inputs) but then bailed
+                # without calling submit_gowe_job — this is the
+                # "hallucinated submission" pattern where the LLM claims
+                # success without actually submitting.
+                got_inputs = any(
+                    te.tool_call.name == "get_workflow_inputs"
+                    for te in state.tool_executions
+                )
+                ever_attempted_submit = any(
+                    te.tool_call.name == "submit_gowe_job"
+                    for te in state.tool_executions
+                )
+
+                if got_inputs and not ever_attempted_submit:
+                    # The LLM prepared to submit but never called
+                    # submit_gowe_job.  Push it back into the loop
+                    # (up to 2 times) to either actually submit or
+                    # produce honest error text.
+                    nudge_count = getattr(state, "_submit_nudge_count", 0)
+                    if nudge_count < 2:
+                        state._submit_nudge_count = nudge_count + 1
+                        logger.warning(
+                            "LLM produced text without calling "
+                            "submit_gowe_job (nudge %d/2). Pushing "
+                            "back into loop.",
+                            nudge_count + 1,
+                        )
+                        state.add_assistant_message(
+                            content=content, tool_calls=[],
+                        )
+                        # Use a user message (not system) because some
+                        # LLM backends (vLLM/Qwen) reject system
+                        # messages that appear after the conversation
+                        # has started.
+                        state.add_user_message(
+                            "You have NOT submitted any job yet — "
+                            "submit_gowe_job was never called. You "
+                            "MUST call submit_gowe_job to actually "
+                            "submit the workflow. If you cannot submit "
+                            "due to missing required information or "
+                            "errors, clearly tell the user what went "
+                            "wrong and what they need to provide. "
+                            "Do NOT claim a job was submitted."
+                        )
+                        continue
+
+                # Normal exit: asking a question, presenting a
+                # recommendation, or exhausted nudge attempts.
+                state.status = "needs_input"
+                state.question = content
             else:
                 state.status = "error"
                 state.error_message = "LLM produced no tool calls and no text."
@@ -279,7 +334,7 @@ async def populate_and_submit(
                     # user-facing explanation, then force a text response.
                     result_str = truncate_result(result)
                     state.add_tool_result(tc.id, result_str)
-                    state.add_system_message(
+                    state.add_user_message(
                         "Job submission has failed multiple times. "
                         "Do NOT retry. Respond to the user with a clear "
                         "explanation of the error and suggest they try "
@@ -325,6 +380,14 @@ async def populate_and_submit(
                     state.workflow_id,
                     sub_id,
                 )
+
+                # Strip internal IDs from the result before the LLM sees
+                # it — the LLM tends to echo these to the user despite
+                # prompt instructions not to.
+                result = {
+                    k: v for k, v in result.items()
+                    if k not in ("submission_id", "workflow_id")
+                }
 
                 # Feed result back so LLM can continue (more samples) or summarize
                 result_str = truncate_result(result)
