@@ -35,4 +35,14 @@ workflows.  Follow these rules:
 - ``paired_end_libs``: array of ``{read1: str, read2: str, interleaved: bool}``
 - ``single_end_libs``: array of ``{read: str}``
 - Detect pairing from filename patterns: R1/R2, _1/_2, .1/.2
+
+### SRA Inputs
+- Call ``get_sra_metadata`` when the user provides SRR/ERR/DRR accessions.
+- SRA field names vary by workflow — always prefer names from
+  ``get_workflow_inputs``. Common patterns:
+  - Assembly-style workflows: ``srr_ids`` as a **string list**.
+  - RNASeq / SARS2Wastewater: ``srr_libs`` records with
+    **``srr_accession``** and **``sample_id``** (NOT ``srr_id``).
+  - MetagenomeBinning: ``srr_ids`` as a **singular string**.
+- Never guess SRA field names — use what the schema provides.
 """.strip()

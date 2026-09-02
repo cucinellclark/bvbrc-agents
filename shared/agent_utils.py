@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import random
 from typing import Any, Callable, TypeVar
 
 logger = logging.getLogger(__name__)
@@ -38,6 +39,8 @@ _CONTEXT_ERROR_PHRASES = [
 ]
 
 # Phrases / status codes that indicate a transient (retryable) error.
+# NOTE: timeout phrases are deliberately excluded here — they are handled
+# separately by _is_timeout_error() with a more conservative retry policy.
 _TRANSIENT_ERROR_PHRASES = [
     "rate_limit",
     "rate limit",
@@ -49,14 +52,29 @@ _TRANSIENT_ERROR_PHRASES = [
     "504",
     "bad gateway",
     "service unavailable",
-    "gateway timeout",
     "connection error",
     "connection reset",
     "connection refused",
-    "timed out",
-    "timeout",
     "temporary failure",
     "overloaded",
+]
+
+# Phrases that indicate a non-retryable admission rejection.  The holly
+# admission proxy returns 429 with type "admission_queue_full" when its
+# wait queue is full.  Retrying this would double-book the GPU — the queue
+# is still full, and a retry just adds another waiter.
+_ADMISSION_REJECT_PHRASES = [
+    "admission_queue_full",
+]
+
+# Phrases that indicate a timeout (queue wait + generation exceeded budget).
+# These get at most 1 retry with a long jittered delay to avoid piling onto
+# an already-overloaded vLLM engine.
+_TIMEOUT_ERROR_PHRASES = [
+    "timed out",
+    "timeout",
+    "read timeout",
+    "connect timeout",
 ]
 
 
@@ -71,37 +89,98 @@ def is_context_window_error(exc: BaseException) -> bool:
     return any(phrase in error_str for phrase in _CONTEXT_ERROR_PHRASES)
 
 
+def _is_timeout_error(exc: BaseException) -> bool:
+    """Return True if *exc* looks like an HTTP / read timeout.
+
+    Timeouts are separated from other transient errors because they
+    indicate the vLLM engine is overloaded (queue wait + thinking tokens
+    exceeded the client budget).  Retrying aggressively makes this worse.
+    """
+    error_str = str(exc).lower()
+    exc_type = type(exc).__name__.lower()
+    return (
+        any(phrase in error_str for phrase in _TIMEOUT_ERROR_PHRASES)
+        or "timeout" in exc_type
+    )
+
+
+def _is_admission_rejection(exc: BaseException) -> bool:
+    """Return True if *exc* is a non-retryable admission proxy rejection.
+
+    The admission proxy returns 429 with ``"type": "admission_queue_full"``
+    when its bounded wait queue is full.  This must NOT be retried — the
+    queue is full and retrying would just add another waiter, potentially
+    double-booking GPU capacity.
+    """
+    error_str = str(exc).lower()
+    return any(phrase in error_str for phrase in _ADMISSION_REJECT_PHRASES)
+
+
 def _is_transient_error(exc: BaseException) -> bool:
-    """Return True if *exc* looks like a transient LLM API error."""
+    """Return True if *exc* looks like a transient LLM API error.
+
+    NOTE: timeout errors are NOT classified as transient here — they
+    are handled separately with a more conservative retry policy.
+    See ``_is_timeout_error``.
+
+    Admission proxy rejections (``admission_queue_full``) are also
+    excluded — they are non-retryable by design.
+    """
+    # Admission rejections look like a 429 but must not be retried.
+    if _is_admission_rejection(exc):
+        return False
+
     error_str = str(exc).lower()
     # Also check for known exception types from the OpenAI SDK
     exc_type = type(exc).__name__.lower()
     return any(phrase in error_str for phrase in _TRANSIENT_ERROR_PHRASES) or any(
         phrase in exc_type
-        for phrase in ["ratelimit", "timeout", "connection", "apierror"]
+        for phrase in ["ratelimit", "connection", "apierror"]
     )
 
 
 async def llm_call_with_retry(
     fn: Callable[..., Any],
     *args: Any,
-    max_retries: int = 3,
+    max_retries: int = 1,
     base_delay: float = 2.0,
     max_delay: float = 30.0,
+    timeout_max_retries: int = 1,
+    timeout_delay_min: float = 10.0,
+    timeout_delay_max: float = 30.0,
     **kwargs: Any,
 ) -> Any:
     """Call an async LLM function with exponential backoff on transient errors.
 
-    Retries on rate-limit (429), server errors (5xx), timeouts, and
-    connection errors. Does NOT retry on context-window errors or other
-    client errors (4xx) — those are re-raised immediately.
+    **Transient errors** (rate-limit 429, server errors 5xx, connection
+    resets) are retried up to *max_retries* times with exponential backoff
+    starting at *base_delay*.
+
+    **Timeout errors** are retried at most *timeout_max_retries* time
+    (default 1) with a long jittered delay (default 10-30 s).  Aggressive
+    retry on timeouts worsens GPU overload — the vLLM engine is already
+    backed up, and piling on more requests makes queue wait longer for
+    everyone.
+
+    Does NOT retry on context-window errors, admission proxy rejections
+    (``admission_queue_full``), or other client errors (4xx) — those are
+    re-raised immediately.
 
     Args:
         fn: The async callable to invoke (e.g., ``chat_completion``).
         *args: Positional arguments forwarded to *fn*.
-        max_retries: Maximum number of retry attempts (default 3).
-        base_delay: Initial delay in seconds (default 2.0).
-        max_delay: Maximum delay cap in seconds (default 30.0).
+        max_retries: Max retry attempts for transient (non-timeout) errors
+            (default 1).
+        base_delay: Initial delay in seconds for transient retries
+            (default 2.0).
+        max_delay: Maximum delay cap in seconds for transient retries
+            (default 30.0).
+        timeout_max_retries: Max retry attempts for timeout errors
+            (default 1).
+        timeout_delay_min: Minimum jittered delay for timeout retries
+            (default 10.0 s).
+        timeout_delay_max: Maximum jittered delay for timeout retries
+            (default 30.0 s).
         **kwargs: Keyword arguments forwarded to *fn*.
 
     Returns:
@@ -109,10 +188,14 @@ async def llm_call_with_retry(
 
     Raises:
         The last exception if all retries are exhausted, or any
-        non-transient exception immediately.
+        non-transient/non-timeout exception immediately.
     """
     last_exc: BaseException | None = None
-    for attempt in range(max_retries + 1):
+    transient_attempts = 0
+    timeout_attempts = 0
+
+    max_total_attempts = max(max_retries, timeout_max_retries) + 1 + max_retries + timeout_max_retries
+    for _ in range(max_total_attempts):
         try:
             return await fn(*args, **kwargs)
         except Exception as e:
@@ -122,25 +205,151 @@ async def llm_call_with_retry(
             if is_context_window_error(e):
                 raise
 
-            # Only retry on transient errors
+            # --- Timeout errors: conservative retry (once, long delay) ---
+            if _is_timeout_error(e):
+                timeout_attempts += 1
+                if timeout_attempts > timeout_max_retries:
+                    logger.error(
+                        "LLM call timed out after %d timeout retries: %s",
+                        timeout_max_retries,
+                        e,
+                    )
+                    raise
+
+                delay = random.uniform(timeout_delay_min, timeout_delay_max)
+                logger.warning(
+                    "LLM call timed out (timeout attempt %d/%d), "
+                    "retrying in %.1fs: %s",
+                    timeout_attempts,
+                    timeout_max_retries,
+                    delay,
+                    e,
+                )
+                await asyncio.sleep(delay)
+                continue
+
+            # --- Other transient errors: standard exponential backoff ---
             if not _is_transient_error(e):
                 raise
 
-            if attempt >= max_retries:
-                logger.error("LLM call failed after %d retries: %s", max_retries, e)
+            transient_attempts += 1
+            if transient_attempts > max_retries:
+                logger.error(
+                    "LLM call failed after %d retries: %s", max_retries, e
+                )
                 raise
 
-            delay = min(base_delay * (2**attempt), max_delay)
+            delay = min(base_delay * (2 ** (transient_attempts - 1)), max_delay)
             logger.warning(
                 "LLM call failed (attempt %d/%d), retrying in %.1fs: %s",
-                attempt + 1,
-                max_retries + 1,
+                transient_attempts,
+                max_retries,
                 delay,
                 e,
             )
             await asyncio.sleep(delay)
 
     # Should not reach here, but satisfy type checker
+    raise last_exc  # type: ignore[misc]
+
+
+async def llm_stream_with_retry(
+    fn: Callable[..., Any],
+    *args: Any,
+    max_retries: int = 1,
+    base_delay: float = 2.0,
+    max_delay: float = 30.0,
+    timeout_max_retries: int = 1,
+    timeout_delay_min: float = 10.0,
+    timeout_delay_max: float = 30.0,
+    label: str = "stream",
+    **kwargs: Any,
+) -> Any:
+    """Open an LLM streaming connection with retry on transient errors.
+
+    Retry logic applies only to the **stream-open** phase — the initial
+    ``await client.chat.completions.create(stream=True, ...)`` call.
+    Once the stream is established and chunks are flowing, errors are
+    propagated immediately (retrying mid-stream would lose context).
+
+    The returned value is the async stream object.  The caller iterates
+    it with ``async for chunk in stream:``.
+
+    Uses the same retry policy as ``llm_call_with_retry``:
+    - Transient errors (429, 5xx, connection reset): up to *max_retries*
+      with exponential backoff.
+    - Timeout errors: up to *timeout_max_retries* (default 1) with
+      jittered delay.
+    - Context-window errors: never retried.
+    - Admission proxy rejections (``admission_queue_full``): never retried.
+    """
+    last_exc: BaseException | None = None
+    transient_attempts = 0
+    timeout_attempts = 0
+
+    max_total_attempts = (
+        max(max_retries, timeout_max_retries)
+        + 1
+        + max_retries
+        + timeout_max_retries
+    )
+    for _ in range(max_total_attempts):
+        try:
+            return await fn(*args, **kwargs)
+        except Exception as e:
+            last_exc = e
+
+            if is_context_window_error(e):
+                raise
+
+            if _is_timeout_error(e):
+                timeout_attempts += 1
+                if timeout_attempts > timeout_max_retries:
+                    logger.error(
+                        "[%s] Stream open timed out after %d timeout retries: %s",
+                        label,
+                        timeout_max_retries,
+                        e,
+                    )
+                    raise
+
+                delay = random.uniform(timeout_delay_min, timeout_delay_max)
+                logger.warning(
+                    "[%s] Stream open timed out (timeout attempt %d/%d), "
+                    "retrying in %.1fs: %s",
+                    label,
+                    timeout_attempts,
+                    timeout_max_retries,
+                    delay,
+                    e,
+                )
+                await asyncio.sleep(delay)
+                continue
+
+            if not _is_transient_error(e):
+                raise
+
+            transient_attempts += 1
+            if transient_attempts > max_retries:
+                logger.error(
+                    "[%s] Stream open failed after %d retries: %s",
+                    label,
+                    max_retries,
+                    e,
+                )
+                raise
+
+            delay = min(base_delay * (2 ** (transient_attempts - 1)), max_delay)
+            logger.warning(
+                "[%s] Stream open failed (attempt %d/%d), retrying in %.1fs: %s",
+                label,
+                transient_attempts,
+                max_retries,
+                delay,
+                e,
+            )
+            await asyncio.sleep(delay)
+
     raise last_exc  # type: ignore[misc]
 
 
@@ -318,6 +527,75 @@ async def emit_progress(
 # ---------------------------------------------------------------------------
 # Conversation context formatting (for system prompt injection)
 # ---------------------------------------------------------------------------
+
+
+def format_attached_documents(
+    documents: list[dict[str, Any]] | None,
+) -> str:
+    """Format ``parsed_documents`` into an ``=== ATTACHED DOCUMENTS ===`` section.
+
+    For each document, renders the name, page/char counts, the workspace
+    path, and the 25 KB excerpt.  For a **failed** document, renders the
+    error plus an instruction to surface it to the user.
+
+    Handles both PDFs (with ``page_count``) and text uploads (without).
+    Reads ``workspace_path``, falling back to ``workspace_txt_path`` for
+    backward compatibility.
+
+    Returns an empty string if *documents* is falsy or empty.
+    """
+    if not documents:
+        return ""
+
+    parts: list[str] = ["=== ATTACHED DOCUMENTS ==="]
+
+    for i, doc in enumerate(documents, 1):
+        name = doc.get("name", f"Document {i}")
+
+        if doc.get("error"):
+            parts.append(
+                f"\n### Document {i}: {name}\n"
+                f"**ERROR:** {doc['error']}\n"
+                f"You MUST tell the user this document could not be read "
+                f"and explain the reason above."
+            )
+            continue
+
+        page_count = doc.get("page_count")
+        char_count = doc.get("char_count", "?")
+        ws_path = doc.get("workspace_path") or doc.get("workspace_txt_path")
+        excerpt = doc.get("excerpt", "")
+        source = doc.get("source", "pdf")
+
+        # Build header — include page count only for PDFs
+        if page_count is not None:
+            header = f"\n### Document {i}: {name} ({page_count} pages, {char_count} chars)"
+        else:
+            header = f"\n### Document {i}: {name} ({char_count} chars)"
+
+        if ws_path:
+            header += f"\nFull file saved to: {ws_path}"
+            saved_as = doc.get("saved_as")
+            if saved_as:
+                header += (
+                    f"\n(Stored as `{saved_as}` — another attachment in this "
+                    f"message had the same filename.)"
+                )
+            header += (
+                "\nIf the user asks about content beyond this excerpt, "
+                "use `read_file_preview` on the path above."
+            )
+            if source == "upload":
+                header += (
+                    "\nThis is the original uploaded file (not an extract). "
+                    "You may pass this path as a GoWe workflow input."
+                )
+
+        parts.append(header)
+        if excerpt:
+            parts.append(f"\n--- Excerpt (first {len(excerpt)} chars) ---\n{excerpt}")
+
+    return "\n".join(parts)
 
 
 def format_recent_messages(

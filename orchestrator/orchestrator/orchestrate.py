@@ -9,12 +9,12 @@ streamable to the gateway.
 
 from __future__ import annotations
 
-import json
 import logging
 import time
 from collections.abc import AsyncGenerator
 from typing import Any
 
+from orchestrator.documents import prepare_attached_documents
 from orchestrator.events.events import Event, EventType, error_event
 from orchestrator.executor.executor import execute_plan
 from orchestrator.llm.client import LLMClient
@@ -60,6 +60,20 @@ async def orchestrate(
     )
 
     try:
+        # ------------------------------------------------------------------
+        # 0. PREPROCESS — extract/persist attached documents before routing
+        # ------------------------------------------------------------------
+        if request.pdfs or request.attached_files or (
+            request.selected_items
+            and any(
+                (item.get("path", "") if isinstance(item, dict) else "")
+                .lower()
+                .endswith(".pdf")
+                for item in request.selected_items
+            )
+        ):
+            await prepare_attached_documents(request)
+
         # ------------------------------------------------------------------
         # 1. ROUTE
         # ------------------------------------------------------------------
@@ -504,16 +518,8 @@ async def orchestrate(
                                     "token": request.auth_token or "",
                                 },
                             )
-                            # Parse the MCP result
-                            submit_data = {}
-                            if hasattr(submit_result, "content"):
-                                for block in submit_result.content:
-                                    if hasattr(block, "text"):
-                                        try:
-                                            submit_data = json.loads(block.text)
-                                        except (json.JSONDecodeError, TypeError):
-                                            pass
-                                        break
+                            # call_tool always returns a dict
+                            submit_data = submit_result
 
                             if submit_data.get("error"):
                                 logger.warning(

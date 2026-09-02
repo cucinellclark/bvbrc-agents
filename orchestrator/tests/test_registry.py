@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from mcp.types import Tool as McpTool
 
 from orchestrator.config import AgentConfig, OrchestratorConfig
-from orchestrator.registry.agent_handle import AgentHandle
+from orchestrator.registry.agent_handle import AgentHandle, InProcessAgentHandle
 from orchestrator.registry.agent_registry import AgentRegistry
 from orchestrator.events.events import EventType
 from orchestrator.events.stream import collect_events
@@ -185,3 +185,40 @@ class TestAgentRegistry:
 
         await registry.shutdown()
         assert registry.agents == {}
+
+    @pytest.mark.asyncio
+    async def test_discover_all_inprocess_no_mcp(self):
+        """In-process agents are discovered without creating MCP clients."""
+        agents = {
+            "helpdesk": AgentConfig(
+                name="Helpdesk",
+                description="help",
+                protocol="inprocess",
+                chat_tool_params={"agent_type": "helpdesk"},
+            ),
+            "data": AgentConfig(
+                name="Data",
+                description="data",
+                protocol="inprocess",
+                chat_tool_params={"agent_type": "data"},
+            ),
+        }
+        config = _make_config(agents)
+        registry = AgentRegistry(config)
+
+        with patch("orchestrator.mcp.client.MCPAgentClient") as mock_client:
+            events = await collect_events(registry.discover_all())
+
+        mock_client.assert_not_called()
+        assert set(registry.agents) == {"helpdesk", "data"}
+        for handle in registry.agents.values():
+            assert isinstance(handle, InProcessAgentHandle)
+            assert handle.is_healthy
+            assert handle.tool_names == ["agent_chat"]
+
+        event_types = [e.type for e in events]
+        assert EventType.DISCOVERY_START in event_types
+        assert EventType.DISCOVERY_DONE in event_types
+        done = next(e for e in events if e.type == EventType.DISCOVERY_DONE)
+        assert done.data["healthy"] == 2
+        assert done.data["unhealthy"] == 0

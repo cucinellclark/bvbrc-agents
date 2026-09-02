@@ -165,7 +165,7 @@ class LLMClient:
                 return await self._client.chat.completions.create(**create_kwargs)
 
             response = await llm_call_with_retry(
-                _do_call, max_retries=3, base_delay=2.0
+                _do_call, max_retries=1, base_delay=2.0
             )
 
             content = response.choices[0].message.content or ""
@@ -204,7 +204,7 @@ class LLMClient:
             async def _do_stream_call():
                 return await self._client.chat.completions.create(**create_kwargs)
 
-            stream = await llm_call_with_retry(_do_stream_call, max_retries=3, base_delay=2.0)
+            stream = await llm_call_with_retry(_do_stream_call, max_retries=1, base_delay=2.0)
 
             full_content = ""
             async for chunk in stream:

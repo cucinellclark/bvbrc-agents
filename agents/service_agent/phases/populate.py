@@ -13,6 +13,7 @@ pre-registered GoWe workflows.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import sys
@@ -28,6 +29,7 @@ if str(Path(__file__).resolve().parent.parent.parent.parent) not in sys.path:
 from agent_utils import (
     build_user_content,
     call_fingerprint,
+    format_attached_documents,
     format_recent_messages,
     parse_tool_calls as _parse_tool_calls_raw,
     get_response_content,
@@ -84,9 +86,9 @@ async def populate_and_submit(
     """
     state.current_phase = "populate"
 
-    # Build system prompt
-    attached_files = state.context.get("attached_files", []) if state.context else []
-    system_prompt = build_populate_prompt(attached_files=attached_files)
+    # Build system prompt — feed parsed_documents for file inventory
+    parsed_docs = state.context.get("parsed_documents", []) if state.context else []
+    system_prompt = build_populate_prompt(attached_files=parsed_docs)
 
     images: list[str] = []
     if state.context:
@@ -98,6 +100,13 @@ async def populate_and_submit(
                 f"{page_context}"
             )
         images = state.context.get("images", []) or []
+
+        # Inject attached document excerpts (PDFs + text uploads)
+        docs_section = format_attached_documents(
+            state.context.get("parsed_documents")
+        )
+        if docs_section:
+            system_prompt += f"\n\n{docs_section}"
 
         # Inject bounded conversation context from recent_messages
         recent_msgs = state.context.get("recent_messages")
@@ -119,6 +128,7 @@ async def populate_and_submit(
             if k not in (
                 "page_context", "images",
                 "conversation_summary", "recent_messages",
+                "parsed_documents", "attached_files",
             )
         }
         if ctx_for_prompt:
@@ -146,7 +156,16 @@ async def populate_and_submit(
     failed_submission_count = 0
     MAX_FAILED_SUBMISSIONS = 2
 
+    def _check_cancelled() -> None:
+        """Raise CancelledError if the current asyncio task has been cancelled."""
+        task = asyncio.current_task()
+        if task is not None and task.cancelled():
+            raise asyncio.CancelledError()
+
     for iteration in range(config.max_iterations):
+        # --- Cancel checkpoint: top of each iteration ---
+        _check_cancelled()
+
         await emit_progress(
             progress_callback,
             iteration,
@@ -183,6 +202,9 @@ async def populate_and_submit(
             tools=POPULATE_TOOLS,
             config=config,
         )
+
+        # --- Cancel checkpoint: after LLM call ---
+        _check_cancelled()
 
         tool_calls = _parse_tool_calls(response)
         content = get_response_content(response)
@@ -282,6 +304,9 @@ async def populate_and_submit(
                 config.max_iterations,
                 _msg,
             )
+
+            # --- Cancel checkpoint: before each tool execution ---
+            _check_cancelled()
 
             fp = call_fingerprint(tc)
 

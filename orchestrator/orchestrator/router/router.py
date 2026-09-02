@@ -95,6 +95,7 @@ async def route(
         conversation_context=conversation_context,
         page_context=request.page_context,
         has_images=bool(request.images),
+        has_documents=bool(request.parsed_documents),
     )
 
     logger.info(

@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
-from mcp.types import Tool as McpTool, CallToolResult, TextContent
+from mcp.types import Tool as McpTool
 
 from orchestrator.config import AgentConfig, OrchestratorConfig
 from orchestrator.events.events import Event, EventType
@@ -78,9 +78,9 @@ def _make_mock_llm(routing_response: str | None = None) -> LLMClient:
 def _make_agent_result(
     answer: str = "Agent answer",
     status: str = "completed",
-) -> CallToolResult:
-    """Create a mock MCP CallToolResult for agent_chat."""
-    data = {
+) -> dict:
+    """Create a mock agent result dict for agent_chat."""
+    return {
         "answer": answer,
         "status": status,
         "sources": ["genome"],
@@ -88,10 +88,6 @@ def _make_agent_result(
         "elapsed_seconds": 1.5,
         "tool_trace": [],
     }
-    result = MagicMock(spec=CallToolResult)
-    result.content = [TextContent(type="text", text=json.dumps(data))]
-    result.isError = False
-    return result
 
 
 def _setup_ready_state(

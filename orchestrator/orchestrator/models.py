@@ -107,6 +107,14 @@ class OrchestratorRequest(BaseModel):
     # Forwarded to agents as multimodal content blocks for vision-capable LLMs.
     images: list[str] = Field(default_factory=list)
 
+    # User-attached PDFs (base64 from browser upload), extracted by the
+    # documents preprocess before routing.
+    pdfs: list[dict[str, Any]] = Field(default_factory=list)
+
+    # Unified preprocess output (PDFs + text uploads).
+    # Filled by prepare_attached_documents(); forwarded to agents.
+    parsed_documents: list[dict[str, Any]] = Field(default_factory=list)
+
     # Workflow context from completion webhook (for analysis agent)
     # Contains workflow_id, workflow_name, status, steps, output_paths
     workflow_context: dict[str, Any] | None = None

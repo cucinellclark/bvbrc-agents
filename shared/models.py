@@ -58,16 +58,22 @@ class ToolExecution(BaseModel):
 class BaseAgentConfig(BaseModel):
     """Common configuration fields shared by all agents.
 
-    LLM defaults are loaded once from ``shared.config.LLM_DEFAULTS``
-    (sourced from ``config/llm.yaml`` + environment variable overrides).
+    LLM endpoint details (base_url, api_key, model) are REQUIRED — they
+    arrive per request via ``llm_override`` and are propagated by
+    ``shared/agent_dispatch.py:_build_config_kwargs``. There is no default
+    model. Structural defaults (temperature, max_tokens, timeout) come from
+    ``shared.config.LLM_DEFAULTS`` (sourced from ``config/llm.yaml`` + env).
     """
 
-    # LLM settings
-    llm_base_url: str = LLM_DEFAULTS["base_url"]
-    llm_api_key: str = LLM_DEFAULTS["api_key"]
-    llm_model: str = LLM_DEFAULTS["model"]
+    # LLM endpoint — must be supplied per request (no default).
+    llm_base_url: str
+    llm_api_key: str
+    llm_model: str
+
+    # Structural knobs — default from config/llm.yaml.
     temperature: float = LLM_DEFAULTS["temperature"]
     max_tokens: int = LLM_DEFAULTS["max_tokens"]
+    llm_timeout_seconds: int = LLM_DEFAULTS.get("timeout_seconds", 180)
 
     # Agent behavior
     max_iterations: int = 1000

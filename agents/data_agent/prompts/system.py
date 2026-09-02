@@ -223,8 +223,14 @@ _GROUP_CREATION = """\
 === GROUP CREATION ===
 
 Use the create_group tool to save search results as a genome or feature group \
-in the user's workspace. The tool runs your Solr query, fetches the matching \
-IDs, and creates the group in one step -- you do NOT need to fetch IDs first.
+in the user's workspace. For homogeneous groups (one filter), the tool runs \
+your Solr query, fetches the matching IDs, and creates the group in one step \
+-- you do NOT need to fetch IDs first.
+
+Exception: for **mixed exact subsets** (e.g. "5 of serovar A and 5 of \
+serovar B in one group"), you MUST fetch IDs per subset first with \
+search_data, then pass a combined genome_id:(…) query to create_group. \
+See the Groups skill section below for the full playbook.
 
 Parameters:
 - group_name: A descriptive name for the group.
@@ -313,6 +319,8 @@ to avoid URL length issues. If more are needed, batch the queries.
 # Assembled system prompt
 # ---------------------------------------------------------------------------
 from shared.prompts.response_format_skill import RESPONSE_FORMAT_SKILL_PROMPT
+from shared.prompts.workspace_skill import WORKSPACE_SKILL_PROMPT
+from shared.prompts.groups_sra_skill import GROUPS_SRA_SKILL_PROMPT
 
 SYSTEM_PROMPT = "\n".join(
     [
@@ -326,6 +334,8 @@ SYSTEM_PROMPT = "\n".join(
         _GROUP_CREATION,
         _EFFICIENCY,
         _CONSTRAINTS,
+        WORKSPACE_SKILL_PROMPT,
+        GROUPS_SRA_SKILL_PROMPT,
         RESPONSE_FORMAT_SKILL_PROMPT,
     ]
 )

@@ -1,9 +1,11 @@
 """Configuration loading for the orchestrator.
 
 Reads agent definitions from config/agents.yaml and orchestrator settings
-from environment variables or defaults. LLM settings are loaded from the
-shared Agents/config/llm.yaml so the model endpoint is configured in one
-place for the entire system.
+(including the internal routing model) from that same file. Structural LLM
+defaults — temperature, max_tokens, timeout — are loaded from the shared
+Agents/config/llm.yaml. Model / URL / API-key details are NOT loaded here;
+they arrive per request via ``llm_override`` and are enforced by
+``_resolve_llm`` in ``server.py``.
 """
 
 from __future__ import annotations
@@ -14,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 # Make the shared config loader importable
 _CONFIG_DIR = str(Path(__file__).resolve().parent.parent.parent / "config")
@@ -36,15 +38,21 @@ class AgentConfig(BaseModel):
 
     name: str
     description: str
-    endpoint: str  # MCP server URL, e.g. "http://localhost:8053"
-    protocol: str = "mcp"
+    endpoint: str | None = None  # MCP server URL; required when protocol is "mcp"
+    protocol: str = "mcp"  # "inprocess" or "mcp"
     capabilities: list[str] = Field(default_factory=list)
     max_iterations: int = 1000
     timeout_seconds: int = 120
     auth_token: str | None = None  # Override per-agent; usually from env
-    chat_tool: str = "agent_chat"  # MCP tool name for the agent's chat entry point
-    mcp_server_name: str | None = None  # MCP server prefix for tool name qualification
+    chat_tool: str = "agent_chat"  # MCP tool name; kept for MCP rollback
+    mcp_server_name: str | None = None  # MCP server prefix; kept for MCP rollback
     chat_tool_params: dict[str, Any] = Field(default_factory=dict)  # Extra params merged into agent_chat calls
+
+    @model_validator(mode="after")
+    def _require_endpoint_for_mcp(self) -> "AgentConfig":
+        if self.protocol == "mcp" and not self.endpoint:
+            raise ValueError("endpoint is required when protocol is 'mcp'")
+        return self
 
 
 # ---------------------------------------------------------------------------
@@ -73,31 +81,20 @@ class OrchestratorConfig(BaseModel):
         "ORCH_AUTO_SUBMIT", "false"
     ).lower() == "true"
 
-    # LLM settings (for routing and synthesis)
-    # Defaults loaded from shared Agents/config/llm.yaml
-    llm_base_url: str = _LLM_DEFAULTS["base_url"]
-    llm_api_key: str = _LLM_DEFAULTS["api_key"]
-    llm_model: str = _LLM_DEFAULTS["model"]
+    # Structural LLM defaults (loaded from shared Agents/config/llm.yaml).
+    # Model / URL / API-key details are NOT stored on the config — they
+    # arrive per request via `llm_override`. See _resolve_llm in server.py.
     llm_temperature: float = _LLM_DEFAULTS["temperature"]
     llm_max_tokens: int = _LLM_DEFAULTS["max_tokens"]
     llm_timeout_seconds: int = _LLM_DEFAULTS["timeout_seconds"]
 
-    # Optional model for routing decisions.
-    # Routing is a JSON classification task — a dedicated model ensures
-    # routing always works regardless of what model the user selects.
-    # When set, the orchestrator creates a separate LLM client for routing.
-    # When None, the default LLM model is used for routing.
-    routing_model: str | None = None
-
-    # Optional separate base URL for the routing model endpoint.
-    # When set, the routing LLM client uses this URL instead of llm_base_url.
-    # This allows the routing model to run on a different host/port.
-    # When None, falls back to llm_base_url.
-    routing_base_url: str | None = None
-
-    # Optional separate API key for the routing model endpoint.
-    # When None, falls back to llm_api_key.
-    routing_api_key: str | None = None
+    # Required routing-model config. Routing is an internal JSON classification
+    # task that must always succeed regardless of the user's chosen chat model,
+    # so the orchestrator maintains its own dedicated LLM client for it.
+    # These three fields must be set explicitly in agents.yaml.
+    routing_model: str
+    routing_base_url: str
+    routing_api_key: str
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> OrchestratorConfig:

@@ -12,6 +12,7 @@ Operates in three modes based on context:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import sys
@@ -27,6 +28,7 @@ if str(Path(__file__).resolve().parent.parent.parent) not in sys.path:
 from agent_utils import (  # noqa: E402
     build_user_content,
     call_fingerprint,
+    format_attached_documents,
     format_recent_messages,
     parse_tool_calls as _parse_tool_calls_raw,
     get_response_content,
@@ -148,6 +150,13 @@ async def _analyze_and_plan(
             )
         images = context.get("images", []) or []
 
+        # Inject attached document excerpts (PDFs + text uploads)
+        docs_section = format_attached_documents(
+            context.get("parsed_documents")
+        )
+        if docs_section:
+            system_prompt += f"\n\n{docs_section}"
+
     # Add bounded conversation context from recent_messages
     if context:
         recent_msgs = context.get("recent_messages")
@@ -196,6 +205,13 @@ async def _plan_with_answers(
                 f"The user is currently viewing the following page:\n"
                 f"{page_context}"
             )
+        # Inject attached document excerpts (PDFs + text uploads)
+        docs_section = format_attached_documents(
+            context.get("parsed_documents")
+        )
+        if docs_section:
+            system_prompt += f"\n\n{docs_section}"
+
         recent_msgs = context.get("recent_messages")
         if recent_msgs:
             formatted = format_recent_messages(recent_msgs)
@@ -486,7 +502,15 @@ async def _run_planning_loop(
     executed_fingerprints: set[str] = set()
     duplicate_count = 0
 
+    def _check_cancelled() -> None:
+        """Raise CancelledError if the current asyncio task has been cancelled."""
+        task = asyncio.current_task()
+        if task is not None and task.cancelled():
+            raise asyncio.CancelledError()
+
     for iteration in range(config.max_iterations):
+        _check_cancelled()  # checkpoint 1: top of iteration
+
         state.iteration = iteration + 1
 
         await emit_progress(
@@ -503,6 +527,8 @@ async def _run_planning_loop(
             tools=TOOL_SCHEMAS,
             config=config,
         )
+
+        _check_cancelled()  # checkpoint 2: after LLM call
 
         tool_calls = _parse_tool_calls(response)
         content = get_response_content(response)
@@ -538,6 +564,8 @@ async def _run_planning_loop(
                 if duplicate_count >= 2:
                     break
                 continue
+
+            _check_cancelled()  # checkpoint 3: before tool execution
 
             # Build headers for shared tools that need auth
             _headers = (

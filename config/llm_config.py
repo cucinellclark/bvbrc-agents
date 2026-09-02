@@ -1,21 +1,28 @@
 """Shared LLM configuration loader for the orchestrator and all agents.
 
-Reads LLM settings from a central YAML file (Agents/config/llm.yaml) with
+Reads structural LLM settings (temperature, max_tokens, timeout_seconds,
+classifier_model) from a central YAML file (Agents/config/llm.yaml) with
 environment variable overrides. This module is imported by each agent's
-AgentConfig and the orchestrator's LLMConfig to provide consistent defaults.
+AgentConfig and the orchestrator's OrchestratorConfig to supply consistent
+structural defaults.
+
+Model / URL / API-key details are NOT loaded here. They must arrive per
+request via ``llm_override`` (sourced from MongoDB's ``modelList`` in the
+gateway). Requests without a complete override are rejected upstream by
+``_resolve_llm`` in ``orchestrator/server.py``.
 
 Resolution order (highest priority wins):
-  1. Environment variables: LLM_BASE_URL, LLM_API_KEY, LLM_MODEL,
-     LLM_TEMPERATURE, LLM_MAX_TOKENS, LLM_TIMEOUT_SECONDS
+  1. Environment variables: LLM_TEMPERATURE, LLM_MAX_TOKENS,
+     LLM_TIMEOUT_SECONDS, LLM_CLASSIFIER_MODEL
   2. YAML config file (default: Agents/config/llm.yaml, or set LLM_CONFIG_PATH)
-  3. Hardcoded fallback defaults
+  3. Hardcoded fallback defaults below
 
 Usage from any agent:
     import sys
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "config"))
     from llm_config import load_llm_defaults
     defaults = load_llm_defaults()
-    # defaults is a dict: {"base_url": ..., "api_key": ..., "model": ..., ...}
+    # defaults is a dict: {"temperature": ..., "max_tokens": ..., ...}
 """
 
 from __future__ import annotations
@@ -27,11 +34,9 @@ from typing import Any
 # Default config file: Agents/config/llm.yaml (next to this module)
 _DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent / "llm.yaml"
 
-# Hardcoded fallback values (used only if YAML is missing AND no env vars set)
+# Hardcoded fallback values (used only if YAML is missing AND no env vars set).
+# Structural knobs only — no base_url / api_key / model here by design.
 _FALLBACK_DEFAULTS: dict[str, Any] = {
-    "base_url": "http://mango.cels.anl.gov:8004/v1",
-    "api_key": "not-needed",
-    "model": "RedHatAI/Llama-4-Scout-17B-16E-Instruct-FP8-dynamic",
     "temperature": 0.0,
     "max_tokens": 4096,
     "timeout_seconds": 60,
@@ -40,9 +45,6 @@ _FALLBACK_DEFAULTS: dict[str, Any] = {
 
 # Mapping from environment variable names to config keys
 _ENV_VAR_MAP: dict[str, str] = {
-    "LLM_BASE_URL": "base_url",
-    "LLM_API_KEY": "api_key",
-    "LLM_MODEL": "model",
     "LLM_TEMPERATURE": "temperature",
     "LLM_MAX_TOKENS": "max_tokens",
     "LLM_TIMEOUT_SECONDS": "timeout_seconds",
@@ -60,7 +62,7 @@ _TYPE_MAP: dict[str, type] = {
 # ---------------------------------------------------------------------------
 # Model-specific parameter handling
 #
-# The Argo Gateway API has per-model parameter rules. Some models reject
+# Some OpenAI-family models have per-model parameter rules. Some reject
 # "max_tokens" but accept "max_completion_tokens"; some reject "temperature".
 #
 # Matching is case-insensitive and uses substring containment, so "gpt5"
@@ -75,7 +77,7 @@ MODEL_PARAM_EXCLUSIONS: dict[str, set[str]] = {
 }
 
 # Models that accept "max_completion_tokens" instead of "max_tokens"
-MODEL_USE_MAX_COMPLETION_TOKENS: set[str] = {"gpt5", "o3", "o4-mini", "gpt41"}
+MODEL_USE_MAX_COMPLETION_TOKENS: set[str] = {"gpt5", "o3", "o4-mini"}
 
 # Models that require a fixed temperature value (applied only if temperature
 # is not excluded entirely). More-specific patterns are checked first.
@@ -88,7 +90,7 @@ def get_excluded_params(model: str) -> set[str]:
     """Return the set of parameter names to exclude for a given model.
 
     Args:
-        model: The model name string (e.g. "gpt5", "gpt41").
+        model: The model name string (e.g. "gpt5", "o3").
 
     Returns:
         Set of parameter names to omit (e.g. {"temperature", "max_tokens"}).

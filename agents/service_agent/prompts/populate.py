@@ -9,6 +9,10 @@ GoWe is the single source of truth for available services/workflows.
 from __future__ import annotations
 
 from shared.prompts.response_format_skill import RESPONSE_FORMAT_SKILL_PROMPT
+from shared.prompts.workspace_skill import WORKSPACE_SKILL_PROMPT
+from shared.prompts.data_skill import DATA_SKILL_PROMPT
+from shared.prompts.helpdesk_skill import HELPDESK_SKILL_PROMPT
+from shared.prompts.groups_sra_skill import GROUPS_SRA_SKILL_PROMPT
 
 
 def build_populate_prompt(
@@ -17,15 +21,22 @@ def build_populate_prompt(
     """Build the system prompt for the workflow populate phase.
 
     Args:
-        attached_files: Optional list of user-attached file metadata.
+        attached_files: Optional list of parsed document metadata
+            (from ``parsed_documents``). Each entry has ``name``,
+            ``workspace_path``, ``char_count``, ``source``, etc.
     """
     files_section = "None"
     if attached_files:
         lines = []
         for f in attached_files:
             name = f.get("name", "unnamed")
-            size = f.get("size", 0)
-            lines.append(f"  - {name} ({size} bytes)")
+            ws_path = f.get("workspace_path")
+            char_count = f.get("char_count", 0)
+            source = f.get("source", "upload")
+            if ws_path:
+                lines.append(f"  - {name} ({char_count} chars, path: {ws_path})")
+            else:
+                lines.append(f"  - {name} ({char_count} chars)")
         files_section = "\n".join(lines)
 
     prompt = f"""\
@@ -112,6 +123,9 @@ provides them.
 All file paths in inputs must be PLAIN workspace path strings \
 (e.g., "/user@bvbrc/home/folder/file.fastq.gz"). Do NOT wrap them \
 as CWL File objects. Do NOT add "ws://" or "workspace:" prefixes.
+Always copy file paths EXACTLY from workspace tool results. Never \
+construct paths by guessing from user descriptions — browse first \
+to discover the real path, then copy it verbatim.
 
 == PAIRED-END / SINGLE-END READ LIBRARIES ==
 For assembly or other read-based workflows:
@@ -177,4 +191,11 @@ response to the user. Refer to services by their display name \
 Just confirm that the job was submitted and let the user know \
 they will be notified when it completes.
 """
-    return prompt + "\n\n" + RESPONSE_FORMAT_SKILL_PROMPT
+    return (
+        prompt
+        + "\n\n" + WORKSPACE_SKILL_PROMPT
+        + "\n\n" + DATA_SKILL_PROMPT
+        + "\n\n" + HELPDESK_SKILL_PROMPT
+        + "\n\n" + GROUPS_SRA_SKILL_PROMPT
+        + "\n\n" + RESPONSE_FORMAT_SKILL_PROMPT
+    )

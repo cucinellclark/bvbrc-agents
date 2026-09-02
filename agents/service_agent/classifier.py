@@ -6,10 +6,10 @@ status, cancel, modify) on an existing one.  The classifier resolves
 workflow IDs from conversation context so the user can say "submit that"
 instead of providing an explicit ID.
 
-When ``AgentConfig.classifier_model`` is set, the classifier uses that model
-(e.g. gpt41mini).  When it is ``None``, the classifier falls back to the
-agent's primary ``llm_model``.  The UI can also override both via
-``llm_override`` in the request context -- that override always wins.
+When ``AgentConfig.classifier_model`` is set, the classifier uses that model.
+When it is ``None``, the classifier falls back to the agent's primary
+``llm_model``.  The UI can also override both via ``llm_override`` in the
+request context -- that override always wins.
 """
 
 from __future__ import annotations
@@ -26,6 +26,7 @@ from llm_config import (
     get_temperature_override,
     uses_max_completion_tokens,
 )
+from agent_utils import llm_call_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +113,7 @@ async def classify_intent(
     client = AsyncOpenAI(
         base_url=config.llm_base_url,
         api_key=config.llm_api_key,
+        timeout=config.llm_timeout_seconds or 180,
     )
 
     # Build a compact context summary for the classifier
@@ -130,7 +132,10 @@ async def classify_intent(
     kwargs = _build_classifier_kwargs(classifier_model, config, messages)
 
     try:
-        response = await client.chat.completions.create(**kwargs)
+        async def _do_classify():
+            return await client.chat.completions.create(**kwargs)
+
+        response = await llm_call_with_retry(_do_classify)
         content = response.choices[0].message.content or ""
         intent = _parse_classifier_response(content)
         logger.info(

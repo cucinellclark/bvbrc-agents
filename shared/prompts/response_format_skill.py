@@ -85,7 +85,11 @@ Similarly for workspace results containing ``workspace_browser_url``:
    fields are present in the result.
 8. **Workspace paths** in your text are automatically converted to clickable
    chips by the frontend — you do not need to manually link them.
-9. **Never mention internal system names** (e.g., workflow engine names,
+9. **When referencing attached documents** (PDFs or uploaded files), include
+   the workspace path so users know where to find the full file. For PDFs the
+   path points to the extracted ``.txt``; for uploads it points to the original
+   file with its original extension.
+10. **Never mention internal system names** (e.g., workflow engine names,
    backend service names) or internal identifiers (workflow_id, submission_id,
    tool names) in your response to the user. Refer to services by their
    user-facing display name (e.g., "Genome Assembly", "Comprehensive Genome

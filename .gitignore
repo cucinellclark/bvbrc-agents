@@ -43,3 +43,4 @@ mcp_server/
 # OpenCode
 .opencode/
 orchestrator/orchestrator_env
+*.pid

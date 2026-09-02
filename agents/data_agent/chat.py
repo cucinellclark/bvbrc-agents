@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sys
 import time
 
@@ -129,7 +130,17 @@ def print_result(result: AgentResult, verbose: bool = False) -> None:
 # ---------------------------------------------------------------------------
 
 async def main() -> None:
-    config = AgentConfig()
+    model = os.environ.get("LLM_MODEL")
+    base_url = os.environ.get("LLM_BASE_URL")
+    api_key = os.environ.get("LLM_API_KEY")
+    if not (model and base_url and api_key):
+        print(
+            "Missing LLM config. Set LLM_MODEL, LLM_BASE_URL, and "
+            "LLM_API_KEY env vars — the agent has no default chatbot.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    config = AgentConfig(llm_model=model, llm_base_url=base_url, llm_api_key=api_key)
     verbose = False
 
     print(_bold("BV-BRC Data Agent - Interactive Chat"))

@@ -19,6 +19,7 @@ calls reuse the cached modules regardless of the path argument.
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -54,6 +55,13 @@ def _ensure_path(mcp_server_path: Optional[str] = None) -> None:
     mcp_path = mcp_server_path or _default_mcp_path()
     if mcp_path and mcp_path not in sys.path:
         sys.path.insert(0, mcp_path)
+
+    # bvbrc_solr_api is an editable install in mcp_env but needs to be
+    # importable when running in the orchestrator venv too.
+    solr_api_path = str(Path(mcp_path) / "bvbrc-python-api")
+    if os.path.isdir(solr_api_path) and solr_api_path not in sys.path:
+        sys.path.insert(0, solr_api_path)
+
     _path_added = True
 
 

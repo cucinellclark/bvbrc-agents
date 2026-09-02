@@ -171,8 +171,16 @@ async def cmd_call_tool(registry: AgentRegistry, parts: list[str]) -> None:
     try:
         result = await agent.call_tool(tool_name, args)
 
-        # Format result
-        if result.content:
+        if isinstance(result, dict):
+            formatted = json.dumps(result, indent=2)
+            if len(formatted) > 2000:
+                formatted = formatted[:2000] + "\n... (truncated)"
+            console.print(Syntax(formatted, "json", theme="monokai"))
+            if result.get("status") == "error":
+                console.print("  [red]Tool returned an error[/]")
+            else:
+                console.print("  [green]Tool call succeeded[/]")
+        elif getattr(result, "content", None):
             for block in result.content:
                 if hasattr(block, "text"):
                     try:
@@ -366,6 +374,24 @@ async def main():
         action="store_true",
         help="Enable debug logging",
     )
+    parser.add_argument(
+        "--model",
+        default=os.environ.get("LLM_MODEL"),
+        help="LLM model id (or set LLM_MODEL env var). Required — the "
+             "orchestrator no longer maintains a default chatbot model.",
+    )
+    parser.add_argument(
+        "--base-url",
+        default=os.environ.get("LLM_BASE_URL"),
+        dest="base_url",
+        help="LLM OpenAI-compatible base URL (or set LLM_BASE_URL env var).",
+    )
+    parser.add_argument(
+        "--api-key",
+        default=os.environ.get("LLM_API_KEY"),
+        dest="api_key",
+        help="LLM API key (or set LLM_API_KEY env var).",
+    )
     args = parser.parse_args()
 
     # Configure logging
@@ -422,11 +448,20 @@ async def main():
         config.agents = {args.agent: config.agents[args.agent]}
         console.print(f"  Connecting to agent: {args.agent}")
 
-    # Initialize LLM client for routing and synthesis
+    # Initialize LLM client for routing and synthesis.
+    # No default model — supply via --model / --base-url / --api-key
+    # (or LLM_MODEL / LLM_BASE_URL / LLM_API_KEY env vars).
+    if not (args.model and args.base_url and args.api_key):
+        console.print(
+            "  [red]Missing --model / --base-url / --api-key "
+            "(or LLM_MODEL / LLM_BASE_URL / LLM_API_KEY env vars). "
+            "The orchestrator no longer maintains a default chatbot model.[/]"
+        )
+        return
     llm_config = LLMConfig(
-        base_url=config.llm_base_url,
-        api_key=config.llm_api_key,
-        model=config.llm_model,
+        base_url=args.base_url,
+        api_key=args.api_key,
+        model=args.model,
         temperature=config.llm_temperature,
         max_tokens=config.llm_max_tokens,
         timeout_seconds=config.llm_timeout_seconds,

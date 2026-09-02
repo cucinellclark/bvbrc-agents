@@ -21,6 +21,7 @@ Usage::
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from typing import Any, Callable, Dict
@@ -28,6 +29,7 @@ from typing import Any, Callable, Dict
 from shared.agent_utils import (
     build_user_content,
     call_fingerprint,
+    format_attached_documents,
     format_recent_messages,
     parse_tool_calls as _parse_tool_calls_raw,
     get_response_content,
@@ -48,6 +50,18 @@ ProgressCallback = Any  # async (progress: float, total: float|None, message: st
 
 # Type for the progress message builder function
 ProgressMessageFn = Callable[[ToolCall], str]
+
+
+def _check_cancelled() -> None:
+    """Raise CancelledError if the current asyncio task has been cancelled.
+
+    Called at natural checkpoints in the agent loop (between LLM calls
+    and tool executions) so that a cancelled task stops promptly
+    instead of continuing to the next iteration.
+    """
+    task = asyncio.current_task()
+    if task is not None and task.cancelled():
+        raise asyncio.CancelledError()
 
 
 def _default_progress_message(tc: ToolCall) -> str:
@@ -131,6 +145,7 @@ async def run_agent_loop(
         excluded_context_keys = {
             "page_context", "images",
             "conversation_summary", "recent_messages",
+            "parsed_documents", "attached_files",
         }
 
     # Build initial messages if the caller hasn't already set them up.
@@ -147,6 +162,13 @@ async def run_agent_loop(
                     f"The user is currently viewing the following page:\n"
                     f"{page_context}"
                 )
+
+            # Inject attached document excerpts (PDFs + text uploads)
+            docs_section = format_attached_documents(
+                context.get("parsed_documents")
+            )
+            if docs_section:
+                system_content += f"\n\n{docs_section}"
 
             # Inject bounded conversation context from recent_messages.
             recent_msgs = context.get("recent_messages")
@@ -183,6 +205,9 @@ async def run_agent_loop(
     duplicate_count = 0
 
     for iteration in range(config.max_iterations):
+        # --- Cancel checkpoint: top of each iteration ---
+        _check_cancelled()
+
         state.iteration = iteration + 1
 
         await emit_progress(
@@ -208,6 +233,9 @@ async def run_agent_loop(
 
         tool_calls = _parse_tool_calls_raw(response, ToolCall)
         content = get_response_content(response)
+
+        # --- Cancel checkpoint: after LLM call, before tool execution ---
+        _check_cancelled()
 
         # 2. CHECK -- If no tool calls, the LLM produced a final answer
         if not tool_calls:
@@ -244,6 +272,9 @@ async def run_agent_loop(
                 if duplicate_count >= stuck_threshold:
                     break
                 continue
+
+            # --- Cancel checkpoint: before each tool execution ---
+            _check_cancelled()
 
             # Progress message
             tool_msg = progress_message_fn(tc)

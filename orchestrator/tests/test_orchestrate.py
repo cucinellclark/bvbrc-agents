@@ -5,7 +5,7 @@ import json
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from mcp.types import Tool as McpTool, CallToolResult, TextContent
+from mcp.types import Tool as McpTool
 
 from orchestrator.config import AgentConfig, OrchestratorConfig
 from orchestrator.events.events import EventType
@@ -56,9 +56,9 @@ def _make_registry() -> AgentRegistry:
 def _make_agent_result(
     answer: str = "Agent answer",
     status: str = "completed",
-) -> CallToolResult:
-    """Create a mock MCP CallToolResult for agent_chat."""
-    data = {
+) -> dict:
+    """Create a mock agent result dict for agent_chat."""
+    return {
         "answer": answer,
         "status": status,
         "sources": ["genome"],
@@ -66,10 +66,6 @@ def _make_agent_result(
         "elapsed_seconds": 1.5,
         "tool_trace": [],
     }
-    result = MagicMock(spec=CallToolResult)
-    result.content = [TextContent(type="text", text=json.dumps(data))]
-    result.isError = False
-    return result
 
 
 def _make_llm_client(routing_response: str, synthesis_response: str = "") -> LLMClient:

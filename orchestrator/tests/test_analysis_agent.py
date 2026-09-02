@@ -11,7 +11,7 @@ import json
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from mcp.types import Tool as McpTool, CallToolResult, TextContent
+from mcp.types import Tool as McpTool
 
 from orchestrator.config import AgentConfig, OrchestratorConfig
 from orchestrator.events.events import EventType
@@ -125,9 +125,9 @@ def _make_analysis_mcp_result(
     output_files: list[dict] | None = None,
     metrics: list[dict] | None = None,
     report_links: list[dict] | None = None,
-) -> CallToolResult:
-    """Create a mock MCP CallToolResult for the analysis agent."""
-    data = {
+) -> dict:
+    """Create a mock analysis agent result dict."""
+    return {
         "answer": answer,
         "status": status,
         "sources": sources or ["GenomeAssembly2"],
@@ -147,10 +147,6 @@ def _make_analysis_mcp_result(
         ],
         "step_summaries": [],
     }
-    result = MagicMock(spec=CallToolResult)
-    result.content = [TextContent(type="text", text=json.dumps(data))]
-    result.isError = False
-    return result
 
 
 # --- Tests: Routing ---
@@ -294,12 +290,14 @@ class TestAnalysisDispatch:
             execute_agent_step(step, agent, request, step_index=0)
         )
 
-        # Verify call_tool was called with workflow_context in the context JSON
+        # Verify call_tool was called with workflow_context in the context dict
         call_args = agent.call_tool.call_args
         arguments = call_args[1].get("arguments") or call_args[0][1]
         assert "context" in arguments
 
-        context_data = json.loads(arguments["context"])
+        context_data = arguments["context"]
+        if isinstance(context_data, str):
+            context_data = json.loads(context_data)
         assert "workflow_context" in context_data
         assert context_data["workflow_context"]["workflow_id"] == "wf_test123"
         assert context_data["workflow_context"]["status"] == "succeeded"

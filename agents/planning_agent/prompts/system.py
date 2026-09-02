@@ -122,7 +122,10 @@ natural chatbot-style interaction rather than a rigid plan step.
 
 The `create_group` tool takes a group_name, group_type, collection,
 Solr query, and optional limit. It fetches matching IDs and creates
-the workspace group in one step.
+the workspace group in one step. For mixed exact subsets (e.g. "5 of
+serovar A and 5 of serovar B"), the agent must fetch IDs per subset
+with `search_data` first, then create **one** combined-ID group — not
+a plan with multiple `create_group` steps or two separate groups.
 
 ### The "direct" Agent
 Use `"direct"` for steps you can handle yourself:
@@ -227,11 +230,15 @@ def build_system_prompt(agent_catalog_text: str = "") -> str:
     from shared.prompts.data_skill import DATA_SKILL_PROMPT
     from shared.prompts.workspace_skill import WORKSPACE_SKILL_PROMPT
     from shared.prompts.gowe_skill import GOWE_SKILL_PROMPT
+    from shared.prompts.helpdesk_skill import HELPDESK_SKILL_PROMPT
+    from shared.prompts.groups_sra_skill import GROUPS_SRA_SKILL_PROMPT
     from shared.prompts.response_format_skill import RESPONSE_FORMAT_SKILL_PROMPT
 
     prompt += "\n\n" + DATA_SKILL_PROMPT
     prompt += "\n\n" + WORKSPACE_SKILL_PROMPT
     prompt += "\n\n" + GOWE_SKILL_PROMPT
+    prompt += "\n\n" + HELPDESK_SKILL_PROMPT
+    prompt += "\n\n" + GROUPS_SRA_SKILL_PROMPT
     prompt += "\n\n" + RESPONSE_FORMAT_SKILL_PROMPT
 
     prompt += """

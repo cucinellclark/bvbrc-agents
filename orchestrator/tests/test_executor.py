@@ -1,19 +1,17 @@
 """Tests for the executor (plan execution and agent step execution)."""
 
-import json
-
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
+from unittest.mock import AsyncMock, MagicMock
 
 from mcp.types import Tool as McpTool, CallToolResult, TextContent
 
 from orchestrator.config import AgentConfig, OrchestratorConfig
 from orchestrator.events.events import EventType
 from orchestrator.events.stream import collect_events
-from orchestrator.executor.agent_executor import execute_agent_step, _parse_mcp_result
+from orchestrator.executor.agent_executor import execute_agent_step
 from orchestrator.executor.executor import execute_plan
 from orchestrator.models import OrchestratorRequest
-from orchestrator.registry.agent_handle import AgentHandle
+from orchestrator.registry.agent_handle import AgentHandle, _parse_mcp_result
 from orchestrator.registry.agent_registry import AgentRegistry
 from orchestrator.router.models import Plan, Step
 
@@ -49,13 +47,31 @@ def _make_agent_handle(
     return handle
 
 
+def _make_agent_result(
+    answer: str = "Test answer",
+    status: str = "completed",
+    sources: list[str] | None = None,
+) -> dict:
+    """Create a mock agent result dict (what call_tool returns)."""
+    return {
+        "answer": answer,
+        "status": status,
+        "sources": sources or [],
+        "iterations_used": 2,
+        "elapsed_seconds": 1.5,
+        "tool_trace": [],
+    }
+
+
 def _make_mcp_result(
     answer: str = "Test answer",
     status: str = "completed",
     sources: list[str] | None = None,
     is_error: bool = False,
 ) -> CallToolResult:
-    """Create a mock MCP CallToolResult."""
+    """Create a mock MCP CallToolResult (for _parse_mcp_result tests)."""
+    import json
+
     data = {
         "answer": answer,
         "status": status,
@@ -114,7 +130,7 @@ class TestExecuteAgentStep:
         """Test successful agent step execution."""
         agent = _make_agent_handle()
         agent.call_tool = AsyncMock(
-            return_value=_make_mcp_result("Found 10 genomes", "completed")
+            return_value=_make_agent_result("Found 10 genomes", "completed")
         )
 
         step = Step(agent_key="data", task="find E. coli genomes")
@@ -176,7 +192,7 @@ class TestExecuteAgentStep:
         """Test handling of agent error results."""
         agent = _make_agent_handle()
         agent.call_tool = AsyncMock(
-            return_value=_make_mcp_result("Something went wrong", "error")
+            return_value=_make_agent_result("Something went wrong", "error")
         )
 
         step = Step(agent_key="data", task="find genomes")
@@ -194,7 +210,7 @@ class TestExecuteAgentStep:
         """Test that conversation context is passed in the call."""
         agent = _make_agent_handle()
         agent.call_tool = AsyncMock(
-            return_value=_make_mcp_result("Found data", "completed")
+            return_value=_make_agent_result("Found data", "completed")
         )
 
         step = Step(agent_key="data", task="find genomes")
@@ -214,6 +230,7 @@ class TestExecuteAgentStep:
         call_args = agent.call_tool.call_args
         arguments = call_args[1].get("arguments") or call_args[0][1]
         assert "context" in arguments
+        assert isinstance(arguments["context"], dict)
         assert "token" in arguments
         assert arguments["token"] == "test_token"
 
@@ -225,7 +242,7 @@ class TestExecuteAgentStep:
             chat_tool="custom_chat",
         )
         agent.call_tool = AsyncMock(
-            return_value=_make_mcp_result("result", "completed")
+            return_value=_make_agent_result("result", "completed")
         )
 
         step = Step(agent_key="data", task="test")
@@ -263,7 +280,7 @@ class TestExecutePlan:
         # Add a mock agent
         agent = _make_agent_handle()
         agent.call_tool = AsyncMock(
-            return_value=_make_mcp_result("Found genomes", "completed")
+            return_value=_make_agent_result("Found genomes", "completed")
         )
         registry._agents["data"] = agent
 
@@ -313,7 +330,7 @@ class TestExecutePlan:
 
         agent = _make_agent_handle(healthy=False)
         agent.call_tool = AsyncMock(
-            return_value=_make_mcp_result("result", "completed")
+            return_value=_make_agent_result("result", "completed")
         )
         registry._agents["data"] = agent
 

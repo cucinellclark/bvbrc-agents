@@ -1,8 +1,9 @@
 """LLM configuration for the orchestrator's routing and synthesis calls.
 
-Loads defaults from the shared Agents/config/llm.yaml so that the model
-endpoint is configured in one place for the entire system. Environment
-variables (LLM_BASE_URL, LLM_MODEL, etc.) override the YAML values.
+Loads structural defaults (temperature, max_tokens, timeout_seconds) from
+the shared Agents/config/llm.yaml.  Model / URL / API-key are always
+supplied per-request via ``llm_override`` — the class defaults here are
+placeholders that allow the class definition to load without error.
 """
 
 from __future__ import annotations
@@ -25,18 +26,20 @@ _DEFAULTS = load_llm_defaults()
 class LLMConfig(BaseModel):
     """Configuration for the orchestrator's LLM calls.
 
-    Defaults are loaded from Agents/config/llm.yaml. Override via
-    constructor kwargs, environment variables, or YAML edits.
+    Callers (routing_config, override_config in server.py) always pass
+    base_url, api_key, and model explicitly.  The placeholder defaults
+    below exist only so this class can be imported without a KeyError
+    when llm.yaml omits endpoint fields (they arrive per-request).
     """
 
-    # Endpoint (OpenAI-compatible)
-    base_url: str = _DEFAULTS["base_url"]
-    api_key: str = _DEFAULTS["api_key"]
-    model: str = _DEFAULTS["model"]
+    # Endpoint (OpenAI-compatible) — always overridden by callers
+    base_url: str = _DEFAULTS.get("base_url", "")
+    api_key: str = _DEFAULTS.get("api_key", "")
+    model: str = _DEFAULTS.get("model", "")
 
     # Generation settings
-    temperature: float = _DEFAULTS["temperature"]
-    max_tokens: int = _DEFAULTS["max_tokens"]
+    temperature: float = _DEFAULTS.get("temperature", 0.0)
+    max_tokens: int = _DEFAULTS.get("max_tokens", 16384)
 
     # Timeouts
-    timeout_seconds: int = _DEFAULTS["timeout_seconds"]
+    timeout_seconds: int = _DEFAULTS.get("timeout_seconds", 180)

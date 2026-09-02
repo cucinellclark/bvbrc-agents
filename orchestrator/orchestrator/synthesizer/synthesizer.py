@@ -168,7 +168,7 @@ async def synthesize(
 
         # Stream tokens as SYNTHESIS_CHUNK events so the gateway can
         # relay them to the frontend as they arrive, dramatically
-        # reducing time-to-first-token for Argo endpoints.
+        # reducing time-to-first-token for remote endpoints.
         response_text = ""
         async for chunk in llm.complete_stream(
             prompt=user_prompt,

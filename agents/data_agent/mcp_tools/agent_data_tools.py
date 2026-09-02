@@ -45,8 +45,10 @@ def _get_data_functions() -> ModuleType:
         return _data_functions
 
     if not _path_added:
+        # Read the class-level default without instantiating AgentConfig,
+        # which now requires llm_base_url / llm_api_key / llm_model.
         from data_agent.models import AgentConfig
-        mcp_path = AgentConfig().mcp_server_path
+        mcp_path = AgentConfig.model_fields["mcp_server_path"].default
         if mcp_path and mcp_path not in sys.path:
             sys.path.insert(0, mcp_path)
         _path_added = True

@@ -1,45 +1,41 @@
 # =============================================================================
 # Shared LLM Configuration
 # =============================================================================
-# Single source of truth for LLM endpoint settings used by the orchestrator
-# and all agents (Data, Service, Workspace).
+# Only structural, request-agnostic settings live here.
 #
-# To change the model or endpoint, edit this file. All components will pick up
-# the new values on next restart.
+# All model / URL / API-key details must arrive per request via `llm_override`
+# (from the gateway, sourced from MongoDB's `modelList` collection). The
+# orchestrator does not maintain a default chatbot model — a request without a
+# complete `llm_override` is rejected with HTTP 400.
 #
-# Override precedence (highest wins):
-#   1. Environment variables: LLM_BASE_URL, LLM_API_KEY, LLM_MODEL
+# The routing model (used only for internal JSON classification) is separate
+# and is configured in `orchestrator/config/agents.yaml` under `orchestrator.
+# routing_*`.
+#
+# Override precedence for the values below (highest wins):
+#   1. Environment variables: LLM_TEMPERATURE, LLM_MAX_TOKENS,
+#      LLM_TIMEOUT_SECONDS, LLM_CLASSIFIER_MODEL
 #   2. This YAML file (or custom path via LLM_CONFIG_PATH env var)
-#   3. Hardcoded Pydantic defaults (fallback if file is missing)
+#   3. Hardcoded fallback defaults in `llm_config.py`
 # =============================================================================
 
 llm:
-  # OpenAI-compatible API endpoint (e.g. vLLM, TGI, OpenAI, Azure)
-  # base_url: "http://mango.cels.anl.gov:8004/v1"
-  base_url: "https://apps.inside.anl.gov/argoapi/v1"
-
-  # API key (use "not-needed" for local endpoints that don't require auth)
-  api_key: "cucinell"
-
-  # Model identifier (must match what the endpoint serves)
-  # model: "RedHatAI/Llama-4-Scout-17B-16E-Instruct-FP8-dynamic"
-  model: "gpt41"
-
-  # Sampling temperature (0.0 = deterministic)
+  # Sampling temperature (0.0 = deterministic).
   temperature: 0.0
 
-  # Maximum tokens the model can generate per response
-  # NOTE: Thinking/reasoning models (e.g. Qwen3) need higher limits because
-  # reasoning tokens count against this budget. Per-model overrides from
-  # MongoDB take precedence when the full override chain is active.
+  # Cap on generated tokens when the request's llm_override does not supply
+  # its own max_tokens. Thinking/reasoning models count reasoning tokens
+  # against this budget; per-model overrides from MongoDB take precedence.
   max_tokens: 16384
 
-  # Request timeout in seconds
-  timeout_seconds: 60
+  # Request timeout in seconds. Sized to accommodate thinking-model reasoning
+  # and vLLM queue wait under load. Bumping the previous 60s here eliminated
+  # retry storms on Qwen3-class models.
+  timeout_seconds: 180
 
-  # Optional lightweight model for internal agent routing/classification.
-  # Used by the service agent to classify intent (plan vs submit vs status)
-  # before running the full planning pipeline.  A smaller model like
-  # gpt41mini reduces latency for non-planning requests.
-  # Set to null or omit to reuse the main model for classification.
-  classifier_model: "gpt41mini"
+  # Optional lightweight classifier model used by the service agent to route
+  # requests (plan vs submit vs status) before running the full pipeline.
+  # When null, the request's own model is used for classification.
+  # NOTE: there is no default endpoint — if you set this, also make sure the
+  # request's llm_override (or a call-site override) supplies the endpoint.
+  classifier_model: null

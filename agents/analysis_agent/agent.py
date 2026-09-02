@@ -22,7 +22,11 @@ for _p in (_REPO_ROOT, _SHARED_DIR, _CONFIG_DIR):
         sys.path.insert(0, _p)
 
 from shared.agent_loop import run_agent_loop
-from shared.agent_utils import build_user_content, format_recent_messages
+from shared.agent_utils import (
+    build_user_content,
+    format_attached_documents,
+    format_recent_messages,
+)
 from shared.models import ToolCall
 
 from analysis_agent.llm_client import (
@@ -175,11 +179,19 @@ async def run_agent(
                     f"\n\n=== CONVERSATION CONTEXT ===\n{formatted}"
                 )
 
+        # Inject attached document excerpts (PDFs + text uploads)
+        docs_section = format_attached_documents(
+            context.get("parsed_documents")
+        )
+        if docs_section:
+            system_content += f"\n\n{docs_section}"
+
         ctx_for_prompt = {
             k: v for k, v in context.items()
             if k not in (
                 "workflow_context", "page_context", "images",
                 "conversation_summary", "recent_messages",
+                "parsed_documents", "attached_files",
             )
         }
         if ctx_for_prompt:
@@ -213,7 +225,7 @@ async def run_agent(
         result_message_fn=_analysis_result_message,
         trim_messages=True,
         max_tool_result_chars=cfg.max_tool_result_chars,
-        excluded_context_keys={"workflow_context", "page_context", "images"},
+        excluded_context_keys={"workflow_context", "page_context", "images", "conversation_summary", "recent_messages", "parsed_documents", "attached_files"},
         start_message="Analyzing job outputs...",
         done_message="Analysis complete.",
     )

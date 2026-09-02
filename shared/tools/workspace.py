@@ -73,6 +73,10 @@ def _resolve_path(path: Optional[str], user_id: Optional[str]) -> str:
 
     path = path.strip()
 
+    # Treat "." and "./" as home — these are invalid workspace paths
+    if path in (".", "./"):
+        return home
+
     # Already absolute with user_id
     if path.startswith(f"/{user_id}/"):
         return path
@@ -87,6 +91,30 @@ def _resolve_path(path: Optional[str], user_id: Optional[str]) -> str:
 
     # Relative — resolve from home
     return f"{home}/{path}"
+
+
+def _is_object_not_found(value: Any) -> bool:
+    """Check whether an error string or result indicates an object-not-found."""
+    text = str(value).lower()
+    return "object not found" in text or "_error_object not found" in text
+
+
+def _path_not_found_result(resolved_path: str) -> Dict[str, Any]:
+    """Return a structured PATH_NOT_FOUND error with actionable hints."""
+    return {
+        "error": (
+            f"The path '{resolved_path}' was not found in the workspace. "
+            "This means the folder or file does not exist at that location "
+            "(it is NOT a workspace service outage)."
+        ),
+        "errorType": "PATH_NOT_FOUND",
+        "path": resolved_path,
+        "hint": (
+            "Try browsing the home directory (empty path) or searching "
+            "with name_contains to find the correct path."
+        ),
+        "source": "bvbrc-workspace",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -146,6 +174,12 @@ async def workspace_browse(
             tool_name="workspace_browse",
         )
 
+        # Detect object-not-found buried inside the result dict
+        if isinstance(result, dict):
+            err_val = result.get("error") or result.get("data")
+            if err_val and _is_object_not_found(err_val):
+                return _path_not_found_result(resolved_path)
+
         # Attach a workspace browser URL so the LLM can include a
         # clickable markdown link in its response.
         if isinstance(result, dict) and not result.get("error"):
@@ -158,6 +192,8 @@ async def workspace_browse(
         return result
 
     except Exception as e:
+        if _is_object_not_found(e):
+            return _path_not_found_result(resolved_path)
         return {
             "error": f"Workspace browse failed: {type(e).__name__}: {str(e)}",
             "errorType": "API_ERROR",
@@ -198,6 +234,12 @@ async def get_file_metadata(
             token=token,
         )
 
+        # Detect object-not-found buried inside the result dict
+        if isinstance(result, dict):
+            err_val = result.get("error") or result.get("data")
+            if err_val and _is_object_not_found(err_val):
+                return _path_not_found_result(resolved_path)
+
         # Attach a workspace browser URL for the file's parent directory.
         if isinstance(result, dict) and not result.get("error"):
             from shared.tools.url_utils import build_workspace_url
@@ -212,6 +254,8 @@ async def get_file_metadata(
         return result
 
     except Exception as e:
+        if _is_object_not_found(e):
+            return _path_not_found_result(resolved_path)
         return {
             "error": f"File metadata retrieval failed: {type(e).__name__}: {str(e)}",
             "errorType": "API_ERROR",
@@ -255,6 +299,12 @@ async def read_file_preview(
     # Clamp max_bytes to 1 MB
     max_bytes = min(max(max_bytes, 1), 1024 * 1024)
 
+    # --- PDF branch ---
+    if resolved_path.lower().endswith(".pdf"):
+        return await _read_pdf_preview(
+            resolved_path, max_bytes, config, headers, ws_fn, api, token,
+        )
+
     try:
         result = await ws_fn.workspace_read_range(
             api=api,
@@ -264,6 +314,12 @@ async def read_file_preview(
             max_bytes=max_bytes,
         )
 
+        # Detect object-not-found buried inside the result dict
+        if isinstance(result, dict):
+            err_val = result.get("error") or result.get("data")
+            if err_val and _is_object_not_found(err_val):
+                return _path_not_found_result(resolved_path)
+
         if isinstance(result, dict) and not result.get("error"):
             result["workspace_path"] = resolved_path
             result["source_type"] = "workspace"
@@ -271,8 +327,138 @@ async def read_file_preview(
         return result
 
     except Exception as e:
+        if _is_object_not_found(e):
+            return _path_not_found_result(resolved_path)
         return {
             "error": f"File read failed: {type(e).__name__}: {str(e)}",
+            "errorType": "API_ERROR",
+            "path": resolved_path,
+            "source": "bvbrc-workspace",
+        }
+
+
+async def _read_pdf_preview(
+    resolved_path: str,
+    max_bytes: int,
+    config: Any,
+    headers: Optional[Dict[str, str]],
+    ws_fn: Any,
+    api: Any,
+    token: str,
+) -> Dict[str, Any]:
+    """Handle ``read_file_preview`` for ``.pdf`` files.
+
+    Downloads the full PDF (after a size check), extracts text via PyMuPDF,
+    optionally persists a ``.txt`` to the session workspace, and returns
+    the extracted text honoring *max_bytes*.
+    """
+    import asyncio
+
+    from shared.tools.pdf import (
+        decode_workspace_download,
+        extract_text_from_pdf,
+        persist_extracted_text,
+    )
+
+    MAX_PDF_BYTES = 10 * 1024 * 1024  # 10 MB
+
+    try:
+        # 1. Size check via metadata FIRST (before downloading)
+        meta_result = await ws_fn.workspace_get_object(
+            api=api, path=resolved_path, metadata_only=True, token=token,
+        )
+        if isinstance(meta_result, dict):
+            err_val = meta_result.get("error") or meta_result.get("data")
+            if err_val and _is_object_not_found(err_val):
+                return _path_not_found_result(resolved_path)
+            total_size = meta_result.get("total_size", 0) or meta_result.get("size", 0) or 0
+            if total_size > MAX_PDF_BYTES:
+                return {
+                    "error": f"PDF too large for extraction ({total_size} bytes, limit {MAX_PDF_BYTES})",
+                    "total_size": total_size,
+                    "workspace_path": resolved_path,
+                }
+
+        # 2. Download the full file
+        dl_result = await ws_fn.workspace_download_file(
+            api=api, path=resolved_path, token=token, return_data=True,
+        )
+        if isinstance(dl_result, dict) and dl_result.get("error"):
+            if _is_object_not_found(dl_result.get("error", "")):
+                return _path_not_found_result(resolved_path)
+            return {
+                "error": f"PDF download failed: {dl_result['error']}",
+                "workspace_path": resolved_path,
+            }
+
+        pdf_bytes = decode_workspace_download(dl_result)
+        if len(pdf_bytes) > MAX_PDF_BYTES:
+            return {
+                "error": f"PDF too large for extraction ({len(pdf_bytes)} bytes, limit {MAX_PDF_BYTES})",
+                "workspace_path": resolved_path,
+            }
+
+        # 3. Extract text (CPU-bound — offload to thread)
+        text, page_count = await asyncio.to_thread(extract_text_from_pdf, pdf_bytes)
+
+        if not text.strip():
+            return {
+                "error": "PDF has no selectable text (likely scanned). OCR is not supported.",
+                "workspace_path": resolved_path,
+                "page_count": page_count,
+            }
+
+        # 4. Persist .txt to session workspace (best-effort)
+        import os
+
+        persist_path: str | None = None
+        session_id = getattr(config, "session_id", None)
+        workspace_path = getattr(config, "workspace_path", None)
+        if session_id and workspace_path and token:
+            stem = os.path.splitext(os.path.basename(resolved_path))[0] or "document"
+            try:
+                persist_path = await persist_extracted_text(
+                    text=text,
+                    stem=stem,
+                    session_id=session_id,
+                    workspace_path=workspace_path,
+                    token=token,
+                    config=config,
+                )
+            except Exception as e:
+                import logging
+
+                logging.getLogger(__name__).warning(
+                    "read_file_preview: PDF persist failed for %s: %s",
+                    resolved_path,
+                    e,
+                )
+        else:
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "read_file_preview: skipping PDF persist (no session context)"
+            )
+
+        # 5. Return extracted text, honoring max_bytes
+        extracted_len = len(text)
+        return {
+            "data": text[:max_bytes],
+            "start_byte": 0,
+            "bytes_read": min(extracted_len, max_bytes),
+            "total_size": extracted_len,
+            "is_complete": extracted_len <= max_bytes,
+            "workspace_path": resolved_path,
+            "source_type": "pdf_extraction",
+            "page_count": page_count,
+            "parsed_txt_path": persist_path,
+        }
+
+    except Exception as e:
+        if _is_object_not_found(e):
+            return _path_not_found_result(resolved_path)
+        return {
+            "error": f"PDF extraction failed: {type(e).__name__}: {str(e)}",
             "errorType": "API_ERROR",
             "path": resolved_path,
             "source": "bvbrc-workspace",

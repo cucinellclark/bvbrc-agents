@@ -129,6 +129,21 @@ Route these to **helpdesk** unless another agent is more appropriate \
 - Do NOT generate a direct_response saying you cannot view images. The agents \
 can view them — your job is only to route.
 
+## Attached Document Handling
+- When the user has attached one or more documents (PDFs, text files, FASTA, \
+CSV, TSV, JSON, etc.), the content excerpt has already been provided to the \
+selected agent. You (the router) do NOT receive the document text — only the \
+fact that documents are attached.
+- ALWAYS route to an **agent** when documents are attached — NEVER respond \
+directly. The agents have the document excerpts and workspace paths.
+- Route document questions ("summarize this file", "what does this say about X", \
+"extract the key findings", "what does this FASTA contain") to **helpdesk** \
+by default.
+- Route requests that combine documents with actions to the appropriate agent \
+(e.g., "annotate this FASTA" → **service**, "run assembly on this file" → \
+**service**, "find genomes mentioned in this paper" → **data**, "put these \
+genome IDs in a group" → **data**).
+
 ## Context-Aware Routing
 - When the conversation context shows the user was previously browsing \
 workspace files (e.g., found reads, contigs, or other input files), \
@@ -205,6 +220,7 @@ def build_routing_prompt(
     conversation_context: str | None = None,
     page_context: str | None = None,
     has_images: bool = False,
+    has_documents: bool = False,
 ) -> tuple[str, str]:
     """Build the system and user prompts for the routing LLM.
 
@@ -218,6 +234,9 @@ def build_routing_prompt(
         has_images: Whether the user's request includes attached images
             (screenshots, uploads). When True, the router must route to an
             agent — the images will be forwarded to the agent for processing.
+        has_documents: Whether the user's request includes attached documents
+            (PDFs). When True, the router must route to an agent — the
+            extracted text will be forwarded to the agent.
 
     Returns:
         Tuple of (system_prompt, user_prompt).
@@ -231,6 +250,13 @@ def build_routing_prompt(
             "The user has attached one or more images (screenshot or upload). "
             "These images will be forwarded to the selected agent for visual "
             "analysis. You MUST route to an agent — do NOT respond directly.\n"
+        )
+    if has_documents:
+        user_parts.append(
+            "## Attached Documents\n"
+            "The user has attached one or more documents whose text has been "
+            "extracted and will be forwarded to the selected agent. "
+            "You MUST route to an agent — do NOT respond directly.\n"
         )
     if page_context:
         user_parts.append(

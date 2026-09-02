@@ -51,16 +51,17 @@ class AppState:
     """Holds shared application state initialized at startup."""
 
     registry: AgentRegistry | None = None
-    llm: LLMClient | None = None
     routing_llm: LLMClient | None = None  # Separate (faster) client for routing
     config: OrchestratorConfig | None = None
     ready: bool = False
     startup_time: float = 0.0
 
-    # Cache of LLMClient instances keyed by (base_url, api_key, model).
-    # Avoids creating a new AsyncOpenAI client (and TLS handshake) for
-    # every request that uses an llm_override.
-    llm_cache: dict[tuple[str, str, str], LLMClient] | None = None
+    # Cache of LLMClient instances keyed by (base_url, api_key, model,
+    # max_tokens). Avoids creating a new AsyncOpenAI client (and TLS
+    # handshake) for every request. Every request must supply a complete
+    # llm_override — see _resolve_llm; the orchestrator holds no default
+    # user-facing LLM client.
+    llm_cache: dict[tuple[str, str, str, int], LLMClient] | None = None
     LLM_CACHE_MAX: int = 16
 
 
@@ -136,42 +137,44 @@ def _build_lifespan(
                 if not agent_config.auth_token:
                     agent_config.auth_token = default_token
 
-        # --- Initialize LLM client cache ---
+        # --- Initialize per-request LLM client cache ---
+        # The orchestrator does not maintain a default user-facing LLM
+        # client. Every request must supply a complete `llm_override`
+        # (base_url + api_key + model), enforced by _resolve_llm below.
+        # This cache holds per-endpoint clients across requests so that
+        # AsyncOpenAI / TLS handshakes are not repeated.
         _state.llm_cache = {}
 
-        # --- Initialize LLM client ---
-        llm_config = LLMConfig(
-            base_url=config.llm_base_url,
-            api_key=config.llm_api_key,
-            model=config.llm_model,
-            temperature=config.llm_temperature,
-            max_tokens=config.llm_max_tokens,
+        # --- Initialize routing LLM client ---
+        # Routing is an internal JSON classification task and always uses
+        # this dedicated model, independent of the user's model selection.
+        # All three routing_* fields are required in agents.yaml.
+        #
+        # LLM_ADMISSION_URL override: when the admission proxy is running
+        # on holly, route all LLM traffic through it instead of directly
+        # to the upstream vLLM. Unset the env var to bypass the proxy.
+        routing_base_url = config.routing_base_url
+        admission_url = os.environ.get("LLM_ADMISSION_URL", "").strip()
+        if admission_url:
+            logger.info(
+                "LLM admission proxy enabled: routing LLM base_url "
+                f"rewritten from {routing_base_url} to {admission_url}"
+            )
+            routing_base_url = admission_url
+
+        routing_config = LLMConfig(
+            base_url=routing_base_url,
+            api_key=config.routing_api_key,
+            model=config.routing_model,
+            temperature=0.0,
+            max_tokens=4096,
             timeout_seconds=config.llm_timeout_seconds,
         )
-        _state.llm = LLMClient(llm_config)
+        _state.routing_llm = LLMClient(routing_config)
         logger.info(
-            f"LLM client initialized: {llm_config.model} @ {llm_config.base_url}"
+            f"Routing LLM client initialized: {routing_config.model} "
+            f"@ {routing_config.base_url}"
         )
-
-        # --- Initialize routing LLM client ---
-        # Routing is an internal classification task and should always use
-        # a dedicated model, independent of the user's model selection.
-        if config.routing_model:
-            routing_config = LLMConfig(
-                base_url=config.routing_base_url or config.llm_base_url,
-                api_key=config.routing_api_key or config.llm_api_key,
-                model=config.routing_model,
-                temperature=0.0,
-                max_tokens=4096,
-                timeout_seconds=config.llm_timeout_seconds,
-            )
-            _state.routing_llm = LLMClient(routing_config)
-            logger.info(
-                f"Routing LLM client initialized: {routing_config.model} "
-                f"@ {routing_config.base_url}"
-            )
-        else:
-            _state.routing_llm = None
 
         # --- Initialize registry and discover agents ---
         _state.registry = AgentRegistry(config)
@@ -217,8 +220,6 @@ def _build_lifespan(
             _state.llm_cache.clear()
         if _state.routing_llm:
             await _state.routing_llm.close()
-        if _state.llm:
-            await _state.llm.close()
 
         logger.info("Orchestrator shut down.")
 
@@ -255,55 +256,74 @@ def create_app(config_path: str | None = None) -> FastAPI:
     def _resolve_llm(request: OrchestratorRequest) -> LLMClient:
         """Return an LLM client for this request.
 
-        Uses the default singleton when no override is provided.
-        For overrides, returns a cached client keyed by
-        ``(base_url, api_key, model)`` to enable HTTP connection reuse
-        and avoid repeated TLS handshakes with remote endpoints.
+        Every request MUST supply a complete ``llm_override`` with
+        ``base_url``, ``api_key``, and ``model``. There is no default
+        chatbot on the orchestrator — details arrive per request from the
+        gateway (sourced from MongoDB's ``modelList``). Requests without a
+        complete override are rejected with HTTP 400.
+
+        Clients are cached across requests, keyed by
+        ``(base_url, api_key, model, max_tokens)``, so HTTP connections and
+        TLS handshakes are reused.
         """
-        if request.llm_override:
-            override = request.llm_override
-            default_cfg = _state.llm.config
-            needs_override = (
-                (override.base_url and override.base_url != default_cfg.base_url)
-                or (override.model and override.model != default_cfg.model)
-                or (override.api_key and override.api_key != default_cfg.api_key)
+        override = request.llm_override
+        if (
+            not override
+            or not override.base_url
+            or not override.api_key
+            or not override.model
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Request must include a complete llm_override with "
+                    "base_url, api_key, and model. The orchestrator does not "
+                    "maintain a default model."
+                ),
             )
-            if needs_override:
-                cache_key = (
-                    override.base_url or default_cfg.base_url,
-                    override.api_key or default_cfg.api_key,
-                    override.model or default_cfg.model,
-                    override.max_tokens or default_cfg.max_tokens,
-                )
-                cache = _state.llm_cache
-                if cache is not None:
-                    cached = cache.get(cache_key)
-                    if cached is not None:
-                        return cached
 
-                override_config = LLMConfig(
-                    base_url=cache_key[0],
-                    api_key=cache_key[1],
-                    model=cache_key[2],
-                    temperature=default_cfg.temperature,
-                    max_tokens=override.max_tokens or default_cfg.max_tokens,
-                    timeout_seconds=default_cfg.timeout_seconds,
-                )
-                logger.info(
-                    f"Creating cached LLM client: model={override_config.model!r} "
-                    f"base_url={override_config.base_url!r}"
-                )
-                client = LLMClient(override_config)
+        cfg = _state.config
+        max_tokens = override.max_tokens or cfg.llm_max_tokens
 
-                if cache is not None:
-                    # Evict oldest entry if cache is full
-                    if len(cache) >= _state.LLM_CACHE_MAX:
-                        oldest_key = next(iter(cache))
-                        cache.pop(oldest_key, None)
-                    cache[cache_key] = client
+        # LLM_ADMISSION_URL override: when the admission proxy is running
+        # on holly, rewrite base_url to route through the proxy instead of
+        # directly to the upstream vLLM. The model/api_key/max_tokens still
+        # come from the per-request override. Unset the env var to bypass.
+        base_url = override.base_url
+        admission_url = os.environ.get("LLM_ADMISSION_URL", "").strip()
+        if admission_url:
+            base_url = admission_url
 
-                return client
-        return _state.llm
+        cache_key = (base_url, override.api_key, override.model, max_tokens)
+
+        cache = _state.llm_cache
+        if cache is not None:
+            cached = cache.get(cache_key)
+            if cached is not None:
+                return cached
+
+        override_config = LLMConfig(
+            base_url=base_url,
+            api_key=override.api_key,
+            model=override.model,
+            temperature=cfg.llm_temperature,
+            max_tokens=max_tokens,
+            timeout_seconds=cfg.llm_timeout_seconds,
+        )
+        logger.info(
+            f"Creating cached LLM client: model={override_config.model!r} "
+            f"base_url={override_config.base_url!r}"
+        )
+        client = LLMClient(override_config)
+
+        if cache is not None:
+            # Evict oldest entry if cache is full
+            if len(cache) >= _state.LLM_CACHE_MAX:
+                oldest_key = next(iter(cache))
+                cache.pop(oldest_key, None)
+            cache[cache_key] = client
+
+        return client
 
     @app.post("/orchestrate", response_model=OrchestratorResponse)
     async def post_orchestrate(
@@ -439,8 +459,10 @@ def create_app(config_path: str | None = None) -> FastAPI:
                     "details": agents_status,
                 },
                 "llm": {
-                    "model": _state.config.llm_model if _state.config else None,
-                    "base_url": _state.config.llm_base_url if _state.config else None,
+                    # Per-request models arrive via llm_override — the
+                    # orchestrator does not maintain a default chatbot.
+                    "mode": "per_request_override",
+                    "cached_clients": len(_state.llm_cache or {}),
                 },
                 "routing_llm": {
                     "model": _state.routing_llm.config.model if _state.routing_llm else None,
@@ -471,7 +493,7 @@ def create_app(config_path: str | None = None) -> FastAPI:
 
 def _require_ready() -> None:
     """Raise 503 if the orchestrator is not ready."""
-    if not _state.ready or not _state.registry or not _state.llm:
+    if not _state.ready or not _state.registry or not _state.routing_llm:
         raise HTTPException(
             status_code=503,
             detail="Orchestrator is not ready. Agent discovery may still be in progress.",

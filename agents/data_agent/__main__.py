@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import sys
 
 from data_agent.agent import plan_only
@@ -40,18 +41,18 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--base-url",
-        default=None,
-        help="LLM API base URL (default: mango.cels.anl.gov Llama endpoint).",
+        default=os.environ.get("LLM_BASE_URL"),
+        help="LLM API base URL. Required (or set LLM_BASE_URL env var).",
     )
     parser.add_argument(
         "--api-key",
-        default=None,
-        help="LLM API key (default: 'not-needed' for local endpoints).",
+        default=os.environ.get("LLM_API_KEY"),
+        help="LLM API key. Required (or set LLM_API_KEY env var).",
     )
     parser.add_argument(
         "--model",
-        default=None,
-        help="LLM model name.",
+        default=os.environ.get("LLM_MODEL"),
+        help="LLM model name. Required (or set LLM_MODEL env var).",
     )
     parser.add_argument(
         "--temperature",
@@ -81,14 +82,29 @@ def parse_args() -> argparse.Namespace:
 
 
 def build_config(args: argparse.Namespace) -> AgentConfig:
-    """Build AgentConfig from CLI arguments, using defaults for unset values."""
-    overrides: dict = {}
-    if args.base_url:
-        overrides["llm_base_url"] = args.base_url
-    if args.api_key:
-        overrides["llm_api_key"] = args.api_key
-    if args.model:
-        overrides["llm_model"] = args.model
+    """Build AgentConfig from CLI arguments.
+
+    Requires --model / --base-url / --api-key (or LLM_MODEL / LLM_BASE_URL /
+    LLM_API_KEY env vars). The agent has no default chatbot.
+    """
+    missing = [
+        name for name, value in (
+            ("--model / LLM_MODEL", args.model),
+            ("--base-url / LLM_BASE_URL", args.base_url),
+            ("--api-key / LLM_API_KEY", args.api_key),
+        )
+        if not value
+    ]
+    if missing:
+        raise SystemExit(
+            "Missing required LLM config: " + ", ".join(missing) +
+            ". The agent has no default chatbot — supply these values."
+        )
+    overrides: dict = {
+        "llm_base_url": args.base_url,
+        "llm_api_key": args.api_key,
+        "llm_model": args.model,
+    }
     if args.temperature is not None:
         overrides["temperature"] = args.temperature
     if args.max_iterations is not None:

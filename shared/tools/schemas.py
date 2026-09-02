@@ -557,7 +557,10 @@ CREATE_GROUP = {
             "from a Solr query. Runs the query to fetch matching IDs, then "
             "creates the group. Use this when the user asks to save search "
             "results as a group, or when a downstream service needs a genome "
-            "or feature group as input."
+            "or feature group as input. For mixed exact subsets (e.g. 5 of A "
+            "and 5 of B), pass a genome_id:(id1 OR id2 OR ...) query built "
+            "from prior search_data calls; a single A OR B query with limit "
+            "will NOT balance subsets."
         ),
         "parameters": {
             "type": "object",

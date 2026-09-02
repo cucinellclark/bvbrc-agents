@@ -64,6 +64,51 @@ def test_agent_config_defaults():
     )
     assert agent.protocol == "mcp"
     assert agent.capabilities == []
-    assert agent.max_iterations == 5
+    assert agent.max_iterations == 1000
     assert agent.timeout_seconds == 120
     assert agent.auth_token is None
+
+
+def test_inprocess_agent_config_endpoint_optional():
+    """In-process agents do not require an MCP endpoint."""
+    agent = AgentConfig(
+        name="Helpdesk",
+        description="help",
+        protocol="inprocess",
+        chat_tool_params={"agent_type": "helpdesk"},
+    )
+    assert agent.endpoint is None
+    assert agent.protocol == "inprocess"
+
+
+def test_mcp_agent_config_requires_endpoint():
+    """MCP protocol still requires an endpoint."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="endpoint is required"):
+        AgentConfig(
+            name="Data",
+            description="data",
+            protocol="mcp",
+        )
+
+
+def test_load_inprocess_from_yaml(tmp_path):
+    """Test loading in-process agent config from YAML (no endpoint)."""
+    yaml_content = """
+agents:
+  helpdesk:
+    name: "Helpdesk Agent"
+    description: "Answers questions"
+    protocol: "inprocess"
+    chat_tool_params:
+      agent_type: "helpdesk"
+"""
+    config_file = tmp_path / "agents.yaml"
+    config_file.write_text(yaml_content)
+
+    config = OrchestratorConfig.from_yaml(config_file)
+    agent = config.agents["helpdesk"]
+    assert agent.protocol == "inprocess"
+    assert agent.endpoint is None
+    assert agent.chat_tool_params["agent_type"] == "helpdesk"

@@ -11,7 +11,7 @@ from openai import AsyncOpenAI
 
 from data_agent.models import AgentConfig
 from llm_config import get_excluded_params, get_temperature_override, uses_max_completion_tokens
-from agent_utils import llm_call_with_retry
+from agent_utils import llm_call_with_retry, llm_stream_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +21,7 @@ def create_client(config: AgentConfig) -> AsyncOpenAI:
     return AsyncOpenAI(
         base_url=config.llm_base_url,
         api_key=config.llm_api_key,
+        timeout=config.llm_timeout_seconds,
     )
 
 
@@ -92,7 +93,7 @@ async def chat_completion(
     async def _do_call():
         return await client.chat.completions.create(**kwargs)
 
-    response = await llm_call_with_retry(_do_call, max_retries=3, base_delay=2.0)
+    response = await llm_call_with_retry(_do_call, max_retries=1, base_delay=2.0)
     return response
 
 
@@ -106,8 +107,7 @@ async def chat_completion_stream(
 
     This is used for the agent's final synthesis call (tool_choice="none")
     where no tool calls are expected — only text output. Streaming
-    dramatically reduces time-to-first-token when using remote endpoints
-    like the Argo Gateway API.
+    dramatically reduces time-to-first-token when using remote endpoints.
 
     Args:
         client: AsyncOpenAI client instance.
@@ -122,7 +122,10 @@ async def chat_completion_stream(
     kwargs = _build_kwargs(cfg, messages, tools=None, tool_choice=tool_choice)
     kwargs["stream"] = True
 
-    stream = await client.chat.completions.create(**kwargs)
+    async def _open_stream():
+        return await client.chat.completions.create(**kwargs)
+
+    stream = await llm_stream_with_retry(_open_stream, label="data_stream")
 
     full_content = ""
     async for chunk in stream:

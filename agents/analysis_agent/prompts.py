@@ -98,6 +98,7 @@ subsequent calls.
 # ---------------------------------------------------------------------------
 
 from shared.prompts.response_format_skill import RESPONSE_FORMAT_SKILL_PROMPT
+from shared.prompts.workspace_skill import WORKSPACE_SKILL_PROMPT
 
 SYSTEM_PROMPT = "".join([
     _ROLE,
@@ -105,6 +106,8 @@ SYSTEM_PROMPT = "".join([
     _SERVICE_KNOWLEDGE,
     "\n",
     _WORKFLOW_HANDLING,
+    "\n",
+    WORKSPACE_SKILL_PROMPT,
     "\n",
     RESPONSE_FORMAT_SKILL_PROMPT,
 ])

@@ -2,8 +2,8 @@
 
 The registry is the orchestrator's view of the agent ecosystem. It:
 1. Loads agent configuration from agents.yaml
-2. Connects to each agent's MCP server
-3. Discovers available tools
+2. Creates in-process or MCP handles based on protocol
+3. Discovers available tools (static for in-process, MCP tools/list otherwise)
 4. Runs periodic health checks
 5. Provides lookup by key, capability, or tool name
 """
@@ -16,13 +16,15 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 from orchestrator.config import AgentConfig, OrchestratorConfig
-from orchestrator.registry.agent_handle import AgentHandle
+from orchestrator.registry.agent_handle import AgentHandle, InProcessAgentHandle
 from orchestrator.events.events import (
     Event,
     EventType,
     discovery_event,
     error_event,
 )
+
+Handle = AgentHandle | InProcessAgentHandle
 
 logger = logging.getLogger(__name__)
 
@@ -43,16 +45,22 @@ class AgentRegistry:
 
     def __init__(self, config: OrchestratorConfig):
         self._config = config
-        self._agents: dict[str, AgentHandle] = {}
+        self._agents: dict[str, Handle] = {}
         self._health_task: asyncio.Task | None = None
 
+    @staticmethod
+    def _make_handle(key: str, agent_config: AgentConfig) -> Handle:
+        if agent_config.protocol == "inprocess":
+            return InProcessAgentHandle(key, agent_config)
+        return AgentHandle(key, agent_config)
+
     @property
-    def agents(self) -> dict[str, AgentHandle]:
+    def agents(self) -> dict[str, Handle]:
         """All registered agents (including unhealthy ones)."""
         return dict(self._agents)
 
     @property
-    def healthy_agents(self) -> dict[str, AgentHandle]:
+    def healthy_agents(self) -> dict[str, Handle]:
         """Only agents that passed their last health check."""
         return {k: a for k, a in self._agents.items() if a.is_healthy}
 
@@ -74,22 +82,33 @@ class AgentRegistry:
         )
 
         for key, agent_config in self._config.agents.items():
-            handle = AgentHandle(key, agent_config)
+            handle = self._make_handle(key, agent_config)
             self._agents[key] = handle
 
             try:
-                await handle.connect()
-                tools = await handle.discover()
-                health = await handle.health_check()
+                if agent_config.protocol == "inprocess":
+                    # Always healthy; tools are static. No MCP connection.
+                    yield discovery_event(
+                        agent_name=key,
+                        tool_count=len(handle.tool_names),
+                    )
+                    logger.info(
+                        f"Agent '{key}' ready (in-process): "
+                        f"{handle.tool_names}, healthy={handle.is_healthy}"
+                    )
+                else:
+                    await handle.connect()
+                    tools = await handle.discover()
+                    await handle.health_check()
 
-                yield discovery_event(
-                    agent_name=key,
-                    tool_count=len(tools),
-                )
-                logger.info(
-                    f"Agent '{key}' ready: {len(tools)} tools, "
-                    f"healthy={handle.is_healthy}"
-                )
+                    yield discovery_event(
+                        agent_name=key,
+                        tool_count=len(tools),
+                    )
+                    logger.info(
+                        f"Agent '{key}' ready: {len(tools)} tools, "
+                        f"healthy={handle.is_healthy}"
+                    )
 
             except Exception as e:
                 logger.error(f"Agent '{key}' discovery failed: {e}")
@@ -111,7 +130,7 @@ class AgentRegistry:
             },
         )
 
-    async def discover_agent(self, key: str) -> AgentHandle:
+    async def discover_agent(self, key: str) -> Handle:
         """Discover a single agent (connect + tool discovery + health check).
 
         Useful for re-discovering an agent after a failure.
@@ -120,18 +139,19 @@ class AgentRegistry:
             raise KeyError(f"No agent configured with key '{key}'")
 
         config = self._config.agents[key]
-        handle = AgentHandle(key, config)
+        handle = self._make_handle(key, config)
 
-        await handle.connect()
-        await handle.discover()
-        await handle.health_check()
+        if config.protocol != "inprocess":
+            await handle.connect()
+            await handle.discover()
+            await handle.health_check()
 
         self._agents[key] = handle
         return handle
 
     # --- Lookup ---
 
-    def get(self, key: str) -> AgentHandle:
+    def get(self, key: str) -> Handle:
         """Get an agent by its key. Raises KeyError if not found."""
         if key not in self._agents:
             available = ", ".join(self._agents.keys()) or "(none)"
@@ -140,7 +160,7 @@ class AgentRegistry:
             )
         return self._agents[key]
 
-    def find_by_capability(self, capability: str) -> list[AgentHandle]:
+    def find_by_capability(self, capability: str) -> list[Handle]:
         """Find all agents that declare a given capability."""
         return [
             a
@@ -148,7 +168,7 @@ class AgentRegistry:
             if capability in a.capabilities and a.is_healthy
         ]
 
-    def find_by_tool(self, tool_name: str) -> AgentHandle | None:
+    def find_by_tool(self, tool_name: str) -> Handle | None:
         """Find the agent that owns a given tool name.
 
         Returns None if no agent has this tool.

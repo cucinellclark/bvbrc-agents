@@ -1,13 +1,12 @@
 """Single agent step executor.
 
-Executes one step of a plan by calling the agent's chat tool via MCP
-through the registry. Yields Event objects for progress and results.
+Executes one step of a plan by calling the agent's chat tool through
+the registry. Yields Event objects for progress and results.
 """
 
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import time
 from collections.abc import AsyncGenerator
@@ -21,7 +20,7 @@ from orchestrator.events.events import (
     error_event,
 )
 from orchestrator.models import OrchestratorRequest
-from orchestrator.registry.agent_handle import AgentHandle
+from orchestrator.registry.agent_handle import AgentHandle, InProcessAgentHandle
 from orchestrator.router.models import Step
 
 logger = logging.getLogger(__name__)
@@ -32,7 +31,7 @@ DEFAULT_CHAT_TOOL = "agent_chat"
 
 async def execute_agent_step(
     step: Step,
-    agent: AgentHandle,
+    agent: AgentHandle | InProcessAgentHandle,
     request: OrchestratorRequest,
     step_index: int = 0,
     upstream_results: dict[str, Any] | None = None,
@@ -44,7 +43,7 @@ async def execute_agent_step(
 
     Args:
         step: The plan step to execute.
-        agent: The AgentHandle for the target agent.
+        agent: Handle for the target agent (in-process or MCP).
         request: The original orchestrator request (for auth token, context).
         step_index: Index of this step in the plan (for event tracing).
         upstream_results: Results from upstream pipeline steps to thread
@@ -110,20 +109,25 @@ async def execute_agent_step(
             llm_override_data["max_tokens"] = request.llm_override.max_tokens
         context_data["llm_override"] = llm_override_data
 
-    # Forward attached files so agents can use file content
-    if request.attached_files:
-        context_data["attached_files"] = request.attached_files
+    # NOTE: attached_files is intentionally NOT forwarded to agents.
+    # Full file content must not reach agent prompts (could be up to 10 MB).
+    # Agents receive the processed excerpts + workspace paths via
+    # parsed_documents instead.
 
     # Forward images for multimodal content (base64 data URIs)
     if request.images:
         context_data["images"] = request.images
+
+    # Forward parsed documents (PDFs + text uploads: excerpts + metadata)
+    if request.parsed_documents:
+        context_data["parsed_documents"] = request.parsed_documents
 
     # Forward workflow context for the analysis agent
     if request.workflow_context:
         context_data["workflow_context"] = request.workflow_context
 
     if context_data:
-        arguments["context"] = json.dumps(context_data)
+        arguments["context"] = context_data
 
     # Pass auth token if available
     if request.auth_token:
@@ -157,11 +161,11 @@ async def execute_agent_step(
             return
 
         # --- Progress notification bridge ---
-        # MCP progress notifications arrive via an async callback, but
+        # Progress callbacks arrive via an async callable, but
         # execute_agent_step is an async generator that yields Events.
         # Use an asyncio.Queue to bridge the two: the callback puts
         # AGENT_PROGRESS Events into the queue, and we yield them while
-        # waiting for the MCP call to finish.
+        # waiting for the agent call to finish.
         progress_queue: asyncio.Queue[Event] = asyncio.Queue()
 
         async def _on_progress(
@@ -180,29 +184,42 @@ async def execute_agent_step(
             )
             await progress_queue.put(event)
 
-        # Launch the MCP call as a task so we can yield progress in parallel
+        # Launch the agent call as a task so we can yield progress in parallel.
+        # If the caller abandons this generator (e.g. gateway aborts the SSE
+        # stream), the finally block cancels the task so the LLM/tool work
+        # stops promptly.
         call_task = asyncio.create_task(
             agent.call_tool(chat_tool, arguments, progress_handler=_on_progress)
         )
 
-        # Yield progress events as they arrive until the call completes
-        while not call_task.done():
-            try:
-                event = await asyncio.wait_for(progress_queue.get(), timeout=0.5)
-                yield event
-            except asyncio.TimeoutError:
-                continue
+        try:
+            # Yield progress events as they arrive until the call completes
+            while not call_task.done():
+                try:
+                    event = await asyncio.wait_for(progress_queue.get(), timeout=0.5)
+                    yield event
+                except asyncio.TimeoutError:
+                    continue
 
-        # Drain any remaining queued progress events
-        while not progress_queue.empty():
-            yield await progress_queue.get()
+            # Drain any remaining queued progress events
+            while not progress_queue.empty():
+                yield await progress_queue.get()
+        except (asyncio.CancelledError, GeneratorExit):
+            # Generator was abandoned (SSE disconnect / Stop).
+            # Cancel the agent task so it stops doing LLM/tool work.
+            if not call_task.done():
+                call_task.cancel()
+                try:
+                    await call_task
+                except (asyncio.CancelledError, Exception):
+                    pass
+            logger.info(f"Agent step for '{agent.key}' cancelled")
+            raise
 
-        # Get the result (raises if the task failed)
-        mcp_result = call_task.result()
+        # Get the result (raises if the task failed). Both handle types
+        # return a plain dict.
+        result_data = call_task.result()
         elapsed_ms = (time.monotonic() - start_time) * 1000
-
-        # Parse the MCP result
-        result_data = _parse_mcp_result(mcp_result)
 
         # Emit tool result event
         yield Event(
@@ -245,8 +262,7 @@ async def execute_agent_step(
                 result_for_ui[key] = value
 
         # Check for errors from the agent
-        is_error = getattr(mcp_result, "isError", False)
-        if is_error or result_data.get("status") == "error":
+        if result_data.get("status") == "error":
             yield error_event(
                 message=f"Agent '{agent.key}' returned an error: {answer}",
                 agent_name=agent.key,
@@ -268,22 +284,3 @@ async def execute_agent_step(
             agent_name=agent.key,
             details={"elapsed_ms": round(elapsed_ms, 1)},
         )
-
-
-def _parse_mcp_result(mcp_result: Any) -> dict[str, Any]:
-    """Parse an MCP CallToolResult into a dict.
-
-    The agent_chat tool returns a JSON dict, but MCP wraps it in
-    content blocks. Extract and parse the actual data.
-    """
-    if not hasattr(mcp_result, "content") or not mcp_result.content:
-        return {"answer": "(empty result from agent)", "status": "error"}
-
-    for block in mcp_result.content:
-        if hasattr(block, "text"):
-            try:
-                return json.loads(block.text)
-            except (json.JSONDecodeError, TypeError):
-                return {"answer": block.text, "status": "completed"}
-
-    return {"answer": str(mcp_result.content), "status": "completed"}
