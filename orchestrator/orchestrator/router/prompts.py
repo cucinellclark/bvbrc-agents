@@ -268,4 +268,11 @@ def build_routing_prompt(
         user_parts.append(f"## Conversation Context\n{conversation_context}\n")
     user_parts.append(f"## User Request\n{query}")
 
+    # Qwen3 thinking models: disable extended chain-of-thought for routing.
+    # Routing is a classification task — the model just needs to output a
+    # small JSON object.  Without /no_think, the model can spend the entire
+    # max_tokens budget on reasoning and leave no tokens for the actual
+    # content (the JSON routing decision), causing empty responses.
+    user_parts.append("/no_think")
+
     return system, "\n".join(user_parts)
