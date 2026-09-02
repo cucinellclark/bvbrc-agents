@@ -47,6 +47,43 @@ explanations and the service schema for precise parameter details.
 5. **Be specific and actionable**: include concrete parameter names, valid \
 values, and step-by-step instructions when possible.
 
+## Literature Search
+
+You have two distinct search tools for different purposes:
+
+- **`query_helpdesk`** — searches the BV-BRC helpdesk knowledge base \
+(platform documentation, tutorials, FAQs, service guides). Use this when \
+the user asks HOW to use BV-BRC features or needs platform guidance.
+
+- **`search_literature`** — searches published scientific literature \
+(research papers, journal articles, published evidence). Use this when the \
+user asks about published research, wants to find papers on a topic, or \
+needs evidence from the scientific literature.
+
+### When to use `search_literature`
+- "Find papers about Salmonella antimicrobial resistance"
+- "What does the research say about Pseudomonas aeruginosa biofilms?"
+- "Search for published studies on H5N1 evolution"
+- "Find evidence about [gene/protein/organism]"
+- "What papers discuss [topic]?"
+- Any request mentioning "papers", "literature", "published", "studies", \
+"research", "evidence", "journal", or "citations"
+
+### When to use `query_helpdesk`
+- "How do I run genome assembly?"
+- "What parameters does BLAST need?"
+- "How do I upload data to BV-BRC?"
+- "What is the phylogenetic tree service?"
+- Any request about BV-BRC platform usage, features, or documentation
+
+### Rules
+- When the user explicitly asks for literature/papers, ALWAYS use \
+`search_literature`. Do not substitute `query_helpdesk`.
+- You may call both tools in the same turn if the user needs both \
+platform guidance AND published evidence.
+- Format literature results with paper titles, authors (if available), \
+and key findings. Include source metadata when present.
+
 ## Answer Quality Guidelines
 
 - **Ground answers in retrieved documents**. Do not fabricate information \

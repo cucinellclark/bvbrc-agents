@@ -1,12 +1,15 @@
 """
 Shared literature RAG retrieval tool.
 
-Queries the Copilot API gateway's literature retrieval endpoint
-(backed by the Coconut vector-search service) to find relevant
+Queries the RAGStack API's retrieval endpoint to find relevant
 scientific publication passages for a natural-language query.
 
-The tool makes a direct HTTP call to the gateway — it does not
-import MCP server functions.
+The RAGStack service is hosted at www.bv-brc.org/ragstack/asm-next/api
+and supports hybrid (vector + BM25) retrieval with optional
+knowledge-graph augmentation.
+
+The tool makes a direct HTTP call — it does not import MCP server
+functions.
 """
 
 from __future__ import annotations
@@ -17,7 +20,7 @@ from typing import Any, Dict, Optional
 import requests
 
 
-_DEFAULT_LITERATURE_RAG_URL = "http://ash.cels.anl.gov:12006"
+_DEFAULT_LITERATURE_RAG_URL = "https://www.bv-brc.org/ragstack/asm-next/api"
 _DEFAULT_TIMEOUT_SECONDS = 45
 
 
@@ -53,7 +56,7 @@ async def search_literature(
         timeout = getattr(config, "literature_rag_timeout_seconds", None) or timeout
 
     base_url = base_url.rstrip("/")
-    retrieve_url = f"{base_url}/copilot-api/rag/retrieve"
+    retrieve_url = f"{base_url}/v1/retrieve"
 
     # Build request headers
     req_headers: Dict[str, str] = {"Content-Type": "application/json"}
@@ -69,12 +72,12 @@ async def search_literature(
         auth_value = getattr(config, "bvbrc_auth_token", None)
 
     if auth_value:
-        # /copilot-api/rag/retrieve expects the raw PATRIC token
-        # (un=...|tokenid=...), not "Bearer <token>". Upstream MCP/orchestrator
-        # plumbing often wraps tokens with Bearer; strip it here.
+        # RAGStack accepts Authorization (BearerIdentity) or X-API-Key.
+        # Send the BV-BRC auth token in the Authorization header.  If it
+        # already has a "Bearer " prefix, keep it; otherwise add one.
         auth_value = auth_value.strip()
-        if auth_value.lower().startswith("bearer "):
-            auth_value = auth_value[7:].strip()
+        if not auth_value.lower().startswith("bearer "):
+            auth_value = f"Bearer {auth_value}"
         req_headers["Authorization"] = auth_value
     else:
         print(

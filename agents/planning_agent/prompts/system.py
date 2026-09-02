@@ -232,6 +232,7 @@ def build_system_prompt(agent_catalog_text: str = "") -> str:
     from shared.prompts.gowe_skill import GOWE_SKILL_PROMPT
     from shared.prompts.helpdesk_skill import HELPDESK_SKILL_PROMPT
     from shared.prompts.groups_sra_skill import GROUPS_SRA_SKILL_PROMPT
+    from shared.prompts.literature_skill import LITERATURE_SKILL_PROMPT
     from shared.prompts.response_format_skill import RESPONSE_FORMAT_SKILL_PROMPT
 
     prompt += "\n\n" + DATA_SKILL_PROMPT
@@ -239,6 +240,7 @@ def build_system_prompt(agent_catalog_text: str = "") -> str:
     prompt += "\n\n" + GOWE_SKILL_PROMPT
     prompt += "\n\n" + HELPDESK_SKILL_PROMPT
     prompt += "\n\n" + GROUPS_SRA_SKILL_PROMPT
+    prompt += "\n\n" + LITERATURE_SKILL_PROMPT
     prompt += "\n\n" + RESPONSE_FORMAT_SKILL_PROMPT
 
     prompt += """

@@ -321,6 +321,7 @@ to avoid URL length issues. If more are needed, batch the queries.
 from shared.prompts.response_format_skill import RESPONSE_FORMAT_SKILL_PROMPT
 from shared.prompts.workspace_skill import WORKSPACE_SKILL_PROMPT
 from shared.prompts.groups_sra_skill import GROUPS_SRA_SKILL_PROMPT
+from shared.prompts.literature_skill import LITERATURE_SKILL_PROMPT
 
 SYSTEM_PROMPT = "\n".join(
     [
@@ -336,6 +337,7 @@ SYSTEM_PROMPT = "\n".join(
         _CONSTRAINTS,
         WORKSPACE_SKILL_PROMPT,
         GROUPS_SRA_SKILL_PROMPT,
+        LITERATURE_SKILL_PROMPT,
         RESPONSE_FORMAT_SKILL_PROMPT,
     ]
 )

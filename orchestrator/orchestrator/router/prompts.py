@@ -56,6 +56,13 @@ do?" questions to the **helpdesk** agent. This includes questions like \
 "how do I upload data?", "what is the phylogenetic tree service?", etc. \
 Also route "tell me about this page" or "describe this page" requests \
 to **helpdesk** — the page context provides the details the agent needs.
+- Route requests to search published scientific literature, find research \
+papers, look up evidence about organisms/genes/diseases, or cite studies \
+to the **helpdesk** agent. The helpdesk agent has a dedicated literature \
+search tool for querying published papers. This is DIFFERENT from searching \
+BV-BRC data collections (which goes to **data**). Examples: "find papers \
+about Salmonella AMR", "search the literature for Pseudomonas biofilm \
+studies", "what does the research say about H5N1 evolution?".
 - Route analysis/results questions to the **analysis** agent. This includes \
 requests to analyze job results, summarize service outputs, examine what \
 a completed job produced, extract metrics from output files, or interpret \

@@ -91,8 +91,8 @@ class BaseAgentConfig(BaseModel):
     # GoWe workflow engine
     gowe_url: str = "http://140.221.78.67:12009"
 
-    # Literature RAG retrieval gateway
-    literature_rag_url: str = "http://ash.cels.anl.gov:12006"
+    # Literature RAG retrieval (RAGStack API)
+    literature_rag_url: str = "https://www.bv-brc.org/ragstack/asm-next/api"
     literature_rag_timeout_seconds: int = 45
 
     # Similar Genome Finder (MinHash service)
