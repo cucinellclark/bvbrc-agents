@@ -72,8 +72,13 @@ exactly where in the workspace to find the results.
 workflow_id or output path).
 4. Once you have the output path (from get_job_details or context), browse \
 the output directory and proceed with analysis.
-5. Do NOT browse the workspace blindly looking for results. Always resolve \
-the output path from the job metadata first.
+5. If there is no job ID and the user is asking about results from this \
+chat ("analyze the assembly we just ran", "look at those results"), browse \
+the session workspace path from === SESSION WORKSPACE === first — job \
+outputs submitted from this chat land there. Do not roam the whole workspace.
+6. Do NOT browse the workspace blindly looking for results. Always resolve \
+the output path from job metadata, conversation context, or the session \
+workspace first.
 
 === OUTPUT FORMAT ===
 

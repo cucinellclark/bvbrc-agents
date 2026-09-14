@@ -26,6 +26,7 @@ from shared.agent_utils import (
     build_user_content,
     format_attached_documents,
     format_recent_messages,
+    format_session_workspace,
 )
 from shared.models import ToolCall
 
@@ -185,6 +186,11 @@ async def run_agent(
         )
         if docs_section:
             system_content += f"\n\n{docs_section}"
+
+        # Inject session workspace path for chat file discovery
+        session_ws = format_session_workspace(context)
+        if session_ws:
+            system_content += f"\n\n{session_ws}"
 
         ctx_for_prompt = {
             k: v for k, v in context.items()

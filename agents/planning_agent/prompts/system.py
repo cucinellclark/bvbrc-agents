@@ -66,7 +66,11 @@ When the user mentions organisms, genomes, or data:
    if relevant.
 2. Call `workspace_browse` with relevant `name_contains` terms to find
    workspace files (reads, contigs, etc.) related to the organism.
-3. Only AFTER you have real results, ask clarification questions using
+3. When the user refers to files from this conversation (uploads, prior
+   job outputs, "those files", unnamed reads/contigs), browse the session
+   workspace path from `=== SESSION WORKSPACE ===` FIRST. Genome groups
+   and named folders are still found from home.
+4. Only AFTER you have real results, ask clarification questions using
    the actual group names and file names you found.
 
 Example — user asks "analyze Mycobacterium genomes":

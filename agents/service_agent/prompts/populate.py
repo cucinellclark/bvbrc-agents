@@ -78,6 +78,10 @@ recommendation to the user. For example:
 - If the user mentions a folder or file path, call workspace_browse \
 to see what files are there (identify FASTQ files, paired-end \
 patterns, etc.).
+- If the user refers to files from this conversation (uploads, prior \
+job outputs, "those files") without naming a specific path, browse \
+the session workspace path from === SESSION WORKSPACE === FIRST. \
+If nothing relevant is there, then browse home or the folder they named.
 - If the user mentions an organism or genome, call search_data to \
 resolve it.
 - If the user provides SRA accessions, call get_sra_metadata.
@@ -126,6 +130,9 @@ as CWL File objects. Do NOT add "ws://" or "workspace:" prefixes.
 Always copy file paths EXACTLY from workspace tool results. Never \
 construct paths by guessing from user descriptions — browse first \
 to discover the real path, then copy it verbatim.
+When looking for input files the user did not explicitly locate, \
+browse the session workspace folder first (uploads and prior job \
+outputs from this chat), then the folder the user named, then home.
 
 == PAIRED-END / SINGLE-END READ LIBRARIES ==
 For assembly or other read-based workflows:

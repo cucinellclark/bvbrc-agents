@@ -30,6 +30,7 @@ from agent_utils import (  # noqa: E402
     call_fingerprint,
     format_attached_documents,
     format_recent_messages,
+    format_session_workspace,
     parse_tool_calls as _parse_tool_calls_raw,
     get_response_content,
     build_tool_calls_message,
@@ -157,6 +158,11 @@ async def _analyze_and_plan(
         if docs_section:
             system_prompt += f"\n\n{docs_section}"
 
+        # Inject session workspace path for chat file discovery
+        session_ws = format_session_workspace(context)
+        if session_ws:
+            system_prompt += f"\n\n{session_ws}"
+
     # Add bounded conversation context from recent_messages
     if context:
         recent_msgs = context.get("recent_messages")
@@ -164,6 +170,21 @@ async def _analyze_and_plan(
             formatted = format_recent_messages(recent_msgs)
             if formatted:
                 system_prompt += f"\n\n=== CONVERSATION CONTEXT ===\n{formatted}"
+
+        # Inject filtered context JSON dump (session_id, workspace_path, etc.)
+        ctx_for_prompt = {
+            k: v for k, v in context.items()
+            if k not in {
+                "page_context", "images",
+                "conversation_summary", "recent_messages",
+                "parsed_documents", "attached_files",
+            }
+        }
+        if ctx_for_prompt:
+            system_prompt += (
+                f"\n\n=== ADDITIONAL CONTEXT ===\n"
+                f"{json.dumps(ctx_for_prompt, default=str)}"
+            )
 
     state.add_system_message(system_prompt)
     state.add_user_message(build_user_content(query, images))
@@ -212,12 +233,32 @@ async def _plan_with_answers(
         if docs_section:
             system_prompt += f"\n\n{docs_section}"
 
+        # Inject session workspace path for chat file discovery
+        session_ws = format_session_workspace(context)
+        if session_ws:
+            system_prompt += f"\n\n{session_ws}"
+
         recent_msgs = context.get("recent_messages")
         if recent_msgs:
             formatted = format_recent_messages(recent_msgs)
             if formatted:
                 system_prompt += f"\n\n=== CONVERSATION CONTEXT ===\n{formatted}"
         images = context.get("images", []) or []
+
+        # Inject filtered context JSON dump (session_id, workspace_path, etc.)
+        ctx_for_prompt = {
+            k: v for k, v in context.items()
+            if k not in {
+                "page_context", "images",
+                "conversation_summary", "recent_messages",
+                "parsed_documents", "attached_files",
+            }
+        }
+        if ctx_for_prompt:
+            system_prompt += (
+                f"\n\n=== ADDITIONAL CONTEXT ===\n"
+                f"{json.dumps(ctx_for_prompt, default=str)}"
+            )
 
     state.add_system_message(system_prompt)
 

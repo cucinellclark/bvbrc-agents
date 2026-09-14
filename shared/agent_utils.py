@@ -626,6 +626,67 @@ def format_recent_messages(
 
 
 # ---------------------------------------------------------------------------
+# Session workspace prompt injection
+# ---------------------------------------------------------------------------
+
+
+def build_session_workspace_path(
+    workspace_path: str | None,
+    session_id: str | None,
+) -> str | None:
+    """Construct the absolute session workspace path, or ``None`` if missing.
+
+    This is the canonical location for uploads, PDF extracts, and GoWe job
+    outputs created during this chat session::
+
+        /<user>/home/.chats/<session_id>/
+
+    The same path is used by ``submit_gowe_job()`` and ``persist_session_file()``
+    when writing files.
+    """
+    if not workspace_path or not session_id:
+        return None
+    return f"{workspace_path.rstrip('/')}/.chats/{session_id}"
+
+
+def format_session_workspace(context: dict[str, Any] | None) -> str:
+    """Build an ``=== SESSION WORKSPACE ===`` section for the system prompt.
+
+    Returns the section text when both ``workspace_path`` and ``session_id``
+    are present in *context*, otherwise returns an empty string (MCP callers,
+    tests, or missing gateway context).
+    """
+    if not context:
+        return ""
+    session_path = build_session_workspace_path(
+        context.get("workspace_path"),
+        context.get("session_id"),
+    )
+    if not session_path:
+        return ""
+    return (
+        "=== SESSION WORKSPACE ===\n"
+        "This chat's workspace folder is:\n"
+        f"  {session_path}\n"
+        "\n"
+        "Uploads, PDF extracts, and jobs submitted from this chat land here.\n"
+        "This folder may not exist yet if no files have been uploaded or jobs\n"
+        "submitted in this chat. If you get a 'not found' error browsing it,\n"
+        "skip it and fall back to home.\n"
+        "\n"
+        "When looking for files from this conversation, call workspace_browse\n"
+        "on this path FIRST (copy it exactly). If nothing relevant is there,\n"
+        "then browse home or the folder the user named.\n"
+        "\n"
+        "Genome Groups, Feature Groups, and user-named folders still live at\n"
+        "home — do not look for those only under this path.\n"
+        "\n"
+        "Do not invent other session UUIDs. Do not search sibling folders\n"
+        "under .chats/ unless the user asks."
+    )
+
+
+# ---------------------------------------------------------------------------
 # Message trimming (context window management)
 # ---------------------------------------------------------------------------
 

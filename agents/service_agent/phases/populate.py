@@ -31,6 +31,7 @@ from agent_utils import (
     call_fingerprint,
     format_attached_documents,
     format_recent_messages,
+    format_session_workspace,
     parse_tool_calls as _parse_tool_calls_raw,
     get_response_content,
     build_tool_calls_message,
@@ -107,6 +108,11 @@ async def populate_and_submit(
         )
         if docs_section:
             system_prompt += f"\n\n{docs_section}"
+
+        # Inject session workspace path for chat file discovery
+        session_ws = format_session_workspace(state.context)
+        if session_ws:
+            system_prompt += f"\n\n{session_ws}"
 
         # Inject bounded conversation context from recent_messages
         recent_msgs = state.context.get("recent_messages")

@@ -25,9 +25,16 @@ system. The typical structure is:
     Experiments/            -- differential expression experiments
     <job_output_folders>/   -- results from BV-BRC service jobs
     <user_folders>/         -- user-created folders with uploaded files
+    .chats/<session>/       -- hidden session folder for this chat
+        uploaded_files/     -- files attached in this chat session
+        parsed_pdfs/        -- PDF text extracts
+        <job_subfolder>/    -- GoWe job outputs from this chat
 
 Common job output folders follow the pattern:
-  .<ServiceName>_<timestamp>/  -- e.g., .GenomeAssembly2_20240315T..."""
+  .<ServiceName>_<timestamp>/  -- e.g., .GenomeAssembly2_20240315T...
+
+The .chats/ folder is hidden by convention and not shown in a normal home \
+listing. Use the path from === SESSION WORKSPACE === to access it."""
 
 _FILE_TYPES = """
 === WORKSPACE FILE TYPES ===
@@ -59,8 +66,12 @@ subsequent calls."""
 _STRATEGY = """
 === STRATEGY ===
 
-1. START BROAD: When the user asks about their files, start by browsing their \
-home directory to see what's there. This gives you the folder structure.
+1. SESSION OR HOME: When the user asks about files from this conversation \
+(uploads, job outputs, "those files", "what we just generated"), browse the \
+session workspace path from === SESSION WORKSPACE === FIRST. For genome \
+groups, feature groups, named folders, or general "what's in my workspace", \
+start with home (empty path). If the session folder is empty or missing the \
+expected item, fall back to home.
 
 2. NARROW DOWN: Use the information from the listing to navigate into specific \
 folders. If the user asks about a specific file type, use workspace_types to \

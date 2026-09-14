@@ -26,6 +26,8 @@ for _p in (_REPO_ROOT, _SHARED_DIR, _CONFIG_DIR):
 from shared.agent_utils import (
     build_user_content,
     format_attached_documents,
+    format_recent_messages,
+    format_session_workspace,
     parse_tool_calls as _parse_tool_calls_raw,
     get_response_content,
     build_tool_calls_message,
@@ -93,6 +95,20 @@ async def plan_only(
         )
         if docs_section:
             system_content += f"\n\n{docs_section}"
+
+        # Inject session workspace path for chat file discovery
+        session_ws = format_session_workspace(context)
+        if session_ws:
+            system_content += f"\n\n{session_ws}"
+
+        # Inject bounded conversation context from recent_messages
+        recent_msgs = context.get("recent_messages")
+        if recent_msgs:
+            formatted = format_recent_messages(recent_msgs)
+            if formatted:
+                system_content += (
+                    f"\n\n=== CONVERSATION CONTEXT ===\n{formatted}"
+                )
 
         ctx_for_prompt = {
             k: v for k, v in context.items()
