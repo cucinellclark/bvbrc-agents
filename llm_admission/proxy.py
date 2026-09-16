@@ -1,8 +1,10 @@
 """OpenAI-compatible admission proxy for BV-BRC Copilot.
 
 Sits on holly between the orchestrator/agents and vLLM on mango.
-Gates ``/v1/chat/completions`` through a bounded semaphore so vLLM
-never sees more than ``max_in_flight`` concurrent requests.
+Gates ``/v1/chat/completions`` through a bounded semaphore so the
+upstream backends never see more than ``max_in_flight`` concurrent
+requests in total.  Requests are distributed round-robin across all
+configured upstreams.
 
 All other paths (``/v1/models``, etc.) pass through ungated.
 
@@ -16,6 +18,7 @@ Or via ``start_admission_proxy.sh``.
 from __future__ import annotations
 
 import asyncio
+import itertools
 import logging
 import time
 from contextlib import asynccontextmanager
@@ -35,7 +38,12 @@ logger = logging.getLogger("llm_admission")
 
 _config: AdmissionConfig | None = None
 _semaphore: asyncio.Semaphore | None = None
-_http_client: httpx.AsyncClient | None = None
+
+# One httpx client per upstream, in the same order as config.upstream_urls.
+_http_clients: list[httpx.AsyncClient] = []
+
+# Round-robin counter — thread-safe in single-threaded asyncio.
+_rr_cycle: itertools.cycle | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -45,34 +53,40 @@ _http_client: httpx.AsyncClient | None = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Startup / shutdown — create the semaphore and httpx client."""
-    global _config, _semaphore, _http_client
+    """Startup / shutdown — create the semaphore and httpx clients."""
+    global _config, _semaphore, _http_clients, _rr_cycle
 
     _config = load_config()
     _semaphore = asyncio.Semaphore(_config.max_in_flight)
 
-    # Long-lived connection pool to the upstream vLLM.
-    # max_connections slightly above max_in_flight so we never block on
-    # the pool after acquiring the semaphore.
-    _http_client = httpx.AsyncClient(
-        base_url=_config.upstream_url,
-        timeout=httpx.Timeout(
-            connect=10.0,
-            read=300.0,   # vLLM streams can be long (thinking models)
-            write=10.0,
-            pool=30.0,    # wait for a pool connection
-        ),
-        limits=httpx.Limits(
-            max_connections=_config.max_in_flight + 2,
-            max_keepalive_connections=_config.max_in_flight + 2,
-        ),
-        follow_redirects=False,
-        http2=False,
-    )
+    # One long-lived connection pool per upstream.
+    # max_connections sized to max_in_flight + 2 on each client — any one
+    # backend could theoretically receive all slots under uneven round-robin.
+    _http_clients = []
+    for url in _config.upstream_urls:
+        client = httpx.AsyncClient(
+            base_url=url,
+            timeout=httpx.Timeout(
+                connect=10.0,
+                read=300.0,   # vLLM streams can be long (thinking models)
+                write=10.0,
+                pool=30.0,    # wait for a pool connection
+            ),
+            limits=httpx.Limits(
+                max_connections=_config.max_in_flight + 2,
+                max_keepalive_connections=_config.max_in_flight + 2,
+            ),
+            follow_redirects=False,
+            http2=False,
+        )
+        _http_clients.append(client)
+
+    # Infinite round-robin iterator over client indices.
+    _rr_cycle = itertools.cycle(range(len(_http_clients)))
 
     logger.info(
-        "Admission proxy started: upstream=%s  max_in_flight=%d  max_waiting=%d  port=%d",
-        _config.upstream_url,
+        "Admission proxy started: upstreams=%s  max_in_flight=%d  max_waiting=%d  port=%d",
+        [str(u) for u in _config.upstream_urls],
         _config.max_in_flight,
         _config.max_waiting,
         _config.port,
@@ -81,7 +95,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
 
     # Shutdown
-    await _http_client.aclose()
+    for client in _http_clients:
+        await client.aclose()
+    _http_clients.clear()
     logger.info("Admission proxy stopped")
 
 
@@ -121,7 +137,7 @@ async def health() -> dict:
         "waiting": waiting,
         "max_in_flight": _config.max_in_flight,
         "max_waiting": _config.max_waiting,
-        "upstream": _config.upstream_url,
+        "upstreams": list(_config.upstream_urls),
     }
 
 
@@ -153,7 +169,7 @@ def _reject_queue_full() -> JSONResponse:
 )
 async def chat_completions(request: Request):
     """Admission-gated reverse proxy for /v1/chat/completions."""
-    assert _config is not None and _semaphore is not None and _http_client is not None
+    assert _config is not None and _semaphore is not None and _http_clients and _rr_cycle is not None
 
     # ── Check bounded wait queue ──────────────────────────────────────
     # Safe without locking: single asyncio event loop, no preemption
@@ -182,21 +198,25 @@ async def chat_completions(request: Request):
     if wait_secs > 1.0:
         logger.info("Slot acquired after %.1fs wait", wait_secs)
 
+    # ── Pick upstream (round-robin) ───────────────────────────────────
+    idx = next(_rr_cycle)
+    client = _http_clients[idx]
+
     # ── Forward to upstream ───────────────────────────────────────────
     try:
-        return await _forward_to_upstream(request)
+        return await _forward_to_upstream(request, client)
     finally:
         _semaphore.release()
 
 
-async def _forward_to_upstream(request: Request) -> StreamingResponse | JSONResponse:
+async def _forward_to_upstream(
+    request: Request, client: httpx.AsyncClient
+) -> StreamingResponse | JSONResponse:
     """Stream the upstream response back to the caller.
 
     If the caller disconnects mid-stream, the httpx request is cancelled
     which signals vLLM's abort-on-disconnect.
     """
-    assert _http_client is not None
-
     body = await request.body()
 
     # Forward relevant headers (Authorization, Content-Type).
@@ -211,13 +231,13 @@ async def _forward_to_upstream(request: Request) -> StreamingResponse | JSONResp
         forward_headers["Accept"] = accept
 
     try:
-        upstream_req = _http_client.build_request(
+        upstream_req = client.build_request(
             method="POST",
             url="/chat/completions",
             content=body,
             headers=forward_headers,
         )
-        upstream_resp = await _http_client.send(upstream_req, stream=True)
+        upstream_resp = await client.send(upstream_req, stream=True)
     except httpx.TimeoutException:
         logger.error("Upstream timeout")
         return JSONResponse(
@@ -291,9 +311,14 @@ async def _forward_to_upstream(request: Request) -> StreamingResponse | JSONResp
     include_in_schema=False,
 )
 async def passthrough(request: Request, path: str):
-    """Ungated passthrough for all non-completions endpoints."""
-    assert _http_client is not None
+    """Ungated passthrough for all non-completions endpoints.
 
+    Uses the first upstream — these endpoints (/v1/models, etc.) return
+    identical data from all backends.
+    """
+    assert _http_clients
+
+    client = _http_clients[0]
     body = await request.body() if request.method in ("POST", "PUT", "PATCH") else None
 
     # Forward all headers except Host.
@@ -309,13 +334,13 @@ async def passthrough(request: Request, path: str):
         upstream_path = upstream_path[3:]  # "v1/models" -> "models"
 
     try:
-        upstream_req = _http_client.build_request(
+        upstream_req = client.build_request(
             method=request.method,
             url=f"/{upstream_path}",
             content=body,
             headers=forward_headers,
         )
-        upstream_resp = await _http_client.send(upstream_req, stream=False)
+        upstream_resp = await client.send(upstream_req, stream=False)
     except httpx.TimeoutException:
         return JSONResponse(
             status_code=504,
