@@ -31,7 +31,7 @@ def _extract_user_from_token(auth_token: str | None) -> str | None:
 def _get_client(config: Any = None):
     """Build a ``GoWeClient`` from config."""
     mod = get_gowe_client(getattr(config, "mcp_server_path", None))
-    gowe_url = getattr(config, "gowe_url", None) or "http://140.221.78.67:12009"
+    gowe_url = getattr(config, "gowe_url", None) or "http://140.221.78.67:12007"
     return mod.GoWeClient(base_url=gowe_url)
 
 

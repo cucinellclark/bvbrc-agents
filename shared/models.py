@@ -89,7 +89,7 @@ class BaseAgentConfig(BaseModel):
     bvbrc_auth_token: str | None = None
 
     # GoWe workflow engine
-    gowe_url: str = "http://140.221.78.67:12009"
+    gowe_url: str = "http://140.221.78.67:12007"
 
     # Literature RAG retrieval (RAGStack API)
     literature_rag_url: str = "https://www.bv-brc.org/ragstack/asm-next/api"
