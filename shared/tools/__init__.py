@@ -18,6 +18,12 @@ from collections import Counter, defaultdict
 from typing import Any, Dict
 
 
+# Tools that legitimately run longer than the agent's default tool timeout.
+TOOL_TIMEOUT_OVERRIDES: dict[str, float] = {
+    "find_similar_genomes": 120.0,
+}
+
+
 async def execute_tool(
     tool_name: str,
     arguments: Dict[str, Any],
@@ -55,6 +61,9 @@ async def execute_tool(
             "error": f"Unknown tool: '{tool_name}'",
             "available_tools": sorted(dispatch_table.keys()),
         }
+
+    # Apply per-tool timeout overrides (use the larger of caller vs override)
+    timeout_seconds = max(timeout_seconds, TOOL_TIMEOUT_OVERRIDES.get(tool_name, 0.0))
 
     # Inject config and headers if the tool accepts them
     if inject_config and config is not None and "config" not in arguments:

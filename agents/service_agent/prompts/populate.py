@@ -160,6 +160,24 @@ When the user gives a folder, use workspace_browse to list it and \
 identify FASTQ files. Look for R1/R2, _1/_2, or .1/.2 patterns to \
 determine if reads are paired-end.
 
+== PARAMETER DEFAULTS AND SELECTOR INPUTS ==
+- Keep the schema default for every parameter the user did not mention. Do NOT \
+change analysis parameters (hit counts, thresholds, models, recipes) on your \
+own. If you set any parameter to a non-default value, say so in your summary \
+and why.
+- Inputs whose doc says "[enum: ...]" and whose name ends in _source or _type \
+are SELECTORS. The doc names the payload input each value requires ("Required \
+when X=Y"). Set the selector AND its payload together. If the user has not \
+given you anything usable for the payload, ASK — never submit with an empty \
+payload.
+- Identifiers must be verified, not assumed. Before submitting a genome ID, call \
+search_data on the genome collection to confirm it exists and is the genome the \
+user means. SRA accessions look like SRR/ERR/DRR + digits — a workspace file \
+name is NOT an accession; use the read-library inputs for files.
+- If no registered workflow does what the user asked (e.g. predicting a \
+structure from a sequence), say so plainly, name the closest workflow and what \
+it actually does, and do not submit anything.
+
 == USER-ATTACHED FILES ==
 {files_section}
 
@@ -212,8 +230,12 @@ internal IDs (workflow_id, submission_id), or tool names in your \
 response to the user. Refer to services by their display name \
 (e.g., "Genome Assembly", "Comprehensive Genome Analysis"). \
 Confirm the job was submitted, state where the results will be \
-saved (the output_path from the tool result), and let the user know \
-they will be notified when it completes.
+saved (the output_path from the tool result), and tell the user a \
+completion message will appear in this chat when they refresh or \
+reopen it, and that the Jobs list shows live status.
+- In your post-submission summary, list the key inputs you used and \
+any parameters you set to non-default values. This lets the user \
+verify the job is configured correctly.
 """
     return (
         prompt

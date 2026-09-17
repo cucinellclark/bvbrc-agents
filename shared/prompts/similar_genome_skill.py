@@ -26,6 +26,11 @@ restrictive (>99% sequence identity). When the user asks for many hits
 viral genomes, increase ``max_distance`` to **0.5** and ``max_pvalue``
 to **0.1**. Otherwise the search may return zero results.
 
+### Timeout
+Broad searches (``scope="all"``, large ``max_hits``) can take up to two minutes.
+Do not retry a timed-out search with the same parameters — narrow the scope or
+reduce ``max_hits``, or tell the user the service is slow right now.
+
 ### Do NOT use for
 - BLAST sequence similarity searches (use a BLAST workflow)
 - Phylogenetic tree building (use a tree workflow)

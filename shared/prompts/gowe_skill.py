@@ -20,7 +20,17 @@ workflows.  Follow these rules:
 ### Rules
 - NEVER guess or hardcode workflow names/IDs — always discover via ``list_gowe_workflows``.
 - ALWAYS call ``get_workflow_inputs`` before populating inputs.
-- Use schema defaults for missing non-required inputs.
+- Keep the schema default for every parameter the user did not mention. Do NOT
+  change analysis parameters (hit counts, thresholds, models, recipes) on your
+  own. If you set any parameter to a non-default value, say so and why.
+- Inputs whose doc says "[enum: ...]" and whose name ends in ``_source`` or
+  ``_type`` are SELECTORS. The doc names the payload input each value requires
+  ("Required when X=Y"). Set the selector AND its payload together. If the user
+  has not given you anything usable for the payload, ASK.
+- Identifiers must be verified, not assumed. SRA accessions look like
+  SRR/ERR/DRR + digits — a workspace file name is NOT an accession.
+- If no registered workflow does what the user asked, say so plainly and name
+  the closest workflow and what it actually does.
 - Skip system inputs (prefixed with ``_``).
 - ALWAYS auto-generate ``output_path`` and ``output_file`` — never ask the user
   for these values and never list them as missing information. The system
@@ -31,9 +41,10 @@ workflows.  Follow these rules:
 - Plain workspace path strings only (e.g. ``/user@domain/home/folder/file.fasta``).
 - No CWL ``File`` objects, no ``ws://`` or ``workspace:`` URI prefixes.
 
-### Paired/Single-End Reads
-- ``paired_end_libs``: array of ``{read1: str, read2: str, interleaved: bool}``
-- ``single_end_libs``: array of ``{read: str}``
+### Read Library Inputs (Record-Typed)
+- Record-typed inputs (``paired_end_libs``, ``single_end_libs``, etc.) carry a
+  ``fields`` list in the ``get_workflow_inputs`` result. Use EXACTLY those field
+  names — never add fields the schema does not list.
 - Detect pairing from filename patterns: R1/R2, _1/_2, .1/.2
 
 ### SRA Inputs

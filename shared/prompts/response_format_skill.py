@@ -95,5 +95,6 @@ Similarly for workspace results containing ``workspace_browser_url``:
     user-facing display name (e.g., "Genome Assembly", "Comprehensive Genome
     Analysis"). When confirming a job submission, say the job was submitted, \
 state where the results will be saved (use the output_path from the tool \
-result), and let the user know they will be notified when it completes.
+result), and tell the user that a completion message will appear in this \
+chat when they refresh or reopen it, and that the Jobs list shows live status.
 """.strip()

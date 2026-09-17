@@ -12,6 +12,7 @@ Each function accepts a generic *config* object (needs ``gowe_url``,
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any, Dict, Optional
 
 from shared.tools._mcp_imports import get_gowe_client
@@ -37,6 +38,81 @@ def _get_client(config: Any = None):
 
 def _get_auth(config: Any = None) -> str:
     return getattr(config, "bvbrc_auth_token", None) or ""
+
+
+# ---------------------------------------------------------------------------
+# Identifier validation
+# ---------------------------------------------------------------------------
+
+_SRR_RE = re.compile(r"^[SED]RR\d{5,}$")
+_GENOME_ID_RE = re.compile(r"^\d+\.\d+$")
+
+# Field name -> (pattern, human description).  Values may be a string, a
+# list of strings, or a list of records containing the field.
+_IDENTIFIER_RULES: Dict[str, tuple[re.Pattern, str]] = {
+    "srr_ids": (_SRR_RE, "SRA run accession like SRR1234567"),
+    "srr_accession": (_SRR_RE, "SRA run accession like SRR1234567"),
+    "reference_genome_id": (_GENOME_ID_RE, "BV-BRC genome ID like 83332.12"),
+    "genome_id": (_GENOME_ID_RE, "BV-BRC genome ID like 83332.12"),
+    "genome_ids": (_GENOME_ID_RE, "BV-BRC genome ID like 83332.12"),
+    "db_genome_list": (_GENOME_ID_RE, "BV-BRC genome ID like 83332.12"),
+}
+
+
+def _check_identifiers(inputs: Dict[str, Any]) -> str | None:
+    """Return an error string if a known identifier field has a malformed value.
+
+    Walks top-level values and one level of records (e.g. srr_libs[].srr_accession).
+    Returns on the first bad value found.
+    """
+    for field_name, (pattern, description) in _IDENTIFIER_RULES.items():
+        # Check top-level fields
+        value = inputs.get(field_name)
+        if value is not None:
+            bad = _find_bad_value(value, pattern)
+            if bad is not None:
+                hint = ""
+                if pattern is _SRR_RE:
+                    hint = " If this is a workspace file, use single_end_libs/paired_end_libs instead."
+                return (
+                    f"Invalid value for {field_name}: '{bad}' is not a valid "
+                    f"{description}.{hint}"
+                )
+
+        # Check one level of records (e.g. srr_libs[].srr_accession)
+        for key, val in inputs.items():
+            if not isinstance(val, list):
+                continue
+            for item in val:
+                if not isinstance(item, dict):
+                    continue
+                nested = item.get(field_name)
+                if nested is not None:
+                    bad = _find_bad_value(nested, pattern)
+                    if bad is not None:
+                        hint = ""
+                        if pattern is _SRR_RE:
+                            hint = " If this is a workspace file, use the file path inputs instead."
+                        return (
+                            f"Invalid value for {key}[].{field_name}: '{bad}' "
+                            f"is not a valid {description}.{hint}"
+                        )
+    return None
+
+
+def _find_bad_value(value: Any, pattern: re.Pattern) -> str | None:
+    """Check a value (string or list of strings) against *pattern*.
+
+    Returns the first non-matching string, or ``None`` if all match.
+    """
+    if isinstance(value, str):
+        if not pattern.match(value):
+            return value
+    elif isinstance(value, list):
+        for item in value:
+            if isinstance(item, str) and not pattern.match(item):
+                return item
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -134,6 +210,12 @@ async def submit_gowe_job(
     if not auth:
         return {"error": "No authentication token available."}
 
+    # ----- Identifier validation -----
+    id_error = _check_identifiers(inputs)
+    if id_error:
+        logger.warning("Identifier check failed for workflow %s: %s", workflow_id, id_error)
+        return {"error": id_error, "workflow_id": workflow_id}
+
     try:
         client = _get_client(config)
 
@@ -229,7 +311,9 @@ async def submit_gowe_job(
             "message": (
                 f"Job submitted. Results will be saved to {out_path} "
                 f"(the chats/ session folder in the user's home workspace). "
-                f"Tell the user this path."
+                f"Tell the user this path. When the job finishes, a completion "
+                f"message is added to this chat — reopen or refresh the chat "
+                f"to see it, or check the Jobs list."
                 if out_path else "Job submitted."
             ),
             "output_path": out_path,
