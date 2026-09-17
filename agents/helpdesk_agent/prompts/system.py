@@ -3,6 +3,7 @@
 from shared.prompts.data_skill import DATA_SKILL_PROMPT
 from shared.prompts.workspace_skill import WORKSPACE_SKILL_PROMPT
 from shared.prompts.gowe_skill import GOWE_SKILL_PROMPT
+from shared.prompts.similar_genome_skill import SIMILAR_GENOME_SKILL_PROMPT
 from shared.prompts.response_format_skill import RESPONSE_FORMAT_SKILL_PROMPT
 
 SYSTEM_PROMPT = (
@@ -132,6 +133,10 @@ workflows in their environment.
 
 """
     + GOWE_SKILL_PROMPT
+    + """
+
+"""
+    + SIMILAR_GENOME_SKILL_PROMPT
     + """
 
 """

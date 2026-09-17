@@ -20,15 +20,13 @@ agents:
       Retrieves biological data from BV-BRC. Translates natural language
       questions into Solr queries against genome, feature, AMR, pathway,
       epitope, and other BV-BRC collections. Returns structured data results
-      including counts, facets, and tabular data. Can also find similar
-      genomes using Mash/MinHash genomic distance estimation.
+      including counts, facets, and tabular data.
     protocol: "inprocess"
     capabilities:
       - data_retrieval
       - solr_query
       - faceted_search
       - collection_browsing
-      - similar_genome_finder
     max_iterations: 1000
     timeout_seconds: 300
     auth_token_env: "BV_BRC_AUTH_TOKEN"
@@ -49,6 +47,7 @@ agents:
       - service_configuration
       - parameter_validation
       - multi_step_pipelines
+      - similar_genome_finder
     max_iterations: 1000
     timeout_seconds: 300
     auth_token_env: "BV_BRC_AUTH_TOKEN"

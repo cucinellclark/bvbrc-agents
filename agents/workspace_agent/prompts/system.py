@@ -119,6 +119,7 @@ specifically requests it.
 """
 
 from shared.prompts.response_format_skill import RESPONSE_FORMAT_SKILL_PROMPT
+from shared.prompts.similar_genome_skill import SIMILAR_GENOME_SKILL_PROMPT
 
 SYSTEM_PROMPT = "".join([
     _PREAMBLE,
@@ -128,5 +129,6 @@ SYSTEM_PROMPT = "".join([
     _STRATEGY,
     _RESPONSE_FORMAT,
     _CONSTRAINTS,
+    SIMILAR_GENOME_SKILL_PROMPT,
     RESPONSE_FORMAT_SKILL_PROMPT,
 ])

@@ -737,11 +737,19 @@ FIND_SIMILAR_GENOMES = {
                 },
                 "max_pvalue": {
                     "type": "number",
-                    "description": "Max p-value threshold (default 0.01). Options: 0.001, 0.01, 0.1, 1.0",
+                    "description": (
+                        "Max p-value threshold (default 0.01). Options: 0.001, 0.01, 0.1, "
+                        "1.0. For broad searches with many hits, use 0.1 or higher."
+                    ),
                 },
                 "max_distance": {
                     "type": "number",
-                    "description": "Max Mash distance (default 0.01). Options: 0.01, 0.05, 0.1, 0.5, 1.0",
+                    "description": (
+                        "Max Mash distance threshold (default 0.01). Options: 0.01, 0.05, "
+                        "0.1, 0.5, 1.0. NOTE: The default 0.01 is very restrictive (>99% "
+                        "identity). For broad searches (scope='all', high max_hits, or viral "
+                        "genomes), use 0.5 to get meaningful results."
+                    ),
                 },
                 "max_hits": {
                     "type": "integer",

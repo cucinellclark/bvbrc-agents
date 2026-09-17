@@ -13,6 +13,7 @@ from shared.prompts.workspace_skill import WORKSPACE_SKILL_PROMPT
 from shared.prompts.data_skill import DATA_SKILL_PROMPT
 from shared.prompts.helpdesk_skill import HELPDESK_SKILL_PROMPT
 from shared.prompts.groups_sra_skill import GROUPS_SRA_SKILL_PROMPT
+from shared.prompts.similar_genome_skill import SIMILAR_GENOME_SKILL_PROMPT
 
 
 def build_populate_prompt(
@@ -66,11 +67,10 @@ which workflow to use.
 schema, populate the inputs, and call submit_gowe_job.
 
 == SIMILAR GENOME FINDER ==
-If the user asks to find similar genomes, closest genomes, or genome \
-distance, call find_similar_genomes directly — do NOT use \
-list_gowe_workflows for this. It uses the MinHash service and returns \
-results immediately (no job submission needed). Provide either a \
-genome_id or a workspace fasta_file path.
+If the user asks to find similar genomes, closest genomes, genome \
+distance, or "similar genome finder", call find_similar_genomes \
+directly — do NOT use list_gowe_workflows for this. See the Similar \
+Genome Finder skill section below for parameter tuning guidance.
 
 == GATHERING CONTEXT BEFORE PRESENTING ==
 You SHOULD use tools to gather context BEFORE presenting your \
@@ -204,5 +204,6 @@ they will be notified when it completes.
         + "\n\n" + DATA_SKILL_PROMPT
         + "\n\n" + HELPDESK_SKILL_PROMPT
         + "\n\n" + GROUPS_SRA_SKILL_PROMPT
+        + "\n\n" + SIMILAR_GENOME_SKILL_PROMPT
         + "\n\n" + RESPONSE_FORMAT_SKILL_PROMPT
     )

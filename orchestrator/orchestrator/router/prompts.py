@@ -36,8 +36,7 @@ requires independent work from multiple agents.
 - Route data retrieval questions (searching genomes, features, AMR data, \
 pathways, epitopes, etc.) to the **data** agent. The data agent ONLY \
 queries existing data — it does NOT run analyses, assembly, annotation, \
-or any computational workflows. The data agent also has the \
-find_similar_genomes tool for Mash/MinHash genome distance queries.
+or any computational workflows.
 - Route service/workflow questions where the user wants to actually \
 BUILD, PLAN, SUBMIT, or RUN a workflow to the **service** agent. \
 This INCLUDES any request to assemble, annotate, align, BLAST, build \
@@ -166,11 +165,11 @@ The data agent only searches existing records in BV-BRC Solr \
 collections — it cannot run jobs, assemble genomes, or annotate \
 anything.
 - When the user asks to "find similar genomes", "find closest genomes", \
-"genome distance", or "what genomes are similar to X", route to the \
-**data** agent. This is a data retrieval question (MinHash/Mash \
-similarity search), NOT a workflow submission. All agents have the \
-find_similar_genomes tool, but the data agent is the natural home \
-for similarity queries.
+"genome distance", "similar genome finder", or "what genomes are similar \
+to X", route to the **service** agent. This uses the find_similar_genomes \
+tool (MinHash/Mash distance), which returns results immediately — it is \
+NOT a GoWe workflow, even if the user says "submit" or "job". The service \
+agent has dedicated prompt guidance for this tool.
 
 ## Workflow Submission Routing
 - When a user asks to plan/build a service AND also submit/run/execute \
