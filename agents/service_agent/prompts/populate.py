@@ -109,6 +109,11 @@ automatically rewrites this to the correct session workspace location.
 or job (e.g., "SRR19542959").
 Just pick sensible names and move on. Do NOT present these to the user \
 for confirmation or approval.
+After a successful submission, ALWAYS tell the user where their \
+results will be saved. Include the output_path from the tool result \
+in your response. The system places all chat-submitted job outputs \
+in a session-specific folder under chats/ in the user's home \
+workspace. Say this plainly so the user can find their results.
 
 == RULES ==
 - ALWAYS call list_gowe_workflows first. Do NOT guess or hardcode \
@@ -122,6 +127,12 @@ and output_file, which you must always auto-generate (see above).
 - Skip internal/system inputs (those starting with _ like _parent_job, \
 or container_id, indexing_url, etc.) unless the user specifically \
 provides them.
+- For a SINGLE job request, call submit_gowe_job EXACTLY ONCE. After a \
+successful submission, produce your summary message. Do NOT submit the \
+same job again with different output paths or parameters.
+- Only submit multiple jobs when a === BATCH MODE === section is present \
+and you have been EXPLICITLY instructed to process multiple independent \
+samples.
 
 == FILE PATHS ==
 All file paths in inputs must be PLAIN workspace path strings \
@@ -134,15 +145,16 @@ When looking for input files the user did not explicitly locate, \
 browse the session workspace folder first (uploads and prior job \
 outputs from this chat), then the folder the user named, then home.
 
-== PAIRED-END / SINGLE-END READ LIBRARIES ==
-For assembly or other read-based workflows:
-- **paired_end_libs**: An array of objects. Each must include: \
-"read1" (forward reads path), "read2" (reverse reads path), \
-"interleaved" (boolean, default false), \
-"read_orientation_outward" (boolean, default false), \
-and "platform" (string, use "infer" if unknown).
-- **single_end_libs**: An array of objects. Each must include: \
-"read" (reads file path) and "platform" (string, use "infer").
+== RECORD-TYPED INPUTS (read libraries, groups) ==
+Inputs typed "record:<name>" carry a "fields" list in the \
+get_workflow_inputs result. Populate records using EXACTLY those field \
+names — never add fields the schema does not list (e.g. do not add \
+"platform" if it is not a field). Fields with a default may be \
+omitted. Respect the shape: "record:x" or "record:x?" is a SINGLE \
+object; "record:x[]" or "record:x[]?" is an ARRAY of objects.
+Typical read-library records: paired-end has read1/read2, single-end \
+has read; some services also require sample_id. Always check the \
+fields list.
 
 When the user gives a folder, use workspace_browse to list it and \
 identify FASTQ files. Look for R1/R2, _1/_2, or .1/.2 patterns to \
@@ -182,6 +194,10 @@ to the user clearly and suggest they try again later or with \
 different parameters. Common causes of failure include network \
 issues, invalid input files, or service outages — none of which \
 are resolved by retrying with tweaked arguments.
+- After a failed submission, you MUST report the failure honestly. \
+Do NOT say the job was submitted successfully. Check the tool \
+result: if it contains "error", the submission failed. Only say \
+"submitted" if the tool result confirms success.
 
 == IMPORTANT ==
 - If no workflow matches the user's request, say so clearly. Do NOT \
@@ -195,7 +211,8 @@ from them.
 internal IDs (workflow_id, submission_id), or tool names in your \
 response to the user. Refer to services by their display name \
 (e.g., "Genome Assembly", "Comprehensive Genome Analysis"). \
-Just confirm that the job was submitted and let the user know \
+Confirm the job was submitted, state where the results will be \
+saved (the output_path from the tool result), and let the user know \
 they will be notified when it completes.
 """
     return (

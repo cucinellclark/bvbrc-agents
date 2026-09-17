@@ -21,6 +21,7 @@ class Step(BaseModel):
     agent_key: str  # Registry key, e.g. "data", "service"
     task: str  # Focused task description passed to the agent
     depends_on: list[int] = Field(default_factory=list)  # Step indices
+    batch_mode: bool = False  # True only for planning-delegated steps
 
 
 class Plan(BaseModel):

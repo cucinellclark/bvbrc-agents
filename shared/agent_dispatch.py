@@ -135,7 +135,7 @@ def _build_config_kwargs(
 
     # Forward session context for session-based workspace output paths.
     # submit_gowe_job uses these to rewrite output_path under
-    # /<workspace_path>/.chats/<session_id>/<subfolder>
+    # /<workspace_path>/chats/<session_id>/<subfolder>
     session_id = ctx.get("session_id")
     if session_id:
         config_kwargs["session_id"] = session_id

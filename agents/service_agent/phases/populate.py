@@ -55,6 +55,11 @@ STUCK_MESSAGE = (
     "summarizing what you need from the user, or explain the problem."
 )
 
+SUCCESS_PHRASES = (
+    "submitted successfully", "has been submitted", "job was submitted",
+    "submission was successful", "successfully submitted", "job is now running",
+)
+
 
 def _parse_tool_calls(response: Any) -> list[ToolCall]:
     return _parse_tool_calls_raw(response, ToolCall)
@@ -86,6 +91,8 @@ async def populate_and_submit(
           - status="error" (failure)
     """
     state.current_phase = "populate"
+    batch_mode = bool(state.context.get("batch_mode", False)) if state.context else False
+    force_no_tools = False
 
     # Build system prompt — feed parsed_documents for file inventory
     parsed_docs = state.context.get("parsed_documents", []) if state.context else []
@@ -135,12 +142,20 @@ async def populate_and_submit(
                 "page_context", "images",
                 "conversation_summary", "recent_messages",
                 "parsed_documents", "attached_files",
+                "batch_mode",
             )
         }
         if ctx_for_prompt:
             system_prompt += (
                 f"\n\n=== ADDITIONAL CONTEXT ===\n{json.dumps(ctx_for_prompt)}"
             )
+
+    if batch_mode:
+        system_prompt += (
+            "\n\n=== BATCH MODE ===\n"
+            "You have been delegated a multi-sample task. You may call "
+            "submit_gowe_job once per sample as instructed."
+        )
 
     # Initialize messages
     state.reset_messages()
@@ -207,6 +222,7 @@ async def populate_and_submit(
             messages=state.messages,
             tools=POPULATE_TOOLS,
             config=config,
+            tool_choice="none" if force_no_tools else None,
         )
 
         # --- Cancel checkpoint: after LLM call ---
@@ -272,6 +288,48 @@ async def populate_and_submit(
                         )
                         continue
 
+                if not state.submission_ids and ever_attempted_submit:
+                    last_submit_error = next(
+                        (te.error for te in reversed(state.tool_executions)
+                         if te.tool_call.name == "submit_gowe_job"),
+                        "the submission failed",
+                    )
+                    claims_success = any(
+                        p in content.lower() for p in SUCCESS_PHRASES
+                    )
+                    if claims_success:
+                        correction_count = getattr(
+                            state, "_correction_count", 0
+                        )
+                        if correction_count < 1:
+                            state._correction_count = correction_count + 1
+                            logger.warning(
+                                "LLM claimed success after failed submit; "
+                                "nudging."
+                            )
+                            state.add_assistant_message(
+                                content=content, tool_calls=[],
+                            )
+                            state.add_user_message(
+                                "SYSTEM: Your submission FAILED. Do NOT "
+                                "claim it was successful. The "
+                                "submit_gowe_job tool returned an error. "
+                                "Report the actual error to the user "
+                                "honestly."
+                            )
+                            continue
+                        # Nudge did not work — hard-overwrite.
+                        state.status = "error"
+                        state.error_message = (
+                            f"The job was NOT submitted. Submission "
+                            f"failed with: {last_submit_error}"
+                        )
+                        return state
+                    # Honest failure text: surface as error.
+                    state.status = "error"
+                    state.error_message = content
+                    return state
+
                 # Normal exit: asking a question, presenting a
                 # recommendation, or exhausted nudge attempts.
                 state.status = "needs_input"
@@ -313,6 +371,28 @@ async def populate_and_submit(
 
             # --- Cancel checkpoint: before each tool execution ---
             _check_cancelled()
+
+            # Single-submission cap: for non-batch requests, block any
+            # additional submit_gowe_job calls after the first success.
+            if (
+                tc.name == "submit_gowe_job"
+                and not batch_mode
+                and state.submission_ids
+            ):
+                logger.warning(
+                    "Single-submission cap: skipping extra submit_gowe_job call %s", tc.id
+                )
+                state.add_tool_result(
+                    tc.id,
+                    json.dumps({
+                        "_skipped": True,
+                        "_message": (
+                            "A job has already been submitted for this request. "
+                            "Do NOT submit again. Summarize the submission for the user."
+                        ),
+                    }),
+                )
+                continue
 
             fp = call_fingerprint(tc)
 
@@ -423,6 +503,13 @@ async def populate_and_submit(
                 # Feed result back so LLM can continue (more samples) or summarize
                 result_str = truncate_result(result)
                 state.add_tool_result(tc.id, result_str)
+
+                # For single-job requests, force the next LLM call to
+                # produce text only (no tool calls) so it summarizes
+                # instead of submitting again.
+                if not batch_mode:
+                    force_no_tools = True
+
                 # Do NOT return here -- let the LLM continue the loop.
                 # It may have more samples to submit. The loop exits when
                 # the LLM produces a text response (no tool calls) after

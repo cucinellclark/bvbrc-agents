@@ -18,9 +18,9 @@ The user's home directory typically contains:
 - ``Feature Groups/`` — named sets of feature IDs
 - ``Experiments/`` — experiment metadata
 - ``.ServiceName_timestamp/`` — job output folders (e.g. ``.GenomeAssembly_20240301T120000/``)
-- ``.chats/<session>/`` — hidden session folder for this chat (uploads, PDF \
-extracts, job outputs submitted from the chatbot). Not listed in a normal \
-home browse. Use the path from ``=== SESSION WORKSPACE ===`` to access it.
+- ``chats/<session>/`` — session folder for this chat (uploads, PDF \
+extracts, job outputs submitted from the chatbot). Use the path from \
+``=== SESSION WORKSPACE ===`` to access it.
 - User-created folders
 
 ### Chat Session vs Home — When to Search Where
@@ -41,7 +41,7 @@ home browse. Use the path from ``=== SESSION WORKSPACE ===`` to access it.
 the named item, browse home or search with ``name_contains``. Do not tell \
 the user a file is gone until both places have been checked.
 
-Do not search other sessions under ``.chats/`` unless the user asks.
+Do not search other sessions under ``chats/`` unless the user asks.
 
 ### Path Rules — CRITICAL
 - Use RELATIVE paths (the system resolves them to the user's home).

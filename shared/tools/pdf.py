@@ -122,7 +122,7 @@ async def persist_session_file(
     config: Any,
     existing_names: set[str] | None = None,
 ) -> str | None:
-    """Write *filename* under ``/.chats/<session_id>/<subfolder>/``.
+    """Write *filename* under ``/chats/<session_id>/<subfolder>/``.
 
     Returns the full workspace path on success, or ``None`` on failure
     (logged at WARNING).
@@ -164,7 +164,7 @@ async def persist_session_file(
     # Build the destination folder and file path
     # workspace_path is like "/user@domain/home" — strip trailing slash
     base = workspace_path.rstrip("/")
-    folder_path = f"{base}/.chats/{session_id}/{subfolder}"
+    folder_path = f"{base}/chats/{session_id}/{subfolder}"
     file_path = f"{folder_path}/{filename}"
 
     tmp_dir: str | None = None
@@ -227,7 +227,7 @@ async def persist_extracted_text(
     config: Any,
     existing_names: set[str] | None = None,
 ) -> str | None:
-    """Write ``<stem>.txt`` under ``/.chats/<session_id>/parsed_pdfs/``.
+    """Write ``<stem>.txt`` under ``/chats/<session_id>/parsed_pdfs/``.
 
     Thin wrapper around :func:`persist_session_file`.
     """

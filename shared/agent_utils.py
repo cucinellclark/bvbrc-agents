@@ -639,14 +639,14 @@ def build_session_workspace_path(
     This is the canonical location for uploads, PDF extracts, and GoWe job
     outputs created during this chat session::
 
-        /<user>/home/.chats/<session_id>/
+        /<user>/home/chats/<session_id>/
 
     The same path is used by ``submit_gowe_job()`` and ``persist_session_file()``
     when writing files.
     """
     if not workspace_path or not session_id:
         return None
-    return f"{workspace_path.rstrip('/')}/.chats/{session_id}"
+    return f"{workspace_path.rstrip('/')}/chats/{session_id}"
 
 
 def format_session_workspace(context: dict[str, Any] | None) -> str:
@@ -682,7 +682,7 @@ def format_session_workspace(context: dict[str, Any] | None) -> str:
         "home — do not look for those only under this path.\n"
         "\n"
         "Do not invent other session UUIDs. Do not search sibling folders\n"
-        "under .chats/ unless the user asks."
+        "under chats/ unless the user asks."
     )
 
 

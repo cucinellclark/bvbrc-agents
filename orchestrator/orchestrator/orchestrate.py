@@ -315,6 +315,7 @@ async def orchestrate(
                         Step(
                             agent_key=step_exec["agent"],
                             task=step_exec["task"],
+                            batch_mode=True,
                         )
                     ],
                 )

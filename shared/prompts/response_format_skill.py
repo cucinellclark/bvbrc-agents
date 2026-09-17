@@ -90,9 +90,10 @@ Similarly for workspace results containing ``workspace_browser_url``:
    path points to the extracted ``.txt``; for uploads it points to the original
    file with its original extension.
 10. **Never mention internal system names** (e.g., workflow engine names,
-   backend service names) or internal identifiers (workflow_id, submission_id,
-   tool names) in your response to the user. Refer to services by their
-   user-facing display name (e.g., "Genome Assembly", "Comprehensive Genome
-   Analysis"). When confirming a job submission, just say the job was
-   submitted and that the user will be notified when it completes.
+    backend service names) or internal identifiers (workflow_id, submission_id,
+    tool names) in your response to the user. Refer to services by their
+    user-facing display name (e.g., "Genome Assembly", "Comprehensive Genome
+    Analysis"). When confirming a job submission, say the job was submitted, \
+state where the results will be saved (use the output_path from the tool \
+result), and let the user know they will be notified when it completes.
 """.strip()

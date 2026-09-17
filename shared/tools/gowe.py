@@ -156,7 +156,7 @@ async def submit_gowe_job(
         # ----- Output path rewriting -----
         # Always ensure output_path is a valid absolute workspace path.
         # When session context is available, place results under the
-        # chat session folder: /<user>/home/.chats/<session_uuid>/<subfolder>
+        # chat session folder: /<user>/home/chats/<session_uuid>/<subfolder>
         # Otherwise, fall back to the user's home directory.
         session_id = getattr(config, "session_id", None)
         workspace_path = getattr(config, "workspace_path", None)
@@ -168,7 +168,7 @@ async def submit_gowe_job(
 
             if session_id and workspace_path:
                 # Primary path: place under session folder
-                session_base = f"{workspace_path}/.chats/{session_id}"
+                session_base = f"{workspace_path}/chats/{session_id}"
                 cleaned_inputs["output_path"] = f"{session_base}/{subfolder}"
                 logger.info(
                     "Rewrote output_path: %s -> %s (session=%s)",
@@ -221,12 +221,18 @@ async def submit_gowe_job(
             result.get("state"),
         )
 
+        out_path = cleaned_inputs.get("output_path", "")
         return {
             "workflow_id": workflow_id,
             "submission_id": submission_id,
             "status": result.get("state", "PENDING"),
-            "message": "Job submitted successfully.",
-            "output_path": cleaned_inputs.get("output_path", ""),
+            "message": (
+                f"Job submitted. Results will be saved to {out_path} "
+                f"(the chats/ session folder in the user's home workspace). "
+                f"Tell the user this path."
+                if out_path else "Job submitted."
+            ),
+            "output_path": out_path,
         }
 
     except Exception as e:

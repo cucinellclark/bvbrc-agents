@@ -25,7 +25,7 @@ system. The typical structure is:
     Experiments/            -- differential expression experiments
     <job_output_folders>/   -- results from BV-BRC service jobs
     <user_folders>/         -- user-created folders with uploaded files
-    .chats/<session>/       -- hidden session folder for this chat
+    chats/<session>/        -- session folder for this chat
         uploaded_files/     -- files attached in this chat session
         parsed_pdfs/        -- PDF text extracts
         <job_subfolder>/    -- GoWe job outputs from this chat
@@ -33,8 +33,8 @@ system. The typical structure is:
 Common job output folders follow the pattern:
   .<ServiceName>_<timestamp>/  -- e.g., .GenomeAssembly2_20240315T...
 
-The .chats/ folder is hidden by convention and not shown in a normal home \
-listing. Use the path from === SESSION WORKSPACE === to access it."""
+The chats/ folder contains session folders for chatbot conversations. \
+Use the path from === SESSION WORKSPACE === to access it."""
 
 _FILE_TYPES = """
 === WORKSPACE FILE TYPES ===

@@ -126,6 +126,11 @@ async def execute_agent_step(
     if request.workflow_context:
         context_data["workflow_context"] = request.workflow_context
 
+    # Forward batch_mode flag so the service agent knows whether
+    # multiple submissions are permitted (planning-delegated steps only)
+    if step.batch_mode:
+        context_data["batch_mode"] = True
+
     if context_data:
         arguments["context"] = context_data
 

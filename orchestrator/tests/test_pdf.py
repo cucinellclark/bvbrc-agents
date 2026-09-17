@@ -254,13 +254,13 @@ async def test_persist_uses_the_intended_basename(monkeypatch):
     )
 
     assert path == (
-        "/alice@patricbrc.org/home/.chats/sess-1/uploaded_files/Ecoli_K12.fasta"
+        "/alice@patricbrc.org/home/chats/sess-1/uploaded_files/Ecoli_K12.fasta"
     )
     local_path, upload_dir, body = uploads[0]
     import os as _os
 
     assert _os.path.basename(local_path) == "Ecoli_K12.fasta"
-    assert upload_dir == "/alice@patricbrc.org/home/.chats/sess-1/uploaded_files"
+    assert upload_dir == "/alice@patricbrc.org/home/chats/sess-1/uploaded_files"
     assert body == ">seq1\nACGT\n"
 
 
@@ -351,7 +351,7 @@ async def test_upload_persisted_with_original_extension(monkeypatch):
     (doc,) = request.parsed_documents
     assert doc["name"] == "Ecoli_K12.fasta"
     assert doc["workspace_path"] == (
-        "/alice@patricbrc.org/home/.chats/sess-1/uploaded_files/Ecoli_K12.fasta"
+        "/alice@patricbrc.org/home/chats/sess-1/uploaded_files/Ecoli_K12.fasta"
     )
     assert doc["source"] == "upload"
     assert "page_count" not in doc
@@ -458,7 +458,7 @@ def test_format_successful_document():
             "name": "paper.pdf",
             "page_count": 5,
             "char_count": 12000,
-            "workspace_txt_path": "/user@host/home/.chats/abc/parsed_pdfs/paper.txt",
+            "workspace_txt_path": "/user@host/home/chats/abc/parsed_pdfs/paper.txt",
             "excerpt": "This is the beginning of the paper...",
         }
     ]
@@ -469,7 +469,7 @@ def test_format_successful_document():
     assert "paper.pdf" in result
     assert "5 pages" in result
     assert "12000 chars" in result
-    assert "/user@host/home/.chats/abc/parsed_pdfs/paper.txt" in result
+    assert "/user@host/home/chats/abc/parsed_pdfs/paper.txt" in result
     assert "This is the beginning of the paper..." in result
     assert "read_file_preview" in result
 
@@ -503,7 +503,7 @@ def test_format_mixed_success_and_failure():
             "name": "good.pdf",
             "page_count": 3,
             "char_count": 8000,
-            "workspace_txt_path": "/u/home/.chats/s1/parsed_pdfs/good.txt",
+            "workspace_txt_path": "/u/home/chats/s1/parsed_pdfs/good.txt",
             "excerpt": "Abstract: ...",
         },
         {
@@ -554,7 +554,7 @@ def test_format_document_without_excerpt():
             "name": "empty_extract.pdf",
             "page_count": 2,
             "char_count": 0,
-            "workspace_txt_path": "/u/home/.chats/s/parsed_pdfs/empty_extract.txt",
+            "workspace_txt_path": "/u/home/chats/s/parsed_pdfs/empty_extract.txt",
         }
     ]
 
@@ -572,7 +572,7 @@ def test_format_upload_omits_pages_and_flags_the_original_file():
     out = format_attached_documents([
         {
             "name": "Ecoli_K12.fasta",
-            "workspace_path": "/alice/home/.chats/s1/uploaded_files/Ecoli_K12.fasta",
+            "workspace_path": "/alice/home/chats/s1/uploaded_files/Ecoli_K12.fasta",
             "char_count": 4637821,
             "excerpt": ">seq1",
             "source": "upload",
@@ -592,7 +592,7 @@ def test_format_reports_a_renamed_upload():
         {
             "name": "sample.fasta",
             "saved_as": "sample_a1b2c3.fasta",
-            "workspace_path": "/alice/home/.chats/s1/uploaded_files/sample_a1b2c3.fasta",
+            "workspace_path": "/alice/home/chats/s1/uploaded_files/sample_a1b2c3.fasta",
             "char_count": 10,
             "excerpt": ">s",
             "source": "upload",
