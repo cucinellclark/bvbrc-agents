@@ -25,10 +25,42 @@ for querying BV-BRC's Solr collections.  Follow these rules:
 - Year range: ``completion_date:[2020 TO 2024]``
 
 ### Key Collections
-- ``genome`` — bacterial/archaeal/viral genomes (has ``genome_id``, ``genome_name``, ``genus``, ``species``, ``host_name``, ``isolation_country``, etc.)
-- ``genome_feature`` — genes/proteins (has ``feature_id``, ``patric_id``, ``genome_id``, ``product``, ``gene``)
-- ``genome_amr`` — AMR phenotypes (has ``genome_id``, ``antibiotic``, ``resistant_phenotype``)
-- ``sp_gene`` — specialty genes (has ``genome_id``, ``property``: ``Antibiotic Resistance``, ``Virulence Factor``, etc.)
+- ``genome`` — bacterial/archaeal/viral genomes (has ``genome_id``, ``genome_name``,
+  ``genus``, ``species``, ``host_name``, ``isolation_country``, ``reference_genome``, etc.)
+  - ``reference_genome`` field: values are ``"Reference"``, ``"Representative"``, or
+    empty/blank. To find reference/representative genomes, filter by
+    ``reference_genome:(Reference OR Representative)``.  Do NOT use
+    ``genome_status:Complete`` as a proxy — "Complete" means assembly status,
+    NOT reference/representative designation.
+- ``genome_feature`` — genes/proteins (has ``feature_id``, ``patric_id``,
+  ``genome_id``, ``product``, ``gene``, ``plfam_id``, ``pgfam_id``, etc.)
+  - ``plfam_id`` (PLFam) and ``pgfam_id`` (PGFam) are protein family assignments.
+    Always include these in ``select`` when answering questions about protein
+    families or family annotations. If a query result has empty ``plfam_id``/
+    ``pgfam_id``, the annotation genuinely does not exist for that feature.
+    But if the fields were not included in ``select``, they will be absent from
+    the response — that does NOT mean the annotation is missing. Always
+    explicitly request these fields before concluding "no family assignment."
+- ``genome_amr`` — AMR phenotypes (has ``genome_id``, ``antibiotic``,
+  ``resistant_phenotype``)
+- ``sp_gene`` — specialty genes (has ``genome_id``, ``property``, ``gene``,
+  ``product``, ``source``, ``evidence``)
+  - ``property`` values — these are DISTINCT categories, not interchangeable:
+    - ``"Antibiotic Resistance"`` — acquired AMR genes (answer AMR questions)
+    - ``"Virulence Factor"`` — virulence determinants (answer virulence questions)
+    - ``"Antibiotic Target in Susceptible Species"`` — normal cellular drug
+      targets (housekeeping genes like gyrA, rpoB); these are NOT resistance
+      genes and NOT virulence factors. Do NOT present these as AMR or virulence
+      results. If the user asks about AMR/virulence and you find only
+      "Antibiotic Target" hits, explain clearly that these are drug targets in
+      susceptible organisms, not resistance or virulence genes.
+    - ``"Drug Target"`` — therapeutic drug targets
+    - ``"Essential Gene"`` — genes essential for survival
+    - ``"Human Homolog"`` — genes with human homologs
+    - ``"Transporter"`` — membrane transporter genes
+  - When the user asks about "AMR genes," query ``property:"Antibiotic Resistance"``.
+    When they ask about "virulence factors," query ``property:"Virulence Factor"``.
+    Do NOT conflate categories.
 - ``pathway`` — metabolic pathways (has ``genome_id``, ``pathway_name``, ``pathway_id``)
 - ``epitope`` — epitope data (has ``epitope_id``, ``organism``, ``protein_name``)
 

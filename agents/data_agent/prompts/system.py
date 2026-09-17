@@ -71,9 +71,46 @@ Common query patterns for VIRAL genomes:
 NOTE: Viral genus names are often compound single words (Deltacoronavirus,
 Betacoronavirus, Alphainfluenzavirus). Do NOT split them into multiple words.
 
+Reference / representative genome filtering:
+  reference_genome:Reference                     -- reference genomes only
+  reference_genome:Representative                -- representative genomes only
+  reference_genome:(Reference OR Representative) -- both ref and rep genomes
+  genus:Rickettsia AND reference_genome:(Reference OR Representative)
+
+  IMPORTANT: reference_genome values are "Reference", "Representative", or
+  empty/blank.  Do NOT use genome_status:Complete as a proxy for reference/
+  representative status -- "Complete" means assembly completeness, NOT
+  reference/representative designation.  These are independent fields.
+
 Common query patterns for the sp_gene collection:
   organism:"Escherichia coli" AND property:"Virulence Factor"
   organism:"Salmonella enterica" AND property:"Antibiotic Resistance"
+
+  IMPORTANT -- sp_gene property categories are DISTINCT, not interchangeable:
+    "Antibiotic Resistance"                   -- acquired AMR genes
+    "Virulence Factor"                        -- virulence determinants
+    "Antibiotic Target in Susceptible Species" -- normal cellular drug targets
+        (housekeeping genes like gyrA, rpoB); these are NOT resistance genes
+        and NOT virulence factors
+    "Drug Target"                             -- therapeutic drug targets
+    "Essential Gene"                          -- genes essential for survival
+    "Human Homolog"                           -- genes with human homologs
+    "Transporter"                             -- membrane transporter genes
+
+  When the user asks about "AMR genes", query property:"Antibiotic Resistance".
+  When they ask about "virulence factors", query property:"Virulence Factor".
+  Do NOT present "Antibiotic Target in Susceptible Species" results as if they
+  answer an AMR or virulence question.  If you find only antibiotic-target
+  hits, explain clearly that these are normal drug targets in susceptible
+  organisms, not resistance or virulence genes.
+
+Protein family annotations (PLFam / PGFam):
+  The genome_feature collection has plfam_id (PLFam) and pgfam_id (PGFam)
+  fields.  When answering questions about protein families or family
+  assignments, ALWAYS include plfam_id and pgfam_id in your select fields.
+  If these fields are not in select, they will be absent from the response --
+  that does NOT mean the annotation is missing.  Only conclude "no family
+  assignment" when the field is explicitly requested and returns empty/null.
 
 Other patterns:
   feature_type:CDS AND product:"DNA gyrase"
