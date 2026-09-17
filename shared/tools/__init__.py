@@ -15,7 +15,7 @@ import math
 import os
 import traceback
 from collections import Counter, defaultdict
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 
 # Tools that legitimately run longer than the agent's default tool timeout.
@@ -235,11 +235,14 @@ def truncate_result(result: Dict[str, Any], max_chars: int = 8000) -> str:
 
     Smart truncation strategy:
       1. Strips ``ui_grid`` payloads (duplicate data for UI rendering).
-      2. Adds aggregate summary (type counts, folder distribution, etc.).
-      3. Samples items representatively across types (not just first N).
-      4. Strips verbose metadata from sampled items.
-      5. Uses binary search to find the largest sample that fits.
-      6. Falls back to hard truncation if nothing else works.
+      2. Catalog lists (``workflows``) are never sampled -- every entry is
+         kept and descriptions are shortened instead, so the LLM always
+         sees the full set of available workflows.
+      3. Adds aggregate summary (type counts, folder distribution, etc.).
+      4. Samples items representatively across types (not just first N).
+      5. Strips verbose metadata from sampled items.
+      6. Uses binary search to find the largest sample that fits.
+      7. Falls back to hard truncation if nothing else works.
 
     Args:
         result: The tool result dict.
@@ -253,6 +256,12 @@ def truncate_result(result: Dict[str, Any], max_chars: int = 8000) -> str:
 
     if len(serialized) <= max_chars:
         return serialized
+
+    # Catalog lists must stay complete: dropping entries hides options from
+    # the LLM (e.g. the BLAST workflow silently vanishing from discovery).
+    catalog = _fit_catalog(result, "workflows", "description", max_chars)
+    if catalog is not None:
+        return catalog
 
     # Find the list-valued key to truncate (check nested "result" envelope too)
     for list_key in ("items", "results", "records", "files", "ids"):
@@ -309,6 +318,71 @@ def truncate_result(result: Dict[str, Any], max_chars: int = 8000) -> str:
 
     # Fallback: hard truncate
     return serialized[:max_chars] + f"\n... [TRUNCATED at {max_chars} chars]"
+
+
+def _fit_catalog(
+    result: Dict[str, Any],
+    list_key: str,
+    text_key: str,
+    max_chars: int,
+) -> Optional[str]:
+    """Serialize ``result`` keeping every entry of ``result[list_key]``.
+
+    Tries compact (no-indent) JSON first, then shrinks the ``text_key``
+    field of each entry (binary search on its length) until the JSON fits
+    ``max_chars``.  Returns ``None`` when ``list_key`` is absent or the
+    entries cannot fit even with the text removed.
+    """
+    entries = result.get(list_key)
+    if not isinstance(entries, list) or not entries:
+        return None
+
+    longest = max(
+        (len(e.get(text_key, "")) for e in entries if isinstance(e, dict)),
+        default=0,
+    )
+
+    def shrink_entry(e: Any, cap: int) -> Any:
+        if not isinstance(e, dict) or not isinstance(e.get(text_key), str):
+            return e
+        if cap <= 0:
+            return {k: v for k, v in e.items() if k != text_key}
+        text = e[text_key]
+        return {**e, text_key: text[:cap].rstrip() + ("..." if len(text) > cap else "")}
+
+    def render(cap: int, indent: Optional[int] = 2) -> str:
+        shrunk = dict(result)
+        shrunk[list_key] = [shrink_entry(e, cap) for e in entries]
+        if cap < longest:
+            shrunk["_truncated"] = {
+                "total": len(entries),
+                "shown": len(entries),
+                "note": (
+                    f"All {len(entries)} entries kept; {text_key} fields "
+                    + (f"shortened to {cap} chars to fit." if cap > 0
+                       else "omitted to fit.")
+                ),
+            }
+        return json.dumps(shrunk, indent=indent, default=str)
+
+    # Indentation is the cheapest thing to give up -- keep full text if
+    # compact JSON fits.
+    compact = render(longest, indent=None)
+    if len(compact) <= max_chars:
+        return compact
+
+    # Binary search for the longest text cap that fits (compact JSON).
+    lo, hi = 0, longest
+    best: Optional[str] = None
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        candidate = render(mid, indent=None)
+        if len(candidate) <= max_chars:
+            best = candidate
+            lo = mid + 1
+        else:
+            hi = mid - 1
+    return best
 
 
 def _safe_args(arguments: Dict[str, Any]) -> Dict[str, Any]:

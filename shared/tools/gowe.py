@@ -126,8 +126,9 @@ async def list_gowe_workflows(
 ) -> Dict[str, Any]:
     """List all available workflows registered in GoWe.
 
-    Returns a simplified list with workflow ``id``, ``name``, ``description``,
-    ``step_count``, and ``class`` for each workflow.
+    Returns a simplified list with workflow ``id``, ``name``, and
+    ``description`` for each workflow.  Kept deliberately small so the
+    full catalog fits in one tool result -- the LLM must see every entry.
     """
     try:
         client = _get_client(config)
@@ -144,8 +145,6 @@ async def list_gowe_workflows(
                     "id": wf.get("id"),
                     "name": wf.get("name"),
                     "description": wf.get("description", ""),
-                    "step_count": wf.get("step_count", 1),
-                    "class": wf.get("class", ""),
                 }
             )
 
