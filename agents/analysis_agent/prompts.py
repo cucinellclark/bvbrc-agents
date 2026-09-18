@@ -54,8 +54,10 @@ templates with the actual values.
 additional output files.
 4. Read key files (TSV, text reports, FASTA headers, HTML reports) to \
 extract metrics. read_file_preview returns up to 32 KB per page; call \
-again with start_byte = next_start to continue. BV-BRC HTML reports \
-typically front-load summary statistics in the first page.
+again with start_byte = next_start to continue. Use search_file to find a \
+specific gene, sample, or metric name in a large TSV/log and read from its \
+byte_offset. BV-BRC HTML reports typically front-load summary statistics \
+in the first page.
 5. Produce a per-step summary, then an overall workflow summary.
 
 For multi-step workflows, present results in execution order, noting how \

@@ -3,9 +3,9 @@
 This is the SINGLE SOURCE OF TRUTH for tool schemas. Every agent uses these
 definitions. No per-agent schema variants.
 
-26 tools total:
+27 tools total:
   Data:      search_data, facet_query, probe_data, list_collections, get_collection_fields
-  Workspace: workspace_browse, get_file_metadata, read_file_preview
+  Workspace: workspace_browse, get_file_metadata, read_file_preview, search_file
   GoWe:      list_gowe_workflows, get_workflow_inputs, submit_gowe_job
   Groups:    create_group, list_groups, get_group_ids
   SRA:       get_sra_metadata
@@ -442,9 +442,9 @@ READ_FILE_PREVIEW = {
             "what you need from each page as you go — earlier pages may "
             "be trimmed from your context. Compressed .gz files are read "
             "transparently; offsets refer to the uncompressed text. PDFs "
-            "return extracted text. For large tabular/sequence files "
-            "prefer summarize_file and search_file (when available) over "
-            "reading end to end."
+            "return extracted text. To find something specific in a large "
+            "file use search_file and read from the match's byte_offset "
+            "instead of paging end to end."
         ),
         "parameters": {
             "type": "object",
@@ -1226,11 +1226,81 @@ LIST_AGENTS = {
 }
 
 
+SEARCH_FILE = {
+    "type": "function",
+    "function": {
+        "name": "search_file",
+        "description": (
+            "Search inside one workspace text file for a string or regex, "
+            "like grep. Returns matching lines, each with a byte_offset you "
+            "can pass to read_file_preview(start_byte=...) to read from that "
+            "point. Use this instead of paging through a large file to find "
+            "a gene ID, sample name, column value, error message, or FASTA "
+            "header. For FASTA header matches, record_length gives the "
+            "sequence length. Compressed .gz files are searched transparently. "
+            "Stops after max_matches or after scanning 25 MB (next_start "
+            "tells you where to resume)."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": (
+                        "Full workspace path to the file to search. Relative "
+                        "paths are resolved from the user's home directory."
+                    ),
+                },
+                "pattern": {
+                    "type": "string",
+                    "description": (
+                        "Text to find. Matched as a literal substring unless "
+                        "regex is true. Case-insensitive by default."
+                    ),
+                },
+                "regex": {
+                    "type": "boolean",
+                    "description": "Treat pattern as a Python regular expression. Default false.",
+                    "default": False,
+                },
+                "case_sensitive": {
+                    "type": "boolean",
+                    "description": "Match case exactly. Default false.",
+                    "default": False,
+                },
+                "max_matches": {
+                    "type": "integer",
+                    "description": "Stop after this many matches. Default 50, max 200.",
+                    "default": 50,
+                },
+                "context_lines": {
+                    "type": "integer",
+                    "description": (
+                        "Lines of context to include before and after each "
+                        "match. Default 0, max 5."
+                    ),
+                    "default": 0,
+                },
+                "start_byte": {
+                    "type": "integer",
+                    "description": (
+                        "Byte offset to start searching from (decompressed "
+                        "offset for gzip). Default 0. Use next_start from a "
+                        "previous truncated search to continue."
+                    ),
+                    "default": 0,
+                },
+            },
+            "required": ["path", "pattern"],
+        },
+    },
+}
+
 # ===================================================================
 # MASTER LISTS
 # ===================================================================
 
-# All 26 tools in a single list
+# All 27 tools in a single list
 ALL_TOOL_SCHEMAS: list[dict] = [
     # Data
     SEARCH_DATA,
@@ -1242,6 +1312,7 @@ ALL_TOOL_SCHEMAS: list[dict] = [
     WORKSPACE_BROWSE,
     GET_FILE_METADATA,
     READ_FILE_PREVIEW,
+    SEARCH_FILE,
     # GoWe
     LIST_GOWE_WORKFLOWS,
     GET_WORKFLOW_INPUTS,

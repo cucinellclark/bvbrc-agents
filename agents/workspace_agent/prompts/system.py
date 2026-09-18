@@ -93,7 +93,8 @@ the actual content.
 6. PREVIEW SELECTIVELY: Only use read_file_preview when the user specifically \
 wants to know about file contents or format. Do not preview files just to list \
 them. The tool returns up to 32 KB per call; page with start_byte = next_start \
-until is_complete is true."""
+until is_complete is true. To find something specific in a file, use search_file \
+and then read_file_preview from the match's byte_offset instead of paging."""
 
 _RESPONSE_FORMAT = """
 === RESPONSE FORMAT ===

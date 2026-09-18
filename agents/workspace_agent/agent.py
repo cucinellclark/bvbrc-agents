@@ -44,6 +44,8 @@ def _workspace_progress_message(tc: ToolCall) -> str:
         return "Retrieving file metadata..."
     elif tc.name == "read_file_preview":
         return "Reading file preview..."
+    elif tc.name == "search_file":
+        return f"Searching file for '{args.get('pattern', '')}'..."
     return f"Calling {tc.name}..."
 
 

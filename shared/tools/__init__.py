@@ -21,6 +21,7 @@ from typing import Any, Dict, Optional
 # Tools that legitimately run longer than the agent's default tool timeout.
 TOOL_TIMEOUT_OVERRIDES: dict[str, float] = {
     "find_similar_genomes": 120.0,
+    "search_file": 90.0,  # streams up to 25 MB from the workspace
 }
 
 # Per-tool result character limits.  Tools that return bulk text (file
@@ -29,7 +30,7 @@ TOOL_TIMEOUT_OVERRIDES: dict[str, float] = {
 # and re-creates the original "only see 7 KB" bug at a larger number.
 TOOL_RESULT_CHAR_LIMITS: dict[str, int] = {
     "read_file_preview": 48_000,   # 32 KB data + JSON escaping + envelope
-    "search_file":       16_000,   # Phase 2
+    "search_file":       16_000,   # self-bounded to ~14 000 by file_search.py
     "summarize_file":    12_000,   # Phase 3
 }
 

@@ -114,11 +114,16 @@ again with ``start_byte = next_start`` until ``is_complete`` is true.
 - Write down what you need from each page (counts, IDs, metrics) before \
 reading the next one. Earlier pages may be trimmed from your context; the \
 trimmed stub keeps only the byte range you already covered.
+- Use ``search_file`` to locate a row, ID, gene, sample name, header, or \
+error message inside a file — it is grep for one file. Each match carries \
+a ``byte_offset``; pass it as ``read_file_preview(start_byte=byte_offset)`` \
+to read from there. For FASTA header matches, ``record_length`` is the \
+sequence length, so "is gene X in this file and how long is it" is one call.
 - Do not read a large file end to end. Check ``total_size`` first \
 (``get_file_metadata`` or the first read). If the file is over ~200 KB, \
-read the first page, tell the user what you can see, and ask what they \
-need — unless ``summarize_file`` / ``search_file`` are available, in \
-which case use those.
+``search_file`` for what the user asked about, or read the first page and \
+ask what they need. To read the *end* of a file, ``read_file_preview`` with \
+``start_byte`` a little less than ``total_size``.
 - Compressed ``.gz`` files are read transparently; offsets refer to the \
 uncompressed text.
 - Group objects: use ``get_group_ids`` for the IDs. Job output lives in \

@@ -14,9 +14,7 @@ Covers:
 
 from __future__ import annotations
 
-import asyncio
 import gzip
-import io
 import json
 import os
 import sys
@@ -24,7 +22,6 @@ import tempfile
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -164,7 +161,7 @@ async def test_paging_continuity(range_server):
         line = f"row_{row_num:05d},value_{row_num},{'x' * 80}\n"
         lines.append(line)
         row_num += 1
-        if sum(len(l) for l in lines) > 100 * 1024:
+        if sum(len(ln) for ln in lines) > 100 * 1024:
             break
 
     csv_content = "".join(lines)
@@ -624,5 +621,225 @@ async def test_iter_lines_offsets():
         yield b"ab\r\ncd"
         yield b"\nef"
 
-    out = [(o, l) async for o, l in iter_lines(gen())]
+    out = [(o, ln) async for o, ln in iter_lines(gen())]
     assert out == [(0, b"ab"), (4, b"cd"), (7, b"ef")]
+
+
+# ===========================================================================
+# Phase 2: search_file
+# ===========================================================================
+
+def _write(tmpdir, name, text, gz=False):
+    path = os.path.join(tmpdir, name)
+    if gz:
+        with gzip.open(path, "wb") as f:
+            f.write(text.encode("utf-8"))
+    else:
+        with open(path, "wb") as f:
+            f.write(text.encode("utf-8"))
+    return path
+
+
+async def _search(base_url, filename, **kw):
+    from shared.tools.file_search import search_file
+    kw.setdefault("config", MockConfig())
+    kw.setdefault("headers", _mock_headers())
+    with _patch_download_url(base_url, filename):
+        return await search_file(path=f"/test@patricbrc.org/home/{filename}", **kw)
+
+
+@pytest.mark.asyncio
+async def test_search_literal_offsets_roundtrip(range_server):
+    """Literal search returns byte offsets that read_file_preview can jump to."""
+    tmpdir, base_url = range_server
+    from shared.tools.workspace import read_file_preview
+
+    rows = [f"genome_{i:04d}\tEscherichia coli\t{i * 7}\n" for i in range(2000)]
+    rows[1234] = "genome_1234\tSalmonella enterica\tTARGET\n"
+    content = "".join(rows)
+    _write(tmpdir, "search_lit.tsv", content)
+
+    result = await _search(base_url, "search_lit.tsv", pattern="salmonella")
+    assert "error" not in result, result
+    assert result["match_count"] == 1
+    assert result["truncated"] is False
+    assert result["partial"] is False
+    m = result["matches"][0]
+    assert m["line_number"] == 1235
+    assert m["line"].startswith("genome_1234")
+    expected_off = sum(len(r) for r in rows[:1234])
+    assert m["byte_offset"] == expected_off
+    assert "_summary" in result
+
+    # Round-trip: read from the match offset, page starts with that line
+    with _patch_download_url(base_url, "search_lit.tsv"):
+        page = await read_file_preview(
+            path="/test@patricbrc.org/home/search_lit.tsv",
+            start_byte=m["byte_offset"], max_bytes=4096,
+            config=MockConfig(), headers=_mock_headers(),
+        )
+    assert page["data"].startswith("genome_1234\tSalmonella")
+    assert page["start_byte"] == m["byte_offset"]
+
+
+@pytest.mark.asyncio
+async def test_search_regex_case_and_context(range_server):
+    tmpdir, base_url = range_server
+    content = "alpha\nERROR one\nbeta\ngamma\nerror two\ndelta\n"
+    _write(tmpdir, "search_ctx.log", content)
+
+    # case-insensitive literal by default
+    r = await _search(base_url, "search_ctx.log", pattern="error")
+    assert [m["line_number"] for m in r["matches"]] == [2, 5]
+
+    # case-sensitive
+    r = await _search(base_url, "search_ctx.log", pattern="ERROR", case_sensitive=True)
+    assert [m["line_number"] for m in r["matches"]] == [2]
+
+    # regex with context
+    r = await _search(base_url, "search_ctx.log", pattern=r"^error\s+\w+$", regex=True, context_lines=1)
+    assert len(r["matches"]) == 2
+    assert r["matches"][0]["before"] == ["alpha"]
+    assert r["matches"][0]["after"] == ["beta"]
+    assert r["matches"][1]["before"] == ["gamma"]
+    assert r["matches"][1]["after"] == ["delta"]
+
+    # invalid regex is a tool error, not an exception
+    r = await _search(base_url, "search_ctx.log", pattern="(unclosed", regex=True)
+    assert r["errorType"] == "INVALID_PARAMETERS"
+
+    # literal search treats regex metachars literally
+    _write(tmpdir, "search_meta.txt", "fig|83332.12.peg.1234\nfig|83332.12.peg.12345\n")
+    r = await _search(base_url, "search_meta.txt", pattern="fig|83332.12.peg.1234")
+    assert r["match_count"] == 2  # substring match hits both
+
+
+@pytest.mark.asyncio
+async def test_search_max_matches_and_resume(range_server):
+    tmpdir, base_url = range_server
+    lines = [f"hit {i}\n" for i in range(120)]
+    content = "".join(lines)
+    _write(tmpdir, "search_many.txt", content)
+
+    r = await _search(base_url, "search_many.txt", pattern="hit", max_matches=50)
+    assert r["match_count"] == 50
+    assert r["truncated"] is True
+    assert r["next_start"] == sum(len(ln) for ln in lines[:50])
+
+    r2 = await _search(base_url, "search_many.txt", pattern="hit", max_matches=200, start_byte=r["next_start"])
+    assert r2["match_count"] == 70
+    assert r2["truncated"] is False
+    assert r2["line_numbers_relative_to"] == r["next_start"]
+    assert r2["matches"][0]["line"] == "hit 50"
+    assert r2["matches"][0]["byte_offset"] == r["next_start"]
+
+    # max_matches is capped at 200
+    r3 = await _search(base_url, "search_many.txt", pattern="hit", max_matches=9999)
+    assert r3["match_count"] == 120
+
+
+@pytest.mark.asyncio
+async def test_search_midline_start_byte_skips_partial_line(range_server):
+    tmpdir, base_url = range_server
+    content = "needle one\nhay\nneedle two\n"
+    _write(tmpdir, "search_mid.txt", content)
+    # start inside "needle one" (byte 3): that partial line must not match
+    r = await _search(base_url, "search_mid.txt", pattern="needle", start_byte=3)
+    assert [m["line"] for m in r["matches"]] == ["needle two"]
+    assert r["matches"][0]["byte_offset"] == len("needle one\nhay\n")
+    # start exactly on a line boundary: that line is searched
+    r = await _search(base_url, "search_mid.txt", pattern="needle", start_byte=len("needle one\n"))
+    assert [m["line"] for m in r["matches"]] == ["needle two"]
+    r = await _search(base_url, "search_mid.txt", pattern="needle", start_byte=len("needle one\nhay\n"))
+    assert [m["line"] for m in r["matches"]] == ["needle two"]
+
+
+@pytest.mark.asyncio
+async def test_search_fasta_record_length_and_gzip(range_server):
+    tmpdir, base_url = range_server
+    fasta = (
+        ">fig|83332.12.peg.1 hypothetical\n" + "ACGT" * 25 + "\n" + "ACGT" * 10 + "\n"
+        ">fig|83332.12.peg.2 target gene\n" + "GGCC" * 7 + "\n"
+        ">fig|83332.12.peg.3 last\n" + "TTT\n"
+    )
+    _write(tmpdir, "search_seq.fna", fasta)
+    _write(tmpdir, "search_seq.fna.gz", fasta, gz=True)
+
+    r = await _search(base_url, "search_seq.fna", pattern="peg.2")
+    assert r["match_count"] == 1
+    assert r["matches"][0]["record_length"] == 28
+
+    # last record closes at EOF
+    r = await _search(base_url, "search_seq.fna", pattern="peg.3")
+    assert r["matches"][0]["record_length"] == 3
+    assert "record_length_partial" not in r["matches"][0]
+
+    # sequence-line match (not a header) has no record_length
+    r = await _search(base_url, "search_seq.fna", pattern="GGCCGGCC")
+    assert "record_length" not in r["matches"][0]
+
+    # gzip: same offsets in decompressed space
+    rg = await _search(base_url, "search_seq.fna.gz", pattern="peg.2")
+    assert rg["gzip"] is True
+    assert rg["offset_space"] == "decompressed"
+    assert rg["matches"][0]["byte_offset"] == fasta.index(">fig|83332.12.peg.2")
+    assert rg["matches"][0]["record_length"] == 28
+
+
+@pytest.mark.asyncio
+async def test_search_binary_pdf_and_missing(range_server):
+    tmpdir, base_url = range_server
+    with open(os.path.join(tmpdir, "search_img.png"), "wb") as f:
+        f.write(b"\x89PNG\r\n\x1a\n" + b"\x00" * 100)
+    r = await _search(base_url, "search_img.png", pattern="x")
+    assert r["errorType"] == "BINARY_FILE"
+
+    r = await _search(base_url, "whatever.pdf", pattern="x")
+    assert r["errorType"] == "UNSUPPORTED_FILE"
+    assert "parsed_txt_path" in r["hint"]
+
+    r = await _search(base_url, "search_img.png", pattern="")
+    assert r["errorType"] == "INVALID_PARAMETERS"
+
+    from shared.tools.file_search import search_file
+    fake_ws = MagicMock()
+    fake_ws._get_download_url = AsyncMock(return_value=["Error: _ERROR_Object not found_ERROR_"])
+    with patch("shared.tools.file_stream.get_workspace_functions", return_value=fake_ws), \
+         patch("shared.tools.file_stream.get_json_rpc", return_value=MagicMock()):
+        r = await search_file(path="/test@patricbrc.org/home/nope.txt", pattern="x",
+                              config=MockConfig(), headers=_mock_headers())
+    assert r["errorType"] == "PATH_NOT_FOUND"
+
+
+def test_search_result_fits_loop_cap():
+    """A worst-case result (200 matches x 300-char lines) stays under the
+    search_file result cap so truncate_result never hard-cuts it."""
+    from shared.tools import truncate_result, result_char_limit
+    from shared.tools.file_search import RESULT_CHAR_BUDGET
+    limit = result_char_limit("search_file")
+    assert RESULT_CHAR_BUDGET < limit
+    # envelope on top of the matches budget must still fit
+    envelope = {"matches": [], "match_count": 0, "truncated": True, "scanned_bytes": 26214400,
+                "partial": True, "gzip": True, "offset_space": "decompressed", "total_size": 10**9,
+                "workspace_path": "/x" * 100, "pattern": "p" * 2000, "regex": True,
+                "line_numbers_relative_to": 10**9, "next_start": 10**9,
+                "next_step": "x" * 200, "_summary": {"first_offsets": list(range(10))}}
+    assert len(json.dumps(envelope, indent=2)) + RESULT_CHAR_BUDGET <= limit
+    assert "[TRUNCATED" not in truncate_result(envelope, max_chars=limit)
+
+
+@pytest.mark.asyncio
+async def test_search_self_bounds_result_size(range_server):
+    """Many long matching lines are trimmed to the char budget with
+    next_start pointing at the first dropped match."""
+    tmpdir, base_url = range_server
+    lines = [f"MATCH {i:03d} " + "z" * 400 + "\n" for i in range(200)]
+    _write(tmpdir, "search_long.txt", "".join(lines))
+    r = await _search(base_url, "search_long.txt", pattern="MATCH", max_matches=200)
+    assert r["truncated"] is True
+    assert r["match_count"] < 200
+    assert r["matches"][0]["line_clipped"] is True
+    assert len(r["matches"][0]["line"]) == 300
+    n = r["match_count"]
+    assert r["next_start"] == sum(len(ln) for ln in lines[:n])
+    assert len(json.dumps(r["matches"], indent=2)) <= 12_000
