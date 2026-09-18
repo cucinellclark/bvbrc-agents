@@ -365,6 +365,14 @@ def truncate_result(result: Dict[str, Any], max_chars: int = 8000) -> str:
     if catalog is not None:
         return catalog
 
+    # Facet results: sample the bucket lists but always keep the per-field
+    # bucket / distinct counts.  Hard-cutting the JSON mid-bucket left the
+    # LLM with no total and thousands of ids to "count" (see the
+    # penicillin-resistant S. pneumoniae 5-minute timeout).
+    faceted = _fit_facets(result, max_chars)
+    if faceted is not None:
+        return faceted
+
     # Find the list-valued key to truncate (check nested "result" envelope too)
     for list_key in ("items", "results", "records", "files", "ids"):
         target = result
@@ -420,6 +428,54 @@ def truncate_result(result: Dict[str, Any], max_chars: int = 8000) -> str:
 
     # Fallback: hard truncate
     return serialized[:max_chars] + f"\n... [TRUNCATED at {max_chars} chars]"
+
+
+def _fit_facets(result: Dict[str, Any], max_chars: int) -> Optional[str]:
+    """Serialize a ``facet_query`` result within *max_chars*.
+
+    Keeps ``numFound``, ``bucket_counts`` / ``distinct_counts`` and every
+    other scalar key intact, then binary-searches the number of buckets
+    kept per field.  Returns ``None`` when *result* has no ``facets`` dict.
+    """
+    facets = result.get("facets")
+    if not isinstance(facets, dict) or not facets:
+        return None
+    lists = {f: v for f, v in facets.items() if isinstance(v, list)}
+    if not lists:
+        return None
+
+    total = {f: len(v) for f, v in lists.items()}
+    max_len = max(total.values())
+
+    def render(n: int) -> str:
+        trimmed = dict(result)
+        trimmed["facets"] = {
+            f: (v[:n] if isinstance(v, list) else v) for f, v in facets.items()
+        }
+        trimmed.setdefault("bucket_counts", total)
+        trimmed["_truncated"] = {
+            "buckets_total": total,
+            "buckets_shown": {f: min(n, len(v)) for f, v in lists.items()},
+            "note": (
+                f"Showing the top {n} buckets per field. bucket_counts / "
+                "distinct_counts give the full number of distinct values — "
+                "do not count the buckets."
+            ),
+        }
+        return json.dumps(trimmed, indent=2, default=str)
+
+    lo, hi, best = 0, max_len, None
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        candidate = render(mid)
+        if len(candidate) <= max_chars:
+            best = candidate
+            lo = mid + 1
+        else:
+            hi = mid - 1
+    # Even zero buckets did not fit (huge scalar payload) — let the generic
+    # fallback handle it.
+    return best
 
 
 def _fit_catalog(

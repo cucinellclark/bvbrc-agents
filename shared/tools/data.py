@@ -110,6 +110,7 @@ async def facet_query(
     facet_fields: List[str],
     facet_limit: int = 20,
     facet_mincount: int = 1,
+    count_distinct: bool = False,
     base_url: Optional[str] = None,
     headers: Optional[Dict[str, str]] = None,
     **kwargs: Any,
@@ -123,11 +124,16 @@ async def facet_query(
         facet_fields: Fields to get distributions for.
         facet_limit: Max facet values per field (default 20).
         facet_mincount: Minimum count to include a value (default 1).
+        count_distinct: Return the exact number of distinct values per
+            field as ``distinct_counts`` (all buckets fetched server-side,
+            only a top-20 sample returned).  Use for "how many genomes…"
+            questions against record-per-genome collections.
         base_url: Override the default BV-BRC API URL.
         headers: HTTP headers dict.
 
     Returns:
-        Dict with ``numFound`` and ``facets``.
+        Dict with ``numFound``, ``facets``, ``bucket_counts`` and, in
+        count_distinct mode, ``distinct_counts``.
     """
     _, solr_facet_query_fn, _ = _get_solr_functions()
 
@@ -138,6 +144,7 @@ async def facet_query(
         facet_fields=facet_fields,
         facet_limit=facet_limit,
         facet_mincount=facet_mincount,
+        count_distinct=bool(count_distinct),
         token=token,
         base_url=base_url,
     )

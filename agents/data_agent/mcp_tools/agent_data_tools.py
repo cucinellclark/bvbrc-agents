@@ -338,12 +338,24 @@ async def solr_query(
         }
 
 
+# Upper bound on buckets fetched for count_distinct.  Solr accepts -1 for
+# "unlimited" but a facet over a very high-cardinality field (feature_id
+# across millions of features) would ship the whole list back; cap it and
+# flag the result instead.
+_DISTINCT_BUCKET_CAP = 200_000
+
+# How many top buckets to keep in a count_distinct result — enough for the
+# LLM to see representative values, never enough to tempt it to count.
+_DISTINCT_SAMPLE_BUCKETS = 20
+
+
 async def solr_facet_query(
     collection: str,
     query: str = "*:*",
     facet_fields: Optional[List[str]] = None,
     facet_limit: int = 20,
     facet_mincount: int = 1,
+    count_distinct: bool = False,
     token: Optional[str] = None,
     base_url: Optional[str] = None,
 ) -> Dict[str, Any]:
@@ -354,18 +366,29 @@ async def solr_facet_query(
     document bodies. Useful for "how many X per Y" or "top N by field"
     questions.
 
+    With ``count_distinct=True`` the tool answers "how many distinct X"
+    (e.g. how many *genomes* have a matching genome_amr record): every
+    bucket is fetched server-side, ``distinct_counts[field]`` carries the
+    exact number, and only the top ``_DISTINCT_SAMPLE_BUCKETS`` buckets
+    are returned so the LLM never has to count a list itself.
+
     Args:
         collection: Solr collection name.
         query: Solr query string to filter before faceting.
         facet_fields: Fields to compute distributions for.
         facet_limit: Maximum values per facet field (default 20).
+            Ignored when ``count_distinct`` is set.
         facet_mincount: Minimum count to include (default 1).
+        count_distinct: Return the exact number of distinct values per
+            field in ``distinct_counts`` instead of a full bucket list.
         token: Authentication token (optional).
         base_url: Override the default BV-BRC API URL.
 
     Returns:
         {"numFound": int, "facets": {field: [{"value": str, "count": int}, ...]},
-         "source": "bvbrc-mcp-data"}
+         "bucket_counts": {field: int}, "source": "bvbrc-mcp-data"}
+        plus ``"distinct_counts": {field: int}`` (and ``"distinct_counts_capped"``
+        when a field hit the bucket cap) in count_distinct mode.
     """
     data_fn = _get_data_functions()
     headers = _build_auth_headers(token)
@@ -389,6 +412,8 @@ async def solr_facet_query(
     if validation_error:
         return validation_error
 
+    effective_limit = _DISTINCT_BUCKET_CAP if count_distinct else facet_limit
+
     try:
         result = await data_fn.query_faceted(
             core=collection,
@@ -396,9 +421,30 @@ async def solr_facet_query(
             facet_fields=facet_fields,
             base_url=effective_url,
             headers=headers,
-            facet_limit=facet_limit,
+            facet_limit=effective_limit,
             facet_mincount=facet_mincount,
         )
+        facets = result.get("facets") or {}
+        # Older MCP builds do not return bucket_counts; derive it.
+        result.setdefault(
+            "bucket_counts", {f: len(v) for f, v in facets.items()}
+        )
+        if count_distinct:
+            distinct = dict(result["bucket_counts"])
+            capped = [f for f, n in distinct.items() if n >= _DISTINCT_BUCKET_CAP]
+            result["distinct_counts"] = distinct
+            if capped:
+                result["distinct_counts_capped"] = capped
+            # Trim the bucket lists: the number is the answer, the list is
+            # only context.
+            result["facets"] = {
+                f: v[:_DISTINCT_SAMPLE_BUCKETS] for f, v in facets.items()
+            }
+            result["_note"] = (
+                "count_distinct: distinct_counts[field] is the exact number of "
+                f"distinct values. facets[field] shows only the top "
+                f"{_DISTINCT_SAMPLE_BUCKETS} values — do not count them."
+            )
         result["source"] = "bvbrc-mcp-data"
         return result
 

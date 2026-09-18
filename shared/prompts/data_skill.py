@@ -42,7 +42,11 @@ for querying BV-BRC's Solr collections.  Follow these rules:
     the response — that does NOT mean the annotation is missing. Always
     explicitly request these fields before concluding "no family assignment."
 - ``genome_amr`` — AMR phenotypes (has ``genome_id``, ``antibiotic``,
-  ``resistant_phenotype``)
+  ``resistant_phenotype``). One genome has many rows, so ``numFound`` is a
+  record count, not a genome count. For "how many genomes are resistant to
+  X" use ``facet_query(collection="genome_amr", query=..., facet_fields=
+  ["genome_id"], count_distinct=true)`` and read ``distinct_counts.genome_id``.
+  Never request a large ``facet_limit`` and count the values yourself.
 - ``sp_gene`` — specialty genes (has ``genome_id``, ``property``, ``gene``,
   ``product``, ``source``, ``evidence``)
   - ``property`` values — these are DISTINCT categories, not interchangeable:

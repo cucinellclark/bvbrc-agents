@@ -189,7 +189,11 @@ FACET_QUERY = {
             "Get faceted counts (value distributions) for fields in a BV-BRC "
             "collection. Use this to understand data distributions, get breakdowns "
             "by category, or answer 'how many X per Y' questions. Returns counts "
-            "grouped by field values without returning individual records."
+            "grouped by field values without returning individual records. "
+            "To answer 'how many DISTINCT X' (e.g. how many genomes have a "
+            "matching genome_amr or genome_feature record), set count_distinct=true "
+            "and read distinct_counts[field] — never request a large facet_limit "
+            "and count the values yourself."
         ),
         "parameters": {
             "type": "object",
@@ -220,6 +224,17 @@ FACET_QUERY = {
                     "type": "integer",
                     "description": "Minimum count for a facet value to be included. Default 1.",
                     "default": 1,
+                },
+                "count_distinct": {
+                    "type": "boolean",
+                    "description": (
+                        "When true, return the exact number of distinct values per "
+                        "facet field in distinct_counts (all buckets are counted "
+                        "server-side; only the top 20 are returned). Use this for "
+                        "'how many genomes/features/...' questions where records "
+                        "are not one-per-entity. facet_limit is ignored."
+                    ),
+                    "default": False,
                 },
             },
             "required": ["collection", "query", "facet_fields"],

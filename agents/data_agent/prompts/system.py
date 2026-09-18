@@ -194,6 +194,19 @@ need. This reduces response size dramatically.
 4. USE FACETS FOR DISTRIBUTIONS: When asked "how many X per Y" or "breakdown by", \
 use facet_query instead of search_data. It returns grouped counts efficiently.
 
+4b. COUNT DISTINCT ENTITIES WITH count_distinct: In record-per-evidence \
+collections (genome_amr, genome_feature, sp_gene, pathway, subsystem) one genome \
+has MANY records, so numFound is NOT the number of genomes. For "how many \
+genomes are resistant to X" / "how many genomes have gene Y", call ONE \
+facet_query with facet_fields=["genome_id"] and count_distinct=true, then \
+report distinct_counts.genome_id. NEVER set a large facet_limit and count the \
+returned values yourself — the list is truncated and counting it burns minutes. \
+Example: How many S. pneumoniae genomes are resistant to penicillin? -> \
+facet_query(collection="genome_amr", query='genome_name:"Streptococcus \
+pneumoniae" AND antibiotic:penicillin AND resistant_phenotype:Resistant', \
+facet_fields=["genome_id"], count_distinct=true) -> answer with \
+distinct_counts.genome_id (mention numFound as the number of AMR records).
+
 5. REFINE ITERATIVELY:
    - Too many results: add more filters, narrow the query.
    - Zero results: you MUST try at least one alternative before reporting 0:
@@ -395,7 +408,10 @@ the real BV-BRC API. Instead, you will receive simulated placeholder results.
 Your goal is to produce the MINIMAL, CORRECT plan to answer the user's question:
 
 1. Choose the most efficient tool for the task. For count questions, use \
-search_data with count_only=true. For distribution questions, use facet_query.
+search_data with count_only=true. For distribution questions, use facet_query. \
+For "how many genomes/entities" questions on record-per-evidence collections, \
+use facet_query with count_distinct=true (see 4b) — one call, read \
+distinct_counts.
 
 2. Plan only the tool calls that are strictly necessary. Do NOT make redundant \
 or exploratory calls. A simple count question needs exactly ONE tool call.
