@@ -45,7 +45,12 @@ from service_agent.llm_client import chat_completion, create_client
 from service_agent.models import AgentConfig, AgentState, ToolCall
 from service_agent.prompts.populate import build_populate_prompt
 from shared.tools.schemas import ALL_TOOL_SCHEMAS as POPULATE_TOOLS
-from shared.tools import execute_tool, truncate_result, result_char_limit
+from shared.tools import (
+    execute_tool,
+    is_blocked_result,
+    result_char_limit,
+    truncate_result,
+)
 from shared.tools.registry import TOOL_DISPATCH
 
 logger = logging.getLogger(__name__)
@@ -59,6 +64,31 @@ SUCCESS_PHRASES = (
     "submitted successfully", "has been submitted", "job was submitted",
     "submission was successful", "successfully submitted", "job is now running",
 )
+
+PLAN_MODE_NUDGE = (
+    "SYSTEM: This session is in PLAN mode. Nothing was submitted — "
+    "submit_gowe_job was refused. Do NOT claim a job was submitted. "
+    "Rewrite your answer as a 'Ready to submit' summary (workflow, each "
+    "input value, output folder name) and tell the user to switch to "
+    "Execute mode to run it."
+)
+
+
+def _plan_mode_summary(state: AgentState) -> str:
+    """Fallback 'Ready to submit' text when the LLM keeps claiming success."""
+    lines = ["**Ready to submit (plan mode — nothing was submitted).**", ""]
+    for action in state.blocked_actions:
+        lines.append(f"- {action.get('summary') or action.get('tool')}")
+    lines.append("")
+    lines.append(
+        "Switch this chat to **Execute mode** (the Plan/Execute toggle next "
+        "to the message box) and ask me to submit when you are ready."
+    )
+    return "\n".join(lines)
+
+
+def _is_blocked_execution(te: Any) -> bool:
+    return is_blocked_result(te.result)
 
 
 def _parse_tool_calls(response: Any) -> list[ToolCall]:
@@ -96,7 +126,10 @@ async def populate_and_submit(
 
     # Build system prompt — feed parsed_documents for file inventory
     parsed_docs = state.context.get("parsed_documents", []) if state.context else []
-    system_prompt = build_populate_prompt(attached_files=parsed_docs)
+    system_prompt = build_populate_prompt(
+        attached_files=parsed_docs,
+        execution_mode=config.execution_mode,
+    )
 
     images: list[str] = []
     if state.context:
@@ -250,12 +283,49 @@ async def populate_and_submit(
                     te.tool_call.name == "get_workflow_inputs"
                     for te in state.tool_executions
                 )
+                # A submit refused by the execution-mode gate never ran:
+                # it is neither an attempt nor a failure.
+                ever_blocked_submit = any(
+                    te.tool_call.name == "submit_gowe_job"
+                    and _is_blocked_execution(te)
+                    for te in state.tool_executions
+                )
                 ever_attempted_submit = any(
                     te.tool_call.name == "submit_gowe_job"
+                    and not _is_blocked_execution(te)
                     for te in state.tool_executions
                 )
 
-                if got_inputs and not ever_attempted_submit:
+                if not state.submission_ids and ever_blocked_submit:
+                    # PLAN mode: the job is prepared but was not
+                    # submitted.  Make sure the text says so.
+                    claims_success = any(
+                        p in content.lower() for p in SUCCESS_PHRASES
+                    )
+                    if claims_success:
+                        plan_nudges = getattr(state, "_plan_nudge_count", 0)
+                        if plan_nudges < 1:
+                            state._plan_nudge_count = plan_nudges + 1
+                            logger.warning(
+                                "LLM claimed success after plan-mode block; "
+                                "nudging."
+                            )
+                            state.add_assistant_message(
+                                content=content, tool_calls=[],
+                            )
+                            state.add_user_message(PLAN_MODE_NUDGE)
+                            continue
+                        logger.warning(
+                            "LLM still claimed success after plan-mode "
+                            "nudge; overwriting with templated summary."
+                        )
+                        content = _plan_mode_summary(state)
+                    state.status = "completed"
+                    state.current_phase = "ready"
+                    state.operation_message = content
+                    return state
+
+                if got_inputs and not ever_attempted_submit and not ever_blocked_submit:
                     # The LLM prepared to submit but never called
                     # submit_gowe_job.  Push it back into the loop
                     # (up to 2 times) to either actually submit or
@@ -352,7 +422,9 @@ async def populate_and_submit(
                 "list_gowe_workflows": "Discovering available workflows...",
                 "get_workflow_inputs": "Getting workflow input schema...",
                 "submit_gowe_job": (
-                    f"Submitting job {len(state.submission_ids) + 1}..."
+                    "Preparing job (plan mode \u2014 not submitting)..."
+                    if config.execution_mode != "execute"
+                    else f"Submitting job {len(state.submission_ids) + 1}..."
                     if state.submission_ids
                     else "Submitting job..."
                 ),
@@ -429,6 +501,24 @@ async def populate_and_submit(
                 duration_ms=duration_ms,
                 iteration=iteration,
             )
+
+            # Execution-mode gate refused the call (plan mode).  The
+            # tool never ran, so this is not a failed submission: feed
+            # the refusal back and force the next LLM call to be
+            # text-only so it produces the 'Ready to submit' summary
+            # instead of retrying.  In batch mode keep tools enabled so
+            # each sample still gets its own blocked entry.
+            if tc.name == "submit_gowe_job" and is_blocked_result(result):
+                logger.info(
+                    "submit_gowe_job refused by execution-mode gate "
+                    "(plan mode): %s",
+                    result.get("summary"),
+                )
+                result_str = truncate_result(result, max_chars=result_char_limit(tc.name))
+                state.add_tool_result(tc.id, result_str)
+                if not batch_mode:
+                    force_no_tools = True
+                continue
 
             # Circuit breaker: if submit_gowe_job failed, track it and
             # bail out after MAX_FAILED_SUBMISSIONS to prevent retry loops.

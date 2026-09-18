@@ -45,6 +45,81 @@ def result_char_limit(tool_name: str, default: int = 8000) -> int:
     return max(default, TOOL_RESULT_CHAR_LIMITS.get(tool_name, 0))
 
 
+# ---------------------------------------------------------------------------
+# Execution mode gate
+# ---------------------------------------------------------------------------
+
+# Tools that create durable side effects (a GoWe submission, a workspace
+# group).  They are only executed when the chat session is in EXECUTE
+# mode.  In PLAN mode (the default) ``execute_tool`` refuses them and
+# returns a structured ``blocked_by_mode`` result to the LLM instead.
+# This is the single enforcement point — every agent loop dispatches
+# through ``execute_tool``, so the gate holds regardless of which agent
+# the router picked or what the LLM decided.
+EXECUTE_ONLY_TOOLS: frozenset[str] = frozenset({"submit_gowe_job", "create_group"})
+
+EXECUTION_MODES: frozenset[str] = frozenset({"plan", "execute"})
+
+PLAN_MODE_BLOCKED_MESSAGE = (
+    "This chat session is in PLAN mode, so {tool} was NOT executed and "
+    "nothing was submitted or created. Do not call it again in this turn "
+    "and do not change any of the inputs. Instead, present exactly what you "
+    "prepared (workflow or group, every input value, output folder name) as "
+    "a 'Ready to submit' summary and tell the user to switch the session to "
+    "Execute mode (the Plan/Execute toggle next to the message box) if they "
+    "want it run. Never say the job was submitted or the group was created."
+)
+
+
+def normalize_execution_mode(value: Any) -> str:
+    """Coerce any value to ``"plan"`` or ``"execute"`` (default ``"plan"``)."""
+    return "execute" if value == "execute" else "plan"
+
+
+def execution_mode_of(config: Any) -> str:
+    """Return the execution mode carried by *config* (``"plan"`` if absent)."""
+    return normalize_execution_mode(getattr(config, "execution_mode", None))
+
+
+def describe_blocked_action(tool_name: str, arguments: Dict[str, Any]) -> str:
+    """One-line, user-facing description of a gated call that was refused."""
+    args = _safe_args(arguments)
+    if tool_name == "submit_gowe_job":
+        workflow = (
+            args.get("workflow_name")
+            or args.get("workflow_id")
+            or "workflow"
+        )
+        inputs = args.get("inputs") if isinstance(args.get("inputs"), dict) else {}
+        output_path = args.get("output_path") or inputs.get("output_path") or ""
+        folder = str(output_path).rstrip("/").rsplit("/", 1)[-1] if output_path else ""
+        return f"{workflow} → {folder}" if folder else str(workflow)
+    if tool_name == "create_group":
+        group_type = args.get("group_type") or "group"
+        name = args.get("group_name") or "unnamed"
+        limit = args.get("limit")
+        suffix = f" (up to {limit} ids)" if limit else ""
+        return f"{group_type} '{name}'{suffix}"
+    return tool_name
+
+
+def blocked_by_mode_result(tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """Build the tool result returned in place of a gated call."""
+    return {
+        "error": PLAN_MODE_BLOCKED_MESSAGE.format(tool=tool_name),
+        "blocked_by_mode": True,
+        "execution_mode": "plan",
+        "tool": tool_name,
+        "arguments": _safe_args(arguments),
+        "summary": describe_blocked_action(tool_name, arguments),
+    }
+
+
+def is_blocked_result(result: Any) -> bool:
+    """True when *result* is the refusal produced by the execution-mode gate."""
+    return isinstance(result, dict) and bool(result.get("blocked_by_mode"))
+
+
 async def execute_tool(
     tool_name: str,
     arguments: Dict[str, Any],
@@ -82,6 +157,12 @@ async def execute_tool(
             "error": f"Unknown tool: '{tool_name}'",
             "available_tools": sorted(dispatch_table.keys()),
         }
+
+    # Execution-mode gate: side-effecting tools only run in EXECUTE mode.
+    # A missing config (or a config without the attribute) is treated as
+    # PLAN — the safe default.
+    if tool_name in EXECUTE_ONLY_TOOLS and execution_mode_of(config) != "execute":
+        return blocked_by_mode_result(tool_name, arguments)
 
     # Apply per-tool timeout overrides (use the larger of caller vs override)
     timeout_seconds = max(timeout_seconds, TOOL_TIMEOUT_OVERRIDES.get(tool_name, 0.0))

@@ -31,6 +31,7 @@ from shared.agent_utils import (
     call_fingerprint,
     format_attached_documents,
     format_recent_messages,
+    format_execution_mode,
     format_session_workspace,
     parse_tool_calls as _parse_tool_calls_raw,
     get_response_content,
@@ -194,6 +195,10 @@ async def run_agent_loop(
                     f"\n\n=== ADDITIONAL CONTEXT ===\n"
                     f"{json.dumps(ctx_for_prompt, default=str)}"
                 )
+
+        # Tell the LLM which side-effecting tools the gate will refuse.
+        # Always injected — the gate applies even without gateway context.
+        system_content += f"\n\n{format_execution_mode(config)}"
 
         state.add_system_message(system_content)
         images = context.get("images", []) if context else []

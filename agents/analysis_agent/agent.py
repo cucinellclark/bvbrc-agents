@@ -26,6 +26,7 @@ from shared.agent_utils import (
     build_user_content,
     format_attached_documents,
     format_recent_messages,
+    format_execution_mode,
     format_session_workspace,
 )
 from shared.models import ToolCall
@@ -197,6 +198,8 @@ async def run_agent(
         session_ws = format_session_workspace(context)
         if session_ws:
             system_content += f"\n\n{session_ws}"
+
+        system_content += f"\n\n{format_execution_mode(config or context)}"
 
         ctx_for_prompt = {
             k: v for k, v in context.items()

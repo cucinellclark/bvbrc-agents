@@ -59,6 +59,7 @@ class AgentState(BaseAgentState):
             sources=sources,
             tool_trace=self.tool_executions,
             iterations_used=self.iteration,
+            blocked_actions=list(self.blocked_actions),
             elapsed_seconds=round(elapsed, 2),
         )
 

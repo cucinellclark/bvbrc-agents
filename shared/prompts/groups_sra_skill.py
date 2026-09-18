@@ -17,6 +17,11 @@ GROUPS_SRA_SKILL_PROMPT = """
   Browse first, then copy the real path from the result.
 - ``create_group`` only **creates** a new group. There is no update, append,
   or replace-members API. Do not claim you edited or modified a group.
+- In PLAN mode (see ``=== EXECUTION MODE ===``) ``create_group`` is refused
+  with ``blocked_by_mode``. Do not retry it: report the query you would use,
+  the matching count from ``search_data``/``facet_query``, and the intended
+  group name, then tell the user to switch to Execute mode to create it.
+  Never say the group was created.
 - ``create_group`` parameters:
   - ``group_type``: ``"genome_group"`` or ``"feature_group"``
   - ``collection``: ``"genome"`` for genome groups, ``"genome_feature"`` for

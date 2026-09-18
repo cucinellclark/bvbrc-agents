@@ -86,9 +86,8 @@ async def execute_agent_step(
     if request.session_id:
         context_data["session_id"] = request.session_id
 
-    # Pass auto-submit preference so the service agent can auto-submit
-    if request.auto_submit_preference:
-        context_data["auto_submit_preference"] = request.auto_submit_preference
+    # Execution mode gates submit_gowe_job / create_group in execute_tool.
+    context_data["execution_mode"] = request.execution_mode
 
     # Forward page context (description of the page the user is viewing)
     if request.page_context:

@@ -147,45 +147,6 @@ async def orchestrate(
             )
             return
 
-        # When auto-submit is enabled, prune any pipeline steps that
-        # are purely "submit the planned workflow" — those would call
-        # agent_chat which re-runs the full planning pipeline and fails.
-        # Auto-submit (§3b below) already handles submission directly.
-        auto_submit = getattr(registry._config, "auto_submit", False)
-        if auto_submit and len(decision.plan.steps) > 1:
-            _SUBMIT_KEYWORDS = {"submit", "execute", "run the"}
-            kept: list[Step] = []
-            for step in decision.plan.steps:
-                task_lower = step.task.lower()
-                if (
-                    any(kw in task_lower for kw in _SUBMIT_KEYWORDS)
-                    and "assemble" not in task_lower
-                    and "annotate" not in task_lower
-                    and "build" not in task_lower
-                    and "plan" not in task_lower
-                    and "analyze" not in task_lower
-                ):
-                    logger.info(
-                        "Pruning redundant submit step from pipeline "
-                        "(auto-submit is enabled): %r",
-                        step.task,
-                    )
-                else:
-                    kept.append(step)
-            if kept and len(kept) < len(decision.plan.steps):
-                # Build mapping from old step indices to new indices
-                old_to_new: dict[int, int] = {}
-                new_idx = 0
-                for old_idx, step in enumerate(decision.plan.steps):
-                    if step in kept:
-                        old_to_new[old_idx] = new_idx
-                        new_idx += 1
-                for s in kept:
-                    s.depends_on = [
-                        old_to_new[d] for d in s.depends_on if d in old_to_new
-                    ]
-                decision.plan.steps = kept
-
         # Collect agent results from execution events
         agent_results: list[dict[str, Any]] = []
         agents_used: list[str] = []
@@ -236,6 +197,30 @@ async def orchestrate(
                             "options": ar.get("options"),
                         },
                     )
+
+        # ------------------------------------------------------------------
+        # 3a'. EXECUTION_BLOCKED — a gated tool (submit_gowe_job /
+        #      create_group) was refused because the session is in plan
+        #      mode.  Emit once per turn with every prepared action so the
+        #      gateway can attach an "execution_blocked" card.
+        # ------------------------------------------------------------------
+        blocked_actions: list[dict[str, Any]] = []
+        blocked_agent: str | None = None
+        for ar in agent_results:
+            for action in ar.get("blocked_actions") or []:
+                blocked_actions.append(action)
+                blocked_agent = blocked_agent or ar.get("agent")
+        if blocked_actions:
+            yield Event(
+                type=EventType.EXECUTION_BLOCKED,
+                agent_name=blocked_agent,
+                data={
+                    "agent": blocked_agent,
+                    "execution_mode": "plan",
+                    "blocked_actions": blocked_actions,
+                    "original_query": request.query,
+                },
+            )
 
         # ------------------------------------------------------------------
         # 3b. PLANNING AGENT — special status handling
@@ -491,67 +476,6 @@ async def orchestrate(
                     },
                 )
                 return
-
-        # ------------------------------------------------------------------
-        # 3c. AUTO-SUBMIT (when ORCH_AUTO_SUBMIT is enabled)
-        # ------------------------------------------------------------------
-        auto_submit = getattr(registry._config, "auto_submit", False)
-        if auto_submit and agent_results:
-            for ar in agent_results:
-                wf_id = ar.get("workflow_id")
-                persisted = ar.get("persisted", False)
-                already_submitted = ar.get("auto_submitted", False) or ar.get(
-                    "submission_id"
-                )
-                if wf_id and persisted and not already_submitted:
-                    logger.info("Auto-submit enabled: submitting workflow %s", wf_id)
-                    try:
-                        # Find the service agent and call submit_workflow
-                        service_agent = registry.get("service")
-                        if (
-                            service_agent
-                            and "submit_workflow" in service_agent.tool_names
-                        ):
-                            submit_result = await service_agent.call_tool(
-                                "submit_workflow",
-                                {
-                                    "workflow_id": wf_id,
-                                    "token": request.auth_token or "",
-                                },
-                            )
-                            # call_tool always returns a dict
-                            submit_data = submit_result
-
-                            if submit_data.get("error"):
-                                logger.warning(
-                                    "Auto-submit failed for %s: %s",
-                                    wf_id,
-                                    submit_data["error"],
-                                )
-                            else:
-                                ar["auto_submitted"] = True
-                                ar["submission_status"] = submit_data.get(
-                                    "status", "pending"
-                                )
-                                # Capture GoWe submission_id if returned
-                                if submit_data.get("submission_id"):
-                                    ar["submission_id"] = submit_data["submission_id"]
-                                logger.info(
-                                    "Auto-submitted workflow %s: status=%s, "
-                                    "submission_id=%s",
-                                    wf_id,
-                                    submit_data.get("status"),
-                                    submit_data.get("submission_id"),
-                                )
-                        else:
-                            logger.warning(
-                                "Auto-submit: service agent not found or "
-                                "missing submit_workflow tool"
-                            )
-                    except Exception as e:
-                        logger.warning(
-                            "Auto-submit failed for workflow %s: %s", wf_id, e
-                        )
 
         # ------------------------------------------------------------------
         # 4. SYNTHESIZE response

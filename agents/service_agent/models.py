@@ -43,9 +43,6 @@ class AgentConfig(BaseAgentConfig):
     # Optional lightweight model for intent classification.
     classifier_model: str | None = LLM_DEFAULTS.get("classifier_model")
 
-    # User preference for auto-submitting planned workflows.
-    auto_submit_preference: str | None = None
-
     # session_id and workspace_path are inherited from BaseAgentConfig.
 
 
@@ -208,7 +205,7 @@ class AgentState(BaseAgentState):
     """
 
     # Phase tracking
-    current_phase: Literal["decompose", "build", "compose", "done"] = "decompose"
+    current_phase: Literal["decompose", "build", "compose", "populate", "ready", "done"] = "decompose"
 
     # Phase 1 output
     workflow_plan: WorkflowPlan | None = None
@@ -329,6 +326,7 @@ class AgentState(BaseAgentState):
             sources=sources,
             tool_trace=self.tool_executions,
             elapsed_seconds=round(elapsed, 2),
+            blocked_actions=list(self.blocked_actions),
             workflow_id=self.workflow_id,
             persisted=self.persisted,
             operation_message=self.operation_message,

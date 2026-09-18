@@ -123,10 +123,12 @@ def _build_config_kwargs(
     if admission_url:
         config_kwargs["llm_base_url"] = admission_url
 
-    # Forward auto-submit preference to the service agent config
-    auto_submit = ctx.get("auto_submit_preference")
-    if auto_submit:
-        config_kwargs["auto_submit_preference"] = auto_submit
+    # Execution mode ("plan" | "execute").  Anything else — including a
+    # missing value — is plan, the safe default.  execute_tool reads this
+    # off the config to gate submit_gowe_job / create_group.
+    config_kwargs["execution_mode"] = (
+        "execute" if ctx.get("execution_mode") == "execute" else "plan"
+    )
 
     # Forward GoWe URL override if provided
     gowe_url = ctx.get("gowe_url")
@@ -157,6 +159,19 @@ def _build_tool_trace(result: Any) -> list[dict[str, Any]]:
         }
         for ex in result.tool_trace
     ]
+
+
+def _blocked_actions_of(result: Any) -> list[dict[str, Any]]:
+    """Gated tool calls refused in plan mode (empty when none)."""
+    return list(getattr(result, "blocked_actions", None) or [])
+
+
+def _with_blocked_actions(response: Dict[str, Any], result: Any) -> Dict[str, Any]:
+    """Attach ``blocked_actions`` to *response* when the agent had any."""
+    blocked = _blocked_actions_of(result)
+    if blocked:
+        response["blocked_actions"] = blocked
+    return response
 
 
 def _error_response(message: str) -> Dict[str, Any]:
@@ -279,7 +294,7 @@ async def _run_data_agent(
     }
     if result.structured_data:
         response["structured_data"] = result.structured_data
-    return response
+    return _with_blocked_actions(response, result)
 
 
 async def _run_service_agent(
@@ -333,6 +348,7 @@ async def _run_service_agent(
     response["persisted"] = result.persisted
     if result.auto_submitted:
         response["auto_submitted"] = True
+    _with_blocked_actions(response, result)
     # GoWe-specific fields
     if result.submission_id:
         response["submission_id"] = result.submission_id
@@ -363,7 +379,7 @@ async def _run_workspace_agent(
 
     tool_trace = _build_tool_trace(result)
 
-    return {
+    return _with_blocked_actions({
         "answer": result.answer,
         "status": result.status,
         # Keep fields aligned with other agent_chat responses
@@ -377,7 +393,7 @@ async def _run_workspace_agent(
         "ui_grids": getattr(result, "ui_grids", []),
         "previews": getattr(result, "previews", []),
         "paths_explored": getattr(result, "paths_explored", []),
-    }
+    }, result)
 
 
 async def _run_helpdesk_agent(
@@ -398,14 +414,14 @@ async def _run_helpdesk_agent(
         progress_callback=progress_callback,
     )
 
-    return {
+    return _with_blocked_actions({
         "answer": result.answer,
         "status": result.status,
         "sources": result.sources,
         "iterations_used": result.iterations_used,
         "elapsed_seconds": result.elapsed_seconds,
         "tool_trace": _build_tool_trace(result),
-    }
+    }, result)
 
 
 async def _run_analysis_agent(
@@ -418,8 +434,6 @@ async def _run_analysis_agent(
     from analysis_agent.agent import run_agent
     from analysis_agent.models import AgentConfig
 
-    # Analysis agent doesn't use auto_submit_preference; remove if present
-    config_kwargs.pop("auto_submit_preference", None)
 
     config = AgentConfig(**config_kwargs)
     result = await run_agent(
@@ -431,7 +445,7 @@ async def _run_analysis_agent(
 
     tool_trace = _build_tool_trace(result)
 
-    return {
+    return _with_blocked_actions({
         "answer": result.answer,
         "status": result.status,
         "sources": result.sources,
@@ -444,7 +458,7 @@ async def _run_analysis_agent(
         "previews": result.previews,
         "report_links": result.report_links,
         "step_summaries": result.step_summaries,
-    }
+    }, result)
 
 
 async def _run_planning_agent(
@@ -457,8 +471,6 @@ async def _run_planning_agent(
     from planning_agent.agent import run_agent
     from planning_agent.models import AgentConfig
 
-    # Planning agent doesn't use auto_submit_preference
-    config_kwargs.pop("auto_submit_preference", None)
 
     config = AgentConfig(**config_kwargs)
     result = await run_agent(
@@ -487,7 +499,7 @@ async def _run_planning_agent(
     if result.step_execution:
         response["step_execution"] = result.step_execution
 
-    return response
+    return _with_blocked_actions(response, result)
 
 
 _AGENT_RUNNERS: dict[str, Callable] = {

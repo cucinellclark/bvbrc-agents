@@ -686,6 +686,38 @@ def format_session_workspace(context: dict[str, Any] | None) -> str:
     )
 
 
+def format_execution_mode(source: Any) -> str:
+    """Build an ``=== EXECUTION MODE ===`` section for the system prompt.
+
+    *source* may be an agent config (``config.execution_mode``) or a context
+    dict (``context["execution_mode"]``).  Anything other than ``"execute"``
+    is treated as ``"plan"`` — the safe default.  The gate itself lives in
+    ``shared.tools.execute_tool``; this section only tells the LLM what to
+    expect so it does not retry or hallucinate a submission.
+    """
+    if isinstance(source, dict):
+        mode = source.get("execution_mode")
+    else:
+        mode = getattr(source, "execution_mode", None)
+    if mode == "execute":
+        return (
+            "=== EXECUTION MODE ===\n"
+            "This session is in EXECUTE mode. submit_gowe_job and create_group\n"
+            "are enabled. Still ask before acting when the workflow or group\n"
+            "choice is ambiguous or a required input is missing."
+        )
+    return (
+        "=== EXECUTION MODE ===\n"
+        "This session is in PLAN mode. submit_gowe_job and create_group are\n"
+        "disabled and return an error if called; every other tool works.\n"
+        "You may fully prepare a job or group (discover, browse, verify,\n"
+        "populate inputs) and present it as ready, but you must never say\n"
+        "it was submitted or created. Tell the user to switch to Execute\n"
+        "mode using the Plan/Execute toggle next to the message box when\n"
+        "they want it run."
+    )
+
+
 # ---------------------------------------------------------------------------
 # Message trimming (context window management)
 # ---------------------------------------------------------------------------

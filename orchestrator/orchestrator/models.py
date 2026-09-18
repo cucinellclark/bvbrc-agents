@@ -96,9 +96,11 @@ class OrchestratorRequest(BaseModel):
     # Per-request LLM override (from gateway model lookup)
     llm_override: LLMOverride | None = None
 
-    # User preference for auto-submitting planned workflows:
-    # "always_review" (default), "auto_simple", or "auto_all"
-    auto_submit_preference: str | None = None
+    # Execution mode of the chat session.  "plan" (default): agents may
+    # prepare jobs and groups but submit_gowe_job / create_group are refused
+    # at the tool layer.  "execute": those tools are enabled.  The gateway
+    # reads this from the session document on every turn.
+    execution_mode: Literal["plan", "execute"] = "plan"
 
     # User-attached text files (inline content from browser upload)
     attached_files: list[dict[str, Any]] = Field(default_factory=list)

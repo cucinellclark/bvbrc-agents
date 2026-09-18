@@ -27,6 +27,7 @@ from shared.agent_utils import (
     build_user_content,
     format_attached_documents,
     format_recent_messages,
+    format_execution_mode,
     format_session_workspace,
     parse_tool_calls as _parse_tool_calls_raw,
     get_response_content,
@@ -100,6 +101,8 @@ async def plan_only(
         session_ws = format_session_workspace(context)
         if session_ws:
             system_content += f"\n\n{session_ws}"
+
+        system_content += f"\n\n{format_execution_mode(config or context)}"
 
         # Inject bounded conversation context from recent_messages
         recent_msgs = context.get("recent_messages")

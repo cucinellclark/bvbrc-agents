@@ -93,6 +93,7 @@ class AgentState(BaseAgentState):
             tool_trace=self.tool_executions,
             iterations_used=self.iteration,
             elapsed_seconds=round(elapsed, 2),
+            blocked_actions=list(self.blocked_actions),
             plan=self.plan.model_dump() if self.plan else None,
             clarification_questions=(
                 [q.model_dump() for q in self.clarification_questions]

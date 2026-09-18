@@ -30,6 +30,7 @@ from agent_utils import (  # noqa: E402
     call_fingerprint,
     format_attached_documents,
     format_recent_messages,
+    format_execution_mode,
     format_session_workspace,
     parse_tool_calls as _parse_tool_calls_raw,
     get_response_content,
@@ -163,6 +164,8 @@ async def _analyze_and_plan(
         if session_ws:
             system_prompt += f"\n\n{session_ws}"
 
+        system_prompt += f"\n\n{format_execution_mode(config)}"
+
     # Add bounded conversation context from recent_messages
     if context:
         recent_msgs = context.get("recent_messages")
@@ -237,6 +240,8 @@ async def _plan_with_answers(
         session_ws = format_session_workspace(context)
         if session_ws:
             system_prompt += f"\n\n{session_ws}"
+
+        system_prompt += f"\n\n{format_execution_mode(config)}"
 
         recent_msgs = context.get("recent_messages")
         if recent_msgs:

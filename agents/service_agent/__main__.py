@@ -187,6 +187,12 @@ async def run_query(
         print(f"Engine: {config.gowe_url}")
     print(f"{'=' * 60}\n")
 
+    # The CLI's submit toggle maps onto the session execution mode that
+    # gates submit_gowe_job in execute_tool.
+    config = config.model_copy(
+        update={"execution_mode": "execute" if do_submit else "plan"}
+    )
+
     try:
         result = await run_agent(query, config)
     except Exception as e:

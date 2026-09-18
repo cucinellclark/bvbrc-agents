@@ -144,6 +144,7 @@ class AgentState(BaseAgentState):
             sources=sources,
             tool_trace=self.tool_executions,
             iterations_used=self.iteration,
+            blocked_actions=list(self.blocked_actions),
             elapsed_seconds=round(elapsed, 2),
             # Analysis-specific structured data
             output_files=self.collected_output_files,

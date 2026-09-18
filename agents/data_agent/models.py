@@ -89,6 +89,7 @@ class AgentState(BaseAgentState):
                 for tc in self.planned_calls
             ],
             iterations_used=self.iteration,
+            blocked_actions=list(self.blocked_actions),
             elapsed_seconds=round(elapsed, 2),
             structured_data=structured_data,
         )

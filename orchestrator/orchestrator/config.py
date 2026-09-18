@@ -75,12 +75,6 @@ class OrchestratorConfig(BaseModel):
     # Discovery
     auto_discover: bool = True  # Discover tools at startup
 
-    # Auto-submit: when True, planned workflows are automatically submitted
-    # without user confirmation. Intended for dedicated orchestrator instances.
-    auto_submit: bool = os.environ.get(
-        "ORCH_AUTO_SUBMIT", "false"
-    ).lower() == "true"
-
     # Structural LLM defaults (loaded from shared Agents/config/llm.yaml).
     # Model / URL / API-key details are NOT stored on the config — they
     # arrive per request via `llm_override`. See _resolve_llm in server.py.

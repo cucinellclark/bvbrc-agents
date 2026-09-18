@@ -2,7 +2,10 @@
 
 Interactive flow: the LLM discovers workflows from GoWe, presents
 matching options to the user for selection, gathers any missing details,
-and only submits after the user confirms.
+and prepares the submission.  Whether it may actually call
+``submit_gowe_job`` is decided by the session's execution mode ("plan" |
+"execute") — the gate is enforced in ``shared.tools.execute_tool``; the
+prompt only tells the LLM what to expect.
 GoWe is the single source of truth for available services/workflows.
 """
 
@@ -16,8 +19,39 @@ from shared.prompts.groups_sra_skill import GROUPS_SRA_SKILL_PROMPT
 from shared.prompts.similar_genome_skill import SIMILAR_GENOME_SKILL_PROMPT
 
 
+_PLAN_MODE_SECTION = """\
+== EXECUTION MODE ==
+This session is in PLAN mode. submit_gowe_job and create_group are \
+DISABLED: if you call them the tool returns an error with \
+"blocked_by_mode" and nothing is submitted or created. Every other \
+tool works normally.
+In plan mode your job is to get the submission fully prepared:
+- Discover the workflow, browse the workspace, verify identifiers, \
+call get_workflow_inputs, and populate EVERY input exactly as you \
+would before submitting.
+- Then present a **Ready to submit** summary: the workflow's display \
+name, each input name and the value you will use, any non-default \
+parameters, and the output folder name that will be used.
+- End with one sentence telling the user to switch this chat to \
+Execute mode (the Plan/Execute toggle next to the message box) when \
+they want it submitted.
+- NEVER say the job was submitted, is running, or is queued. NEVER \
+retry submit_gowe_job after it is blocked, and do not change any \
+inputs because of the block."""
+
+_EXECUTE_MODE_SECTION = """\
+== EXECUTION MODE ==
+This session is in EXECUTE mode. submit_gowe_job and create_group are \
+enabled. Execute mode means you are ALLOWED to submit, not that you \
+must: still stop and ask when more than one workflow could match, or \
+when a required input has no value and no schema default. When the \
+user has explicitly asked you to run/submit/go ahead and all required \
+inputs are complete, submit without an extra confirmation round."""
+
+
 def build_populate_prompt(
     attached_files: list[dict] | None = None,
+    execution_mode: str = "plan",
 ) -> str:
     """Build the system prompt for the workflow populate phase.
 
@@ -25,7 +59,13 @@ def build_populate_prompt(
         attached_files: Optional list of parsed document metadata
             (from ``parsed_documents``). Each entry has ``name``,
             ``workspace_path``, ``char_count``, ``source``, etc.
+        execution_mode: ``"plan"`` (default) or ``"execute"``.  Selects
+            the ``== EXECUTION MODE ==`` section.  Anything other than
+            ``"execute"`` is treated as plan.
     """
+    mode_section = (
+        _EXECUTE_MODE_SECTION if execution_mode == "execute" else _PLAN_MODE_SECTION
+    )
     files_section = "None"
     if attached_files:
         lines = []
@@ -42,8 +82,11 @@ def build_populate_prompt(
 
     prompt = f"""\
 You are the BV-BRC Service Agent. Your job is to help the user select \
-the right workflow, gather the necessary inputs, and submit the job — \
-but you must confirm with the user before submitting.
+the right workflow, gather the necessary inputs, and prepare the job \
+for submission. Whether you may actually submit is decided by the \
+session's execution mode — see == EXECUTION MODE == below.
+
+{mode_section}
 
 == WORKFLOW ==
 1. Call list_gowe_workflows to see all available workflows.
@@ -60,11 +103,13 @@ explain the differences so the user can choose.
 (e.g., organism name, sequencing platform, recipe preferences).
    e. A clear question asking the user to confirm the workflow choice \
 and provide any missing details.
-4. **Wait for the user to respond** before proceeding. Do NOT call \
-get_workflow_inputs or submit_gowe_job until the user has confirmed \
-which workflow to use.
-5. After user confirmation: call get_workflow_inputs to get the input \
-schema, populate the inputs, and call submit_gowe_job.
+4. **Wait for the user to respond** when the workflow choice is \
+ambiguous or required details are missing. When exactly ONE workflow \
+matches and the required inputs are already clear from the request or \
+the workspace, you may skip this step.
+5. Call get_workflow_inputs to get the input schema and populate the \
+inputs. Then, in EXECUTE mode, call submit_gowe_job; in PLAN mode, \
+present the Ready to submit summary instead (see == EXECUTION MODE ==).
 
 == SIMILAR GENOME FINDER ==
 If the user asks to find similar genomes, closest genomes, genome \
@@ -90,13 +135,6 @@ find_similar_genomes with a genome ID or FASTA file path.
 This lets you present a more informed recommendation and ask more \
 specific questions.
 
-== WHEN TO SKIP CONFIRMATION ==
-For simple, unambiguous requests where ONLY ONE workflow matches and \
-ALL required inputs are clearly provided by the user (or discoverable \
-from their workspace), you may proceed directly to submission without \
-an extra confirmation step. This includes cases where the user \
-explicitly says "submit", "run it", "go ahead", etc.
-
 == OUTPUT PATH AND OUTPUT FILE ==
 output_path and output_file are ALWAYS auto-generated by you. NEVER ask \
 the user for these values. NEVER list them as "missing information". \
@@ -113,7 +151,9 @@ After a successful submission, ALWAYS tell the user where their \
 results will be saved. Include the output_path from the tool result \
 in your response. The system places all chat-submitted job outputs \
 in a session-specific folder under chats/ in the user's home \
-workspace. Say this plainly so the user can find their results.
+workspace. Say this plainly so the user can find their results. In a \
+plan-mode Ready to submit summary, state the output folder name that \
+WILL be used the same way.
 
 == RULES ==
 - ALWAYS call list_gowe_workflows first. Do NOT guess or hardcode \
@@ -206,7 +246,11 @@ instructions you receive — if told to submit separate jobs, do so; \
 if told to submit one job with all samples, do that instead.
 
 == SUBMISSION FAILURES ==
-If submit_gowe_job returns an error, do NOT retry the submission. \
+If submit_gowe_job returns an error with "blocked_by_mode", the \
+session is in plan mode: nothing was submitted and nothing failed. \
+Do NOT retry and do NOT change any inputs — produce the Ready to \
+submit summary described in == EXECUTION MODE ==.
+For any other error from submit_gowe_job, do NOT retry the submission. \
 Do NOT modify the arguments and resubmit. Instead, report the error \
 to the user clearly and suggest they try again later or with \
 different parameters. Common causes of failure include network \

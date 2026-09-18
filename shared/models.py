@@ -116,6 +116,13 @@ class BaseAgentConfig(BaseModel):
     session_id: str | None = None
     workspace_path: str | None = None
 
+    # Execution mode of the chat session ("plan" | "execute").  Gates the
+    # side-effecting tools in ``shared.tools.EXECUTE_ONLY_TOOLS``: in
+    # "plan" mode ``execute_tool`` refuses them.  Defaults to "plan" —
+    # the safe direction — and is set per request from the session by
+    # ``shared/agent_dispatch.py:_build_config_kwargs``.
+    execution_mode: Literal["plan", "execute"] = "plan"
+
 
 # ---------------------------------------------------------------------------
 # Base agent state
@@ -150,6 +157,11 @@ class BaseAgentState(BaseModel):
     question: str | None = None
     status: AgentStatus = "running"
     start_time: float = Field(default_factory=time.time)
+
+    # Gated tool calls refused by the execution-mode gate this run.
+    # Populated by ``record_execution``; each entry is
+    # ``{"tool", "summary", "arguments"}``.
+    blocked_actions: list[dict[str, Any]] = Field(default_factory=list)
 
     # ------------------------------------------------------------------
     # Message helpers (previously copy-pasted in every agent)
@@ -218,6 +230,17 @@ class BaseAgentState(BaseModel):
                 iteration=iteration if iteration is not None else self.iteration,
             )
         )
+        # A refusal from the execution-mode gate is not a failure — the
+        # tool never ran.  Track it so the result can surface what the
+        # user needs to switch to Execute mode to run.
+        if isinstance(result, dict) and result.get("blocked_by_mode"):
+            self.blocked_actions.append(
+                {
+                    "tool": tc.name,
+                    "summary": result.get("summary") or tc.name,
+                    "arguments": result.get("arguments") or {},
+                }
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -235,3 +258,5 @@ class BaseAgentResult(BaseModel):
     tool_trace: list[ToolExecution] = Field(default_factory=list)
     iterations_used: int = 0
     elapsed_seconds: float = 0.0
+    # Gated tool calls refused because the session is in plan mode.
+    blocked_actions: list[dict[str, Any]] = Field(default_factory=list)

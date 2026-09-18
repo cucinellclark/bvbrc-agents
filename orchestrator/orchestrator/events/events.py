@@ -42,6 +42,12 @@ class EventType(str, Enum):
     # --- Agent interaction ---
     NEEDS_INPUT = "needs_input"
 
+    # --- Execution mode ---
+    # A gated tool (submit_gowe_job / create_group) was refused because
+    # the session is in plan mode.  Carries the prepared actions so the
+    # UI can offer "switch to Execute mode and run".
+    EXECUTION_BLOCKED = "execution_blocked"
+
     # --- Planning agent ---
     ASK_QUESTIONS = "ask_questions"
     PLAN_CREATED = "plan_created"
