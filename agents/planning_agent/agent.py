@@ -676,10 +676,10 @@ async def _run_planning_loop(
                 return state.to_result()
 
             # For all tools, feed the result back to the LLM (truncated)
-            from shared.tools import truncate_result
+            from shared.tools import truncate_result, result_char_limit
 
             result_str = (
-                truncate_result(result, max_chars=8000)
+                truncate_result(result, max_chars=result_char_limit(tc.name, 8000))
                 if isinstance(result, dict)
                 else json.dumps(result, default=str)
             )

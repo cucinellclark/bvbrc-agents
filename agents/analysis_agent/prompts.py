@@ -53,8 +53,9 @@ templates with the actual values.
 3. Browse the output directory to confirm files exist and discover any \
 additional output files.
 4. Read key files (TSV, text reports, FASTA headers, HTML reports) to \
-extract metrics. For HTML files, read the first 8KB -- BV-BRC reports \
-typically front-load summary statistics.
+extract metrics. read_file_preview returns up to 32 KB per page; call \
+again with start_byte = next_start to continue. BV-BRC HTML reports \
+typically front-load summary statistics in the first page.
 5. Produce a per-step summary, then an overall workflow summary.
 
 For multi-step workflows, present results in execution order, noting how \

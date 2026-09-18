@@ -264,26 +264,44 @@ async def get_file_metadata(
         }
 
 
+MAX_PAGE_BYTES: int = 32 * 1024  # 32 KB — maximum page size
+
+
 async def read_file_preview(
     path: str,
     max_bytes: int = 8192,
+    start_byte: int = 0,
+    allow_binary: bool = False,
     config: Any = None,
     headers: Optional[Dict[str, str]] = None,
     **kwargs: Any,
 ) -> Dict[str, Any]:
-    """Read the first portion of a workspace file.
+    """Read a workspace file in pages.
 
-    Returns text data for text files, base64-encoded data for binary files.
-    Includes ``total_size`` and ``is_complete`` for paging awareness.
+    Returns up to *max_bytes* (clamped to 32 KB) of text starting at
+    *start_byte*.  Call again with ``start_byte = next_start`` until
+    ``is_complete`` is true.
+
+    Compressed ``.gz`` files are decompressed transparently; offsets
+    refer to the uncompressed text (``offset_space: "decompressed"``).
+
+    Binary files (images, archives) return a ``BINARY_FILE`` error
+    with a hint unless ``allow_binary=True``.
+
+    PDFs return extracted text (via PyMuPDF).
 
     Args:
         path: Workspace path to the file.
-        max_bytes: Maximum bytes to read (default 8192, max 1 048 576).
+        max_bytes: Maximum bytes to read per page (default 8192, max 32 768).
+        start_byte: Byte offset to start reading from (decompressed offset
+            for gzip files).  Default 0.
+        allow_binary: If True, return base64 for binary files instead of
+            an error.
         config: Agent configuration object.
         headers: HTTP headers with auth token.
     """
-    ws_fn = get_workspace_functions(getattr(config, "mcp_server_path", None))
-    api = _get_api(config)
+    from shared.tools.file_stream import open_workspace_stream
+
     token = _extract_token(headers)
     user_id = _extract_user_id(headers)
 
@@ -296,34 +314,143 @@ async def read_file_preview(
 
     resolved_path = _resolve_path(path, user_id)
 
-    # Clamp max_bytes to 1 MB
-    max_bytes = min(max(max_bytes, 1), 1024 * 1024)
+    # Clamp max_bytes to MAX_PAGE_BYTES (32 KB)
+    max_bytes = min(max(max_bytes, 1), MAX_PAGE_BYTES)
+
+    # Validate start_byte
+    if start_byte < 0:
+        start_byte = 0
 
     # --- PDF branch ---
     if resolved_path.lower().endswith(".pdf"):
+        ws_fn = get_workspace_functions(getattr(config, "mcp_server_path", None))
+        api = _get_api(config)
         return await _read_pdf_preview(
             resolved_path, max_bytes, config, headers, ws_fn, api, token,
+            start_byte=start_byte,
         )
 
     try:
-        result = await ws_fn.workspace_read_range(
-            api=api,
-            path=resolved_path,
-            token=token,
-            start_byte=0,
-            max_bytes=max_bytes,
+        # When resuming mid-file, fetch one extra byte before start_byte so we
+        # can tell whether start_byte is a line boundary.  If it is not (the
+        # caller passed an arbitrary offset), skip the remainder of that line
+        # so pages never begin mid-row.  next_start always lands on a line
+        # boundary, so the normal page-to-page case skips only the 1 probe byte.
+        probe_prev = start_byte > 0
+        fetch_from = start_byte - 1 if probe_prev else 0
+        fetch_max = max_bytes + 1 if probe_prev else max_bytes
+
+        info, stream = await open_workspace_stream(
+            resolved_path, token, config,
+            start_byte=fetch_from,
+            max_bytes=fetch_max,
         )
 
-        # Detect object-not-found buried inside the result dict
-        if isinstance(result, dict):
-            err_val = result.get("error") or result.get("data")
-            if err_val and _is_object_not_found(err_val):
-                return _path_not_found_result(resolved_path)
+        # --- Binary detection ---
+        if info.detected_format and info.detected_format != "gzip":
+            if not allow_binary:
+                return {
+                    "error": "binary file",
+                    "errorType": "BINARY_FILE",
+                    "hint": (
+                        f"Detected format: {info.detected_format}. "
+                        "png/jpg/gif: use view_workspace_image (Phase 4). "
+                        "Other binaries cannot be read as text."
+                    ),
+                    "workspace_path": resolved_path,
+                    "total_size": info.total_size,
+                }
+            # allow_binary: fall back to workspace_read_range for base64
+            ws_fn = get_workspace_functions(getattr(config, "mcp_server_path", None))
+            api = _get_api(config)
+            result = await ws_fn.workspace_read_range(
+                api=api, path=resolved_path, token=token,
+                start_byte=start_byte, max_bytes=max_bytes,
+            )
+            if isinstance(result, dict) and not result.get("error"):
+                result["workspace_path"] = resolved_path
+                result["source_type"] = "workspace"
+            return result
 
-        if isinstance(result, dict) and not result.get("error"):
-            result["workspace_path"] = resolved_path
-            result["source_type"] = "workspace"
+        # The stream is bounded by fetch_max, so consuming it fully is cheap
+        # and leaves no suspended generator holding an HTTP connection.
+        raw_chunks: List[bytes] = []
+        async for chunk in stream:
+            raw_chunks.append(chunk)
+        raw_data = b"".join(raw_chunks)
 
+        # --- Align the start to a line boundary ---
+        skipped = 0
+        if probe_prev and raw_data:
+            if raw_data[:1] == b"\n":
+                raw_data = raw_data[1:]
+                skipped = 1
+            else:
+                nl = raw_data.find(b"\n")
+                if nl == -1:
+                    # One line longer than the page: nothing to align to.
+                    # Return it as-is minus the probe byte.
+                    raw_data = raw_data[1:]
+                    skipped = 1
+                else:
+                    skipped = nl + 1
+                    raw_data = raw_data[nl + 1:]
+
+        # --- Align the end to a line boundary (only if more data follows) ---
+        line_truncated = False
+        more_follows = not info.eof
+        if more_follows and raw_data and not raw_data.endswith(b"\n"):
+            last_nl = raw_data.rfind(b"\n")
+            if last_nl != -1:
+                raw_data = raw_data[: last_nl + 1]
+            else:
+                # Single line longer than max_bytes: return it truncated
+                line_truncated = True
+
+        text = raw_data.decode("utf-8", errors="replace")
+        line_count = text.count("\n") + (1 if text and not text.endswith("\n") else 0)
+
+        # fetch_from + skipped is start_byte when the page began on a line
+        # boundary, or the first line start after it otherwise.
+        page_start = fetch_from + skipped
+        next_start = page_start + len(raw_data)
+        offset_space = "decompressed" if info.gzip else "bytes"
+
+        if info.eof:
+            is_complete = True
+        elif info.total_size is not None and not info.gzip:
+            is_complete = next_start >= info.total_size
+        else:
+            is_complete = False  # gzip: only EOF proves completion
+
+        result: Dict[str, Any] = {
+            "data": text,
+            "start_byte": page_start,
+            "bytes_read": len(raw_data),
+            "line_count": line_count,
+            "total_size": info.total_size,
+            "is_complete": is_complete,
+            "workspace_path": resolved_path,
+            "source_type": "workspace",
+            "offset_space": offset_space,
+            "gzip": info.gzip,
+        }
+        if not is_complete:
+            result["next_start"] = next_start
+        if info.partial:
+            result["partial"] = True
+        if line_truncated:
+            result["line_truncated"] = True
+
+        # Kept by trim_messages_to_fit when it compresses old tool results,
+        # so a trimmed page still says which bytes were covered.
+        result["_summary"] = {
+            "path": resolved_path,
+            "start_byte": page_start,
+            "next_start": next_start,
+            "bytes_read": len(raw_data),
+            "is_complete": is_complete,
+        }
         return result
 
     except Exception as e:
@@ -345,6 +472,7 @@ async def _read_pdf_preview(
     ws_fn: Any,
     api: Any,
     token: str,
+    start_byte: int = 0,
 ) -> Dict[str, Any]:
     """Handle ``read_file_preview`` for ``.pdf`` files.
 
@@ -440,19 +568,35 @@ async def _read_pdf_preview(
                 "read_file_preview: skipping PDF persist (no session context)"
             )
 
-        # 5. Return extracted text, honoring max_bytes
+        # 5. Return extracted text, honoring max_bytes and start_byte
         extracted_len = len(text)
-        return {
-            "data": text[:max_bytes],
-            "start_byte": 0,
-            "bytes_read": min(extracted_len, max_bytes),
+        sliced = text[start_byte : start_byte + max_bytes]
+        end_offset = start_byte + len(sliced)
+        is_complete = end_offset >= extracted_len
+
+        result = {
+            "data": sliced,
+            "start_byte": start_byte,
+            "bytes_read": len(sliced),
             "total_size": extracted_len,
-            "is_complete": extracted_len <= max_bytes,
+            "is_complete": is_complete,
             "workspace_path": resolved_path,
             "source_type": "pdf_extraction",
             "page_count": page_count,
             "parsed_txt_path": persist_path,
+            "offset_space": "bytes",
+            "gzip": False,
         }
+        if not is_complete:
+            result["next_start"] = end_offset
+        result["_summary"] = {
+            "path": resolved_path,
+            "start_byte": start_byte,
+            "next_start": end_offset,
+            "bytes_read": len(sliced),
+            "is_complete": is_complete,
+        }
+        return result
 
     except Exception as e:
         if _is_object_not_found(e):

@@ -104,6 +104,10 @@ def _analysis_progress_message(tc: ToolCall) -> str:
     elif tc.name == "get_file_metadata":
         return "Retrieving file metadata..."
     elif tc.name == "read_file_preview":
+        sb = args.get("start_byte", 0)
+        if sb > 0:
+            page = (sb // 32768) + 1
+            return f"Reading output file (page {page})..."
         return "Reading output file..."
     elif tc.name == "get_expected_outputs":
         svc = args.get("service_name", "")

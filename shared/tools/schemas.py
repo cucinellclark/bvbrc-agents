@@ -436,10 +436,15 @@ READ_FILE_PREVIEW = {
     "function": {
         "name": "read_file_preview",
         "description": (
-            "Read the first portion of a workspace file to inspect its "
-            "contents. Returns up to max_bytes of the file as text (or "
-            "base64 for binary files). Use this to determine file format, "
-            "check headers, or preview data contents."
+            "Read a workspace file in pages. Returns up to max_bytes "
+            "(≤32 KB) starting at start_byte; call again with "
+            "start_byte = next_start until is_complete is true. Extract "
+            "what you need from each page as you go — earlier pages may "
+            "be trimmed from your context. Compressed .gz files are read "
+            "transparently; offsets refer to the uncompressed text. PDFs "
+            "return extracted text. For large tabular/sequence files "
+            "prefer summarize_file and search_file (when available) over "
+            "reading end to end."
         ),
         "parameters": {
             "type": "object",
@@ -454,10 +459,20 @@ READ_FILE_PREVIEW = {
                 "max_bytes": {
                     "type": "integer",
                     "description": (
-                        "Maximum bytes to read. Default 8192 (8 KB). "
-                        "Max 1048576 (1 MB)."
+                        "Maximum bytes to read per page. Default 8192. "
+                        "Max 32768 (32 KB)."
                     ),
                     "default": 8192,
+                },
+                "start_byte": {
+                    "type": "integer",
+                    "description": (
+                        "Byte offset to start reading from. Default 0. "
+                        "For gzip files this is the decompressed-stream "
+                        "offset. Set to next_start from the previous "
+                        "page to continue reading."
+                    ),
+                    "default": 0,
                 },
             },
             "required": ["path"],

@@ -23,6 +23,26 @@ TOOL_TIMEOUT_OVERRIDES: dict[str, float] = {
     "find_similar_genomes": 120.0,
 }
 
+# Per-tool result character limits.  Tools that return bulk text (file
+# reads, search results, summaries) need higher caps than the default
+# 8000 chars — otherwise ``truncate_result`` silently cuts the data
+# and re-creates the original "only see 7 KB" bug at a larger number.
+TOOL_RESULT_CHAR_LIMITS: dict[str, int] = {
+    "read_file_preview": 48_000,   # 32 KB data + JSON escaping + envelope
+    "search_file":       16_000,   # Phase 2
+    "summarize_file":    12_000,   # Phase 3
+}
+
+
+def result_char_limit(tool_name: str, default: int = 8000) -> int:
+    """Return the result char limit for *tool_name*.
+
+    Returns the larger of *default* and the per-tool override from
+    ``TOOL_RESULT_CHAR_LIMITS``, so a caller's explicit cap is never
+    reduced by this function.
+    """
+    return max(default, TOOL_RESULT_CHAR_LIMITS.get(tool_name, 0))
+
 
 async def execute_tool(
     tool_name: str,

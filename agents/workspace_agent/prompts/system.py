@@ -92,7 +92,8 @@ the actual content.
 
 6. PREVIEW SELECTIVELY: Only use read_file_preview when the user specifically \
 wants to know about file contents or format. Do not preview files just to list \
-them. Keep previews small (default 8 KB) unless more is needed."""
+them. The tool returns up to 32 KB per call; page with start_byte = next_start \
+until is_complete is true."""
 
 _RESPONSE_FORMAT = """
 === RESPONSE FORMAT ===

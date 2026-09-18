@@ -44,7 +44,7 @@ from shared.agent_messages import (
     MAX_ITERATIONS_FALLBACK,
 )
 from shared.models import BaseAgentState, BaseAgentConfig, ToolCall
-from shared.tools import execute_tool, truncate_result
+from shared.tools import execute_tool, truncate_result, result_char_limit
 
 
 ProgressCallback = Any  # async (progress: float, total: float|None, message: str) -> None
@@ -332,7 +332,7 @@ async def run_agent_loop(
                 state.status = "needs_input"
                 state.question = json.dumps(questions)
                 state.final_answer = content or "I have some questions before I can proceed."
-                result_str = truncate_result(result, max_chars=max_tool_result_chars)
+                result_str = truncate_result(result, max_chars=result_char_limit(tc.name, max_tool_result_chars))
                 state.add_tool_result(tc.id, result_str)
                 should_exit = True
                 break
@@ -344,12 +344,12 @@ async def run_agent_loop(
                     # Hook wants to exit the loop (e.g., plan created)
                     should_exit = True
                     # Still need to add the tool result to messages
-                    result_str = truncate_result(result, max_chars=max_tool_result_chars)
+                    result_str = truncate_result(result, max_chars=result_char_limit(tc.name, max_tool_result_chars))
                     state.add_tool_result(tc.id, result_str)
                     break
 
             # Serialize and truncate for the LLM context
-            result_str = truncate_result(result, max_chars=max_tool_result_chars)
+            result_str = truncate_result(result, max_chars=result_char_limit(tc.name, max_tool_result_chars))
             state.add_tool_result(tc.id, result_str)
 
         if should_exit:

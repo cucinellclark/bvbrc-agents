@@ -108,6 +108,26 @@ gone without looking there first.
 - PDFs with no selectable text (scanned documents) cannot be read. Tell the user OCR \
 is not supported.
 
+### Reading Files
+- ``read_file_preview`` returns at most 32 KB per call. To read on, call \
+again with ``start_byte = next_start`` until ``is_complete`` is true.
+- Write down what you need from each page (counts, IDs, metrics) before \
+reading the next one. Earlier pages may be trimmed from your context; the \
+trimmed stub keeps only the byte range you already covered.
+- Do not read a large file end to end. Check ``total_size`` first \
+(``get_file_metadata`` or the first read). If the file is over ~200 KB, \
+read the first page, tell the user what you can see, and ask what they \
+need — unless ``summarize_file`` / ``search_file`` are available, in \
+which case use those.
+- Compressed ``.gz`` files are read transparently; offsets refer to the \
+uncompressed text.
+- Group objects: use ``get_group_ids`` for the IDs. Job output lives in \
+the hidden ``.<output_file>/`` folder under the job's ``output_path`` — \
+browse it like any folder; use ``get_job_details(fetch_stderr=true)`` for \
+the job's stderr.
+- Images are not readable as text (``view_workspace_image`` arrives in \
+Phase 4). SVG is text — read it.
+
 ### Constraints
 - Read-only: you cannot create, modify, or delete workspace items.
 - Default limit: 50 results.  Max: 500.

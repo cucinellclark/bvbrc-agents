@@ -45,7 +45,7 @@ from service_agent.llm_client import chat_completion, create_client
 from service_agent.models import AgentConfig, AgentState, ToolCall
 from service_agent.prompts.populate import build_populate_prompt
 from shared.tools.schemas import ALL_TOOL_SCHEMAS as POPULATE_TOOLS
-from shared.tools import execute_tool, truncate_result
+from shared.tools import execute_tool, truncate_result, result_char_limit
 from shared.tools.registry import TOOL_DISPATCH
 
 logger = logging.getLogger(__name__)
@@ -443,7 +443,7 @@ async def populate_and_submit(
                 if failed_submission_count >= MAX_FAILED_SUBMISSIONS:
                     # Feed the error back so the LLM can produce a
                     # user-facing explanation, then force a text response.
-                    result_str = truncate_result(result)
+                    result_str = truncate_result(result, max_chars=result_char_limit(tc.name))
                     state.add_tool_result(tc.id, result_str)
                     state.add_user_message(
                         "Job submission has failed multiple times. "
@@ -501,7 +501,7 @@ async def populate_and_submit(
                 }
 
                 # Feed result back so LLM can continue (more samples) or summarize
-                result_str = truncate_result(result)
+                result_str = truncate_result(result, max_chars=result_char_limit(tc.name))
                 state.add_tool_result(tc.id, result_str)
 
                 # For single-job requests, force the next LLM call to
@@ -517,7 +517,7 @@ async def populate_and_submit(
                 continue
 
             # Feed result back for LLM to continue
-            result_str = truncate_result(result)
+            result_str = truncate_result(result, max_chars=result_char_limit(tc.name))
             state.add_tool_result(tc.id, result_str)
 
     # Max iterations reached

@@ -28,7 +28,7 @@ class AgentConfig(BaseAgentConfig):
     Adds analysis-specific fields on top of BaseAgentConfig.
     """
 
-    max_preview_bytes: int = 8192  # 8KB, same as workspace agent
+    max_preview_bytes: int = 32768  # 32 KB, matches read_file_preview page size
 
 
 class AgentState(BaseAgentState):
@@ -42,6 +42,8 @@ class AgentState(BaseAgentState):
     collected_previews: list[dict[str, Any]] = Field(default_factory=list)
     collected_report_links: list[dict[str, Any]] = Field(default_factory=list)
     collected_step_summaries: list[dict[str, Any]] = Field(default_factory=list)
+    # Byte ranges for subsequent pages (first page data is in collected_previews)
+    preview_ranges: list[dict[str, Any]] = Field(default_factory=list)
 
     def record_execution(
         self,
@@ -100,13 +102,28 @@ class AgentState(BaseAgentState):
                 self.collected_output_files.append(file_entry)
 
         elif tool_name == "read_file_preview":
-            preview = {
-                "path": result.get("workspace_path") or result.get("path", ""),
-                "data": result.get("data", ""),
-                "bytes_read": result.get("bytes_read", 0),
-                "total_size": result.get("total_size"),
-            }
-            self.collected_previews.append(preview)
+            file_path = result.get("workspace_path") or result.get("path", "")
+            sb = result.get("start_byte", 0)
+
+            if sb == 0:
+                # First page: store data for UI/result rendering
+                preview = {
+                    "path": file_path,
+                    "data": result.get("data", ""),
+                    "bytes_read": result.get("bytes_read", 0),
+                    "total_size": result.get("total_size"),
+                }
+                self.collected_previews.append(preview)
+            else:
+                # Subsequent pages: store only byte range metadata
+                # to avoid bloating AgentResult
+                self.preview_ranges.append({
+                    "path": file_path,
+                    "start_byte": sb,
+                    "next_start": result.get("next_start"),
+                    "bytes_read": result.get("bytes_read", 0),
+                    "is_complete": result.get("is_complete", False),
+                })
 
     def to_result(self) -> "AgentResult":
         elapsed = time.time() - self.start_time
