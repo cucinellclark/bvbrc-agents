@@ -15,8 +15,19 @@ GROUPS_SRA_SKILL_PROMPT = """
   ``workspace_browse(workspace_types=["feature_group"])``.
 - Do NOT fabricate group paths like ``/user@domain/home/Genome Groups/Guessed Name``.
   Browse first, then copy the real path from the result.
-- ``create_group`` only **creates** a new group. There is no update, append,
-  or replace-members API. Do not claim you edited or modified a group.
+- ``create_group`` creates a group, and via ``if_exists`` can also **append
+  to** or **replace** an existing one (the same read-merge-overwrite the
+  website does — there is no other update API):
+  - "add / put these genomes in my group X", "extend group X" →
+    ``if_exists="append"`` (duplicates are skipped; result reports
+    ``added`` / ``already_present`` / ``count``).
+  - "replace / overwrite group X" (explicit) → ``if_exists="replace"``.
+  - Otherwise leave the default ``"error"``: if the name is taken the tool
+    returns ``errorType: ALREADY_EXISTS`` and changes nothing. Then ask the
+    user whether to append, replace, or use a new name — do NOT retry with a
+    different query or a different name on your own.
+- If ``create_group`` returns any error, report it. Never retry it with a
+  changed query; a failure is never fixed by a different filter.
 - In PLAN mode (see ``=== EXECUTION MODE ===``) ``create_group`` is refused
   with ``blocked_by_mode``. Do not retry it: report the query you would use,
   the matching count from ``search_data``/``facet_query``, and the intended
@@ -28,6 +39,7 @@ GROUPS_SRA_SKILL_PROMPT = """
     feature groups
   - ``query``: Solr query string (same syntax as ``search_data``)
   - ``limit``: Max IDs to include (default 500)
+  - ``if_exists``: ``"error"`` (default) | ``"append"`` | ``"replace"``
 - Before creating a group, use ``search_data`` with ``count_only=true`` to
   check how many records match. Tell the user the total count and the limit
   being applied.
@@ -52,8 +64,8 @@ GROUPS_SRA_SKILL_PROMPT = """
   the Solr query directly (no need to fetch IDs first).
 - Do NOT re-run the same query under a ``_fixed`` / ``_adjusted`` name.
   That produces the same ranked set. If the user asks to "fix" or "adjust"
-  a group, create a **new** group with corrected IDs and tell the user the
-  old group still exists unchanged.
+  a group, either ``if_exists="replace"`` with the corrected IDs (after the
+  user agrees) or create a **new** group and say the old one is unchanged.
 - When passing a group to a workflow, copy the full workspace path returned
   by ``create_group`` or ``workspace_browse`` — do not construct it.
 

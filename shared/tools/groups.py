@@ -323,6 +323,7 @@ async def create_group(
     collection: str,
     query: str,
     limit: int = _DEFAULT_LIMIT,
+    if_exists: str = "error",
     config: Any = None,
     headers: Optional[Dict[str, str]] = None,
     **kwargs: Any,
@@ -340,6 +341,12 @@ async def create_group(
         query: Solr query string (Lucene syntax, same as ``search_data``).
         limit: Maximum number of IDs to include (default 500, max 25000).
             Use this to cap group size for services with input limits.
+        if_exists: What to do when a group of that name already exists:
+            ``"error"`` (default, returns ``errorType: ALREADY_EXISTS``),
+            ``"append"`` (add the new IDs to the existing group, deduplicated)
+            or ``"replace"`` (overwrite it).  There is no separate
+            add-to-group API; append is read-merge-overwrite, as on the
+            website.
         config: Agent configuration object.
         headers: HTTP headers with auth token.
 
@@ -407,35 +414,55 @@ async def create_group(
     ws_timeout = getattr(config, "tool_timeout_seconds", 30)
     api = json_rpc_mod.JsonRpcCaller(service_url=ws_url, timeout=ws_timeout)
 
+    if_exists = (if_exists or "error").strip().lower()
+    if if_exists not in ("error", "append", "replace"):
+        return {
+            "error": f"if_exists must be 'error', 'append' or 'replace' (got {if_exists!r}).",
+            "errorType": "INVALID_PARAMETERS",
+        }
+
     result = await gf.create_group(
         api=api,
         name=group_name,
         id_list=ids,
         group_type=group_type,
         token=token,
+        if_exists=if_exists,
     )
 
     if "error" in result:
         return result
 
     # --- Build response ---
-    count = len(ids)
+    action = result.get("action", "created")
+    count = result.get("count", len(ids))
     path = result.get("path", "")
+    limited = len(ids) < total_matching
+    limit_note = f" (query limited to {len(ids)} of {total_matching:,} matches)" if limited else ""
 
-    if count < total_matching:
+    if action == "appended":
         message = (
-            f"Created {display} '{group_name}' with {count} {id_field}(s) "
-            f"(limited from {total_matching:,} total matches)."
+            f"Added {result.get('added', 0)} new {id_field}(s) to {display} "
+            f"'{group_name}' ({result.get('already_present', 0)} already present, "
+            f"{count} total){limit_note}."
+        )
+    elif action == "replaced":
+        was = result.get("previous_count")
+        message = (
+            f"Replaced {display} '{group_name}': now {count} {id_field}(s)"
+            f"{f' (was {was})' if was is not None else ''}{limit_note}."
         )
     else:
-        message = (
-            f"Created {display} '{group_name}' with {count} {id_field}(s)."
-        )
+        message = f"Created {display} '{group_name}' with {count} {id_field}(s){limit_note}."
 
     return {
         "name": group_name,
         "path": path,
         "count": count,
+        "action": action,
+        "added": result.get("added", count),
+        **({"already_present": result["already_present"]} if "already_present" in result else {}),
+        **({"previous_count": result["previous_count"]} if "previous_count" in result else {}),
         "total_matching": total_matching,
         "group_type": group_type,
         "query_used": query,

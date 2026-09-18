@@ -628,6 +628,21 @@ CREATE_GROUP = {
                     ),
                     "default": 500,
                 },
+                "if_exists": {
+                    "type": "string",
+                    "enum": ["error", "append", "replace"],
+                    "description": (
+                        "What to do when a group with this name already exists. "
+                        "'error' (default): fail with errorType ALREADY_EXISTS and "
+                        "change nothing. 'append': add the query's IDs to the "
+                        "existing group (duplicates skipped) -- use when the user "
+                        "says add/put these into MY group. 'replace': overwrite the "
+                        "group with only the new IDs -- only when the user explicitly "
+                        "asks to replace it. Never retry a failed create_group with a "
+                        "different query; report the error instead."
+                    ),
+                    "default": "error",
+                },
             },
             "required": ["group_name", "group_type", "collection", "query"],
         },

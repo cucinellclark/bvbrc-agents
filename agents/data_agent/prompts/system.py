@@ -290,6 +290,11 @@ Parameters:
 - query: Solr query string (same syntax as search_data).
 - limit: Max IDs to include (default 500). Use this when a downstream \
 service has an input cap.
+- if_exists: "error" (default) | "append" | "replace". When the user asks to \
+add/put genomes INTO an existing group, use "append" (duplicates skipped). \
+"replace" only when they explicitly ask to overwrite. If the tool returns \
+errorType ALREADY_EXISTS, ask the user (append / replace / new name) — do NOT \
+retry with a different query or invent a new filter.
 
 Before creating a group, use search_data with count_only=true to check how \
 many records match. Tell the user the total count and the limit being applied \
