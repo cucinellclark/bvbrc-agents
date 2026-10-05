@@ -35,6 +35,23 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# Keys in LLMConfig.extra_body that the OpenAI SDK accepts as real keyword
+# arguments. Anything not listed here is a provider extension and must be
+# nested under the SDK's ``extra_body`` instead, or create() raises TypeError.
+_SDK_NATIVE_PARAMS = frozenset(
+    {
+        "response_format",
+        "seed",
+        "stop",
+        "top_p",
+        "frequency_penalty",
+        "presence_penalty",
+        "logit_bias",
+        "n",
+        "user",
+    }
+)
+
 
 class LLMClient:
     """Async OpenAI-compatible LLM client for orchestrator use.
@@ -139,6 +156,28 @@ class LLMClient:
                 f"temperature={resolved_temp} "
                 f"max_tokens={resolved_max}"
             )
+
+        # Provider-specific additions (thinking toggle, response_format, ...).
+        #
+        # The OpenAI SDK validates its keyword arguments, so a vLLM extension
+        # like chat_template_kwargs or guided_json raises TypeError if passed
+        # top-level. Those have to travel in the SDK's own ``extra_body``,
+        # which it merges into the HTTP request body. Parameters the SDK knows
+        # (response_format) are passed directly so its typing still applies.
+        if self.config.extra_body:
+            passthrough: dict[str, Any] = {}
+            for key, value in self.config.extra_body.items():
+                if key in ("model", "messages"):
+                    logger.warning("extra_body may not override %r; ignoring", key)
+                    continue
+                if key in _SDK_NATIVE_PARAMS:
+                    create_kwargs[key] = value
+                else:
+                    passthrough[key] = value
+            if passthrough:
+                merged = dict(create_kwargs.get("extra_body") or {})
+                merged.update(passthrough)
+                create_kwargs["extra_body"] = merged
 
         return create_kwargs
 

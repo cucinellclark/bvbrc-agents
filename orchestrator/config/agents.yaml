@@ -154,3 +154,25 @@ orchestrator:
   routing_model: "Qwen/Qwen3.6-35B-A3B"
   routing_base_url: "http://mango.cels.anl.gov:8004/v1"
   routing_api_key: "not-needed"
+
+  # Routing is a constrained classification, not a reasoning task.
+  #
+  # routing_disable_thinking: sends chat_template_kwargs.enable_thinking=false.
+  #   Qwen-family models otherwise spend the whole budget on a <think> block
+  #   that the router strips anyway (and return content=None when the budget
+  #   runs out, forcing the retry). Measured on mango 2026-10-05: 200+ tokens
+  #   and content=None with thinking on, 47-81 tokens with it off.
+  # routing_structured_output: constrains the reply via response_format to the
+  #   routing JSON schema. Without it the model invented the keys
+  #   {agent, action, parameters}; with it the reply carried exactly
+  #   {decision, reasoning, agent_key}.
+  #   NOTE: guided_json is accepted but silently IGNORED by this vLLM build.
+  # routing_max_tokens: replaces the hard-coded 16384 in router.py. A
+  #   constrained decision needs a few hundred; the headroom is for
+  #   direct_response prose.
+  #
+  # Set either flag to false if you swap in a model that rejects these
+  # parameters, then restart the orchestrator.
+  routing_disable_thinking: true
+  routing_structured_output: true
+  routing_max_tokens: 2048

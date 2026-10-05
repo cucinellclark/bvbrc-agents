@@ -90,6 +90,25 @@ class OrchestratorConfig(BaseModel):
     routing_base_url: str
     routing_api_key: str
 
+    # Routing is a constrained classification, not a reasoning task.
+    #
+    # disable_thinking: Qwen-family models spend their whole token budget on a
+    #   <think> block that the router then strips, which is also why routing
+    #   sometimes returned an empty response and needed a retry. Measured on
+    #   mango 2026-10-05: 200+ completion tokens and content=None with
+    #   thinking on, 47-81 tokens and valid content with it off.
+    # structured_output: constrains the reply to ROUTING_JSON_SCHEMA. Measured
+    #   on the same endpoint: without it the model invented the keys
+    #   {agent, action, parameters}; with it the reply carried exactly
+    #   {decision, reasoning, agent_key}. NOTE: `guided_json` is accepted but
+    #   silently ignored by this vLLM build — `response_format` is what works.
+    #
+    # Both are off-switchable from agents.yaml because a non-Qwen model may
+    # not accept chat_template_kwargs.
+    routing_disable_thinking: bool = True
+    routing_structured_output: bool = True
+    routing_max_tokens: int = 2048
+
     @classmethod
     def from_yaml(cls, path: str | Path) -> OrchestratorConfig:
         """Load configuration from a YAML file."""

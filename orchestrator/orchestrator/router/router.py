@@ -110,11 +110,15 @@ async def route(
     try:
         raw_response = ""
         for attempt in range(1, max_routing_attempts + 1):
+            # max_tokens is deliberately not pinned here: it comes from the
+            # routing client's own config (orchestrator.routing_max_tokens).
+            # The old hard-coded 16384 existed to leave room for a <think>
+            # block that is now disabled, and it silently overrode the
+            # client's configured budget.
             raw_response = await llm.complete(
                 prompt=user_prompt,
                 system_prompt=system_prompt,
                 temperature=0.0,
-                max_tokens=16384,
             )
             logger.info(
                 f"Routing LLM raw response (attempt {attempt}/{max_routing_attempts}): "

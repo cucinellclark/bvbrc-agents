@@ -11,6 +11,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from typing import Any
+
 from pydantic import BaseModel
 
 # Make the shared config loader importable
@@ -43,3 +45,12 @@ class LLMConfig(BaseModel):
 
     # Timeouts
     timeout_seconds: int = _DEFAULTS.get("timeout_seconds", 180)
+
+    # Provider-specific request body additions, merged into every
+    # chat.completions.create() call made by this client.
+    #
+    # Used by the routing client to disable Qwen-style thinking
+    # (``chat_template_kwargs``) and to constrain the output to the routing
+    # JSON schema (``response_format``). Kept generic so a model swap can
+    # change or drop these from config without a code change.
+    extra_body: dict[str, Any] | None = None

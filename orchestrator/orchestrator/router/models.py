@@ -44,3 +44,63 @@ class RoutingDecision(BaseModel):
     plan: Plan | None = None
     direct_response: str | None = None  # Only set when decision == "direct"
     confidence: float = 1.0  # Router's confidence in this decision
+
+
+# ---------------------------------------------------------------------------
+# Structured-output schema
+# ---------------------------------------------------------------------------
+
+# JSON schema handed to the routing model via ``response_format`` so the reply
+# is guaranteed to carry the field names _parse_routing_response expects.
+#
+# Deliberately permissive: `decision` is an enum and every shape-specific field
+# is optional, because the three decision shapes (direct / agent / pipeline)
+# use different subsets and a oneOf is poorly supported by guided-decoding
+# backends. This still eliminates the real failure mode, which is the model
+# inventing key names.
+ROUTING_JSON_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "decision": {"type": "string", "enum": ["direct", "agent", "pipeline"]},
+        "reasoning": {"type": "string"},
+        # decision == "agent"
+        "agent_key": {"type": "string"},
+        "task": {"type": "string"},
+        # decision == "direct"
+        "direct_response": {"type": "string"},
+        # decision == "pipeline"
+        "steps": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "agent_key": {"type": "string"},
+                    "task": {"type": "string"},
+                    "depends_on": {"type": "array", "items": {"type": "integer"}},
+                },
+                "required": ["agent_key", "task"],
+            },
+        },
+    },
+    "required": ["decision", "reasoning"],
+}
+
+
+def build_routing_extra_body(
+    disable_thinking: bool = True,
+    structured_output: bool = True,
+) -> dict:
+    """Build the provider-specific request additions for the routing client.
+
+    Returns an empty dict when both features are off, so the routing call is
+    byte-identical to the previous behaviour.
+    """
+    extra: dict = {}
+    if disable_thinking:
+        extra["chat_template_kwargs"] = {"enable_thinking": False}
+    if structured_output:
+        extra["response_format"] = {
+            "type": "json_schema",
+            "json_schema": {"name": "routing_decision", "schema": ROUTING_JSON_SCHEMA},
+        }
+    return extra

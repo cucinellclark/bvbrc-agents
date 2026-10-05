@@ -35,6 +35,7 @@ from orchestrator.events.events import Event, EventType
 from orchestrator.events.stream import collect_events
 from orchestrator.llm.client import LLMClient
 from orchestrator.llm.config import LLMConfig
+from orchestrator.router.models import build_routing_extra_body
 from orchestrator.models import OrchestratorRequest, OrchestratorResponse
 from orchestrator.orchestrate import orchestrate, orchestrate_to_response
 from orchestrator.registry.agent_registry import AgentRegistry
@@ -162,18 +163,26 @@ def _build_lifespan(
             )
             routing_base_url = admission_url
 
+        routing_extra_body = build_routing_extra_body(
+            disable_thinking=config.routing_disable_thinking,
+            structured_output=config.routing_structured_output,
+        )
         routing_config = LLMConfig(
             base_url=routing_base_url,
             api_key=config.routing_api_key,
             model=config.routing_model,
             temperature=0.0,
-            max_tokens=4096,
+            max_tokens=config.routing_max_tokens,
             timeout_seconds=config.llm_timeout_seconds,
+            extra_body=routing_extra_body or None,
         )
         _state.routing_llm = LLMClient(routing_config)
         logger.info(
             f"Routing LLM client initialized: {routing_config.model} "
-            f"@ {routing_config.base_url}"
+            f"@ {routing_config.base_url} "
+            f"max_tokens={routing_config.max_tokens} "
+            f"thinking={'off' if config.routing_disable_thinking else 'on'} "
+            f"structured_output={config.routing_structured_output}"
         )
 
         # --- Initialize registry and discover agents ---
