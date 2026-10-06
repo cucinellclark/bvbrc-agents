@@ -41,6 +41,45 @@ def _get_auth(config: Any = None) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Workflow health
+# ---------------------------------------------------------------------------
+
+# Workflows that fail inside the BV-BRC app itself, where nothing on our side
+# can fix it. Surfaced by list_gowe_workflows as `status: "experimental"` with
+# a reason, so an agent can warn the user before spending their compute.
+#
+# Keyed by the workflow name as GoWe registers it (case-insensitive). Evidence
+# and suggested upstream fixes: Agents/upstream_app_spec_issues.md
+#
+# Remove an entry once the app is fixed and a submission succeeds — do not let
+# this list rot into a permanent denylist.
+KNOWN_BROKEN_WORKFLOWS: Dict[str, str] = {
+    "tree sort": (
+        "Known broken upstream (0 of 5 submissions have ever succeeded). Fails "
+        "inside the BV-BRC TreeSort app on both input paths: a genome group "
+        "crashes in prepare_input_file, and a FASTA file fails in tree_sort "
+        "without logging any reason. Not fixable from BV-BRC Copilot. Tell the "
+        "user this before submitting, and offer to help another way."
+    ),
+    "protein structure prediction": (
+        "Known broken upstream (0 of 1 submissions have succeeded). The app's "
+        "own preflight fails with 'Illegal division by zero' before any work "
+        "starts. Not fixable from BV-BRC Copilot. Tell the user this before "
+        "submitting."
+    ),
+}
+
+
+def _workflow_status(name: str | None) -> tuple[str, str | None]:
+    """Return ``(status, reason)`` for a workflow name."""
+    if not name:
+        return "supported", None
+    reason = KNOWN_BROKEN_WORKFLOWS.get(name.strip().lower())
+    if reason:
+        return "experimental", reason
+    return "supported", None
+
+# ---------------------------------------------------------------------------
 # Identifier validation
 # ---------------------------------------------------------------------------
 
@@ -139,16 +178,28 @@ async def list_gowe_workflows(
         )
 
         result = []
+        experimental = 0
         for wf in workflows or []:
-            result.append(
-                {
-                    "id": wf.get("id"),
-                    "name": wf.get("name"),
-                    "description": wf.get("description", ""),
-                }
-            )
+            status, reason = _workflow_status(wf.get("name"))
+            entry = {
+                "id": wf.get("id"),
+                "name": wf.get("name"),
+                "description": wf.get("description", ""),
+                "status": status,
+            }
+            if reason:
+                entry["status_reason"] = reason
+                experimental += 1
+            result.append(entry)
 
-        return {"workflows": result, "count": len(result)}
+        out: Dict[str, Any] = {"workflows": result, "count": len(result)}
+        if experimental:
+            out["note"] = (
+                f"{experimental} workflow(s) are marked status=experimental "
+                "with a status_reason. Do not submit those without telling the "
+                "user why they are likely to fail."
+            )
+        return out
 
     except Exception as e:
         return {"error": f"Failed to list workflows: {type(e).__name__}: {e}"}

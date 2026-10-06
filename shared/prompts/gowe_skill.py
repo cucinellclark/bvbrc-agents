@@ -17,6 +17,20 @@ workflows.  Follow these rules:
 3. Call ``get_workflow_inputs`` to get the input schema before populating.
 4. Call ``submit_gowe_job`` to submit with the workflow_id and populated inputs.
 
+### Workflow Status
+
+`list_gowe_workflows` returns a `status` for every workflow.
+
+- `status: "supported"` - submit normally.
+- `status: "experimental"` - the workflow is KNOWN to fail inside the BV-BRC
+  application, and a `status_reason` explains why. Do NOT submit it silently.
+  Tell the user plainly that it is known to be broken, quote the reason, and
+  offer an alternative or ask how they want to proceed. Only submit if the
+  user explicitly says to try anyway.
+
+A submission costs the user real compute, so spending it on a workflow we
+already know fails wastes it and produces a confusing failure.
+
 ### Rules
 - NEVER guess or hardcode workflow names/IDs — always discover via ``list_gowe_workflows``.
 - ALWAYS call ``get_workflow_inputs`` before populating inputs.

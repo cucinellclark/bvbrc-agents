@@ -244,3 +244,55 @@ class TestToolTimeoutOverrides:
             assert recorded_timeout == 30.0
         finally:
             asyncio.wait_for = original_wait_for
+
+
+# --- Workflow health gate -------------------------------------------------
+
+class TestWorkflowStatus:
+    """list_gowe_workflows flags workflows known to fail inside the BV-BRC app.
+
+    A submission costs the user real compute, so an agent must be able to warn
+    before spending it on a workflow with a 0% success record.
+    """
+
+    def test_known_broken_is_experimental_with_a_reason(self):
+        from shared.tools.gowe import _workflow_status
+
+        status, reason = _workflow_status("Tree Sort")
+        assert status == "experimental"
+        assert reason and "upstream" in reason.lower()
+
+    def test_name_match_is_case_insensitive_and_trimmed(self):
+        from shared.tools.gowe import _workflow_status
+
+        for variant in ("tree sort", "  Tree Sort  ", "TREE SORT"):
+            assert _workflow_status(variant)[0] == "experimental", variant
+
+    def test_healthy_workflows_are_supported_with_no_reason(self):
+        from shared.tools.gowe import _workflow_status
+
+        for name in ("GenomeAssembly", "BLAST", "Comparative Systems"):
+            status, reason = _workflow_status(name)
+            assert status == "supported", name
+            assert reason is None
+
+    def test_missing_name_does_not_raise(self):
+        from shared.tools.gowe import _workflow_status
+
+        assert _workflow_status(None) == ("supported", None)
+        assert _workflow_status("") == ("supported", None)
+
+    def test_every_entry_explains_itself(self):
+        """A bare flag is not actionable — the agent must be able to quote why."""
+        from shared.tools.gowe import KNOWN_BROKEN_WORKFLOWS
+
+        for name, reason in KNOWN_BROKEN_WORKFLOWS.items():
+            assert name == name.lower(), f"{name!r} must be lowercase for lookup"
+            assert len(reason) > 60, f"{name}: reason too thin to show a user"
+
+    def test_the_skill_prompt_teaches_the_flag(self):
+        """The flag is useless if no agent is told to read it."""
+        from shared.prompts.gowe_skill import GOWE_SKILL_PROMPT
+
+        assert "experimental" in GOWE_SKILL_PROMPT
+        assert "status_reason" in GOWE_SKILL_PROMPT
