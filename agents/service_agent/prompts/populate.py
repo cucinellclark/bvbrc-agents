@@ -212,6 +212,14 @@ determine if reads are paired-end.
 change analysis parameters (hit counts, thresholds, models, recipes) on your \
 own. If you set any parameter to a non-default value, say so in your summary \
 and why.
+- But when the user DOES name a value, match it to the declared enum value \
+instead of leaving the default. Compare their words against the "[enum: ...]" \
+list and pick the entry they mean, even when the wording differs from the \
+value: "the BV-BRC database" is database=bvbrc, not the SILVA default; "Mafft" \
+is aligner=Mafft; "nanopore reads" is platform=nanopore. A schema default is \
+the fallback for a parameter the user said NOTHING about -- it is never a \
+reason to override an explicit request. If their words match no declared \
+value, ASK rather than guessing or silently keeping the default.
 - Inputs whose doc says "[enum: ...]" and whose name ends in _source or _type \
 are SELECTORS. The doc names the payload input each value requires ("Required \
 when X=Y"). Set the selector AND its payload together. If the user has not \
