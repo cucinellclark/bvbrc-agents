@@ -68,6 +68,9 @@ already know fails wastes it and produces a confusing failure.
   - Assembly-style workflows: ``srr_ids`` as a **string list**.
   - RNASeq / SARS2Wastewater: ``srr_libs`` records with
     **``srr_accession``** and **``sample_id``** (NOT ``srr_id``).
-  - MetagenomeBinning: ``srr_ids`` as a **singular string**.
+  - ``srr_libs`` field sets differ per workflow: Fastq Utils declares
+    ONLY ``srr_accession`` (no ``sample_id``); Taxonomic Classification
+    ``sample_id`` + ``srr_accession``; RNASeq adds ``condition``. Reusing
+    one workflow's shape on another is rejected at submit.
 - Never guess SRA field names — use what the schema provides.
 """.strip()

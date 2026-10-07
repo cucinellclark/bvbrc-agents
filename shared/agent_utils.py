@@ -709,12 +709,15 @@ def format_execution_mode(source: Any) -> str:
     return (
         "=== EXECUTION MODE ===\n"
         "This session is in PLAN mode. submit_gowe_job and create_group are\n"
-        "disabled and return an error if called; every other tool works.\n"
-        "You may fully prepare a job or group (discover, browse, verify,\n"
-        "populate inputs) and present it as ready, but you must never say\n"
-        "it was submitted or created. Tell the user to switch to Execute\n"
-        "mode using the Plan/Execute toggle next to the message box when\n"
-        "they want it run."
+        "gated: the call is refused and nothing is submitted or created, but\n"
+        "you must still MAKE the call. Every other tool works.\n"
+        "Fully prepare the job or group (discover, browse, verify, populate\n"
+        "every input), then CALL the tool anyway. The refusal is expected and\n"
+        "is what gives the user a one-click 'Submit this job' button; if you\n"
+        "skip the call that button never appears. Never say the job was\n"
+        "submitted or the group created, and tell the user to switch to\n"
+        "Execute mode using the Plan/Execute toggle next to the message box\n"
+        "when they want it run."
     )
 
 

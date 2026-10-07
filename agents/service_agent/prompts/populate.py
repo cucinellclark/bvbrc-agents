@@ -22,13 +22,20 @@ from shared.prompts.similar_genome_skill import SIMILAR_GENOME_SKILL_PROMPT
 _PLAN_MODE_SECTION = """\
 == EXECUTION MODE ==
 This session is in PLAN mode. submit_gowe_job and create_group are \
-DISABLED: if you call them the tool returns an error with \
-"blocked_by_mode" and nothing is submitted or created. Every other \
-tool works normally.
+GATED: the call is refused and nothing is submitted or created, but \
+you must still MAKE the call. Every other tool works normally.
+STILL CALL submit_gowe_job once every input is populated. The refusal \
+is not a failure and not a reason to skip the call -- it is what gives \
+the user a one-click "Submit this job" button on your answer. If you \
+never call it, that button never appears and the user has to go and \
+find the Plan/Execute toggle themselves. Calling it is REQUIRED, not \
+optional, and it cannot submit anything.
 In plan mode your job is to get the submission fully prepared:
 - Discover the workflow, browse the workspace, verify identifiers, \
 call get_workflow_inputs, and populate EVERY input exactly as you \
 would before submitting.
+- Then CALL submit_gowe_job with the complete inputs. It will be \
+refused; that is expected and correct.
 - Then present a **Ready to submit** summary: the workflow's display \
 name, each input name and the value you will use, any non-default \
 parameters, and the output folder name that will be used.
