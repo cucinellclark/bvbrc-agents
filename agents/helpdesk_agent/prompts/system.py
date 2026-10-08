@@ -5,6 +5,7 @@ from shared.prompts.workspace_skill import WORKSPACE_SKILL_PROMPT
 from shared.prompts.gowe_skill import GOWE_SKILL_PROMPT
 from shared.prompts.similar_genome_skill import SIMILAR_GENOME_SKILL_PROMPT
 from shared.prompts.response_format_skill import RESPONSE_FORMAT_SKILL_PROMPT
+from shared.prompts.literature_skill import LITERATURE_CITATION_RULES
 
 SYSTEM_PROMPT = (
     """\
@@ -82,8 +83,10 @@ needs evidence from the scientific literature.
 `search_literature`. Do not substitute `query_helpdesk`.
 - You may call both tools in the same turn if the user needs both \
 platform guidance AND published evidence.
-- Format literature results with paper titles, authors (if available), \
-and key findings. Include source metadata when present.
+
+"""
+    + LITERATURE_CITATION_RULES
+    + """
 
 ## Answer Quality Guidelines
 

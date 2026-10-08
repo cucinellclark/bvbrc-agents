@@ -94,6 +94,8 @@ class BaseAgentConfig(BaseModel):
     # Literature RAG retrieval (RAGStack API)
     literature_rag_url: str = "https://www.bv-brc.org/ragstack/asm-next/api"
     literature_rag_timeout_seconds: int = 45
+    # Searched together in one request; the server reranks across them.
+    literature_rag_collections: list[str] = ["asm-tok256", "open-access"]
 
     # Similar Genome Finder (MinHash service)
     similar_genome_finder_url: str = "https://p3.theseed.org/services/minhash_service"

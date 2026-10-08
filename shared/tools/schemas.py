@@ -834,10 +834,12 @@ SEARCH_LITERATURE = {
     "function": {
         "name": "search_literature",
         "description": (
-            "Search scientific literature using the literature RAG service and return raw "
-            "source passages with bibliographic metadata. Use this when the user asks "
-            "for published evidence, papers about an organism/gene, or literature-backed "
-            "facts (PPI, mutations, phenotypes)."
+            "Search published scientific literature (ASM journals + PubMed Central "
+            "open-access) and return distinct papers, each with title, DOI/URL, year, "
+            "journal, authors when known, and the retrieved passages. Use this when the "
+            "user asks for published evidence, papers about an organism/gene, or "
+            "literature-backed facts (PPI, mutations, phenotypes). Cite only papers it "
+            "returns."
         ),
         "parameters": {
             "type": "object",
@@ -848,7 +850,7 @@ SEARCH_LITERATURE = {
                 },
                 "top_k": {
                     "type": "integer",
-                    "description": "Maximum number of sources to return (default 10).",
+                    "description": "Maximum number of distinct papers to return (default 10, max 20).",
                 },
                 "use_graph": {
                     "type": "boolean",

@@ -32,6 +32,7 @@ TOOL_RESULT_CHAR_LIMITS: dict[str, int] = {
     "read_file_preview": 48_000,   # 32 KB data + JSON escaping + envelope
     "search_file":       16_000,   # self-bounded to ~14 000 by file_search.py
     "summarize_file":    12_000,   # Phase 3
+    "search_literature": 24_000,   # self-bounded to ~20 000 by literature.py
 }
 
 
