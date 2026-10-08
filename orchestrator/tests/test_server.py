@@ -22,7 +22,12 @@ from orchestrator.llm.client import LLMClient
 from orchestrator.models import OrchestratorRequest, OrchestratorResponse
 from orchestrator.registry.agent_handle import AgentHandle
 from orchestrator.registry.agent_registry import AgentRegistry
+from fastapi import HTTPException
+
+from orchestrator.internal_auth import INTERNAL_KEY_HEADER
 from orchestrator.server import AppState, _state, create_app, _resolve_auth_token
+
+TEST_INTERNAL_KEY = "test-internal-key"
 
 
 # ---------------------------------------------------------------------------
@@ -116,6 +121,7 @@ def _setup_ready_state(
     )
     _state.ready = True
     _state.startup_time = 1000000.0
+    _state.internal_key = TEST_INTERNAL_KEY
 
 
 def _teardown_state() -> None:
@@ -125,6 +131,7 @@ def _teardown_state() -> None:
     _state.config = None
     _state.ready = False
     _state.startup_time = 0.0
+    _state.internal_key = None
 
 
 # ---------------------------------------------------------------------------
@@ -144,7 +151,11 @@ def app():
 def ready_client(app):
     """A TestClient with the server in 'ready' state (mocked components)."""
     _setup_ready_state()
-    yield TestClient(app, raise_server_exceptions=False)
+    yield TestClient(
+        app,
+        raise_server_exceptions=False,
+        headers={INTERNAL_KEY_HEADER: TEST_INTERNAL_KEY},
+    )
     _teardown_state()
 
 
@@ -152,7 +163,12 @@ def ready_client(app):
 def unready_client(app):
     """A TestClient with the server NOT ready."""
     _teardown_state()
-    yield TestClient(app, raise_server_exceptions=False)
+    _state.internal_key = TEST_INTERNAL_KEY
+    yield TestClient(
+        app,
+        raise_server_exceptions=False,
+        headers={INTERNAL_KEY_HEADER: TEST_INTERNAL_KEY},
+    )
     _teardown_state()
 
 
@@ -171,13 +187,11 @@ class TestResolveAuthToken:
     def test_authorization_header_raw(self):
         assert _resolve_auth_token(None, "raw-token") == "raw-token"
 
-    def test_falls_back_to_default(self):
-        with patch("orchestrator.server._load_default_token", return_value="default-tok"):
-            assert _resolve_auth_token(None, None) == "default-tok"
-
-    def test_returns_none_when_no_token(self):
-        with patch("orchestrator.server._load_default_token", return_value=None):
-            assert _resolve_auth_token(None, None) is None
+    def test_no_token_is_401_not_a_server_default(self, monkeypatch):
+        monkeypatch.setenv("BV_BRC_AUTH_TOKEN", "operator-token")
+        with pytest.raises(HTTPException) as exc:
+            _resolve_auth_token(None, None)
+        assert exc.value.status_code == 401
 
 
 # ---------------------------------------------------------------------------
@@ -212,7 +226,11 @@ class TestHealthEndpoint:
             agent._healthy = False
         _setup_ready_state(registry=registry)
 
-        client = TestClient(app, raise_server_exceptions=False)
+        client = TestClient(
+            app,
+            raise_server_exceptions=False,
+            headers={INTERNAL_KEY_HEADER: TEST_INTERNAL_KEY},
+        )
         resp = client.get("/health")
         assert resp.status_code == 503
         body = resp.json()
@@ -294,7 +312,11 @@ class TestOrchestrateEndpoint:
         llm = _make_mock_llm(routing)
 
         _setup_ready_state(registry=registry, llm=llm)
-        client = TestClient(app, raise_server_exceptions=False)
+        client = TestClient(
+            app,
+            raise_server_exceptions=False,
+            headers={INTERNAL_KEY_HEADER: TEST_INTERNAL_KEY},
+        )
 
         resp = client.post(
             "/orchestrate",
@@ -325,7 +347,11 @@ class TestOrchestrateEndpoint:
         llm = _make_mock_llm(routing)
 
         _setup_ready_state(registry=registry, llm=llm)
-        client = TestClient(app, raise_server_exceptions=False)
+        client = TestClient(
+            app,
+            raise_server_exceptions=False,
+            headers={INTERNAL_KEY_HEADER: TEST_INTERNAL_KEY},
+        )
 
         resp = client.post(
             "/orchestrate",
@@ -344,7 +370,11 @@ class TestOrchestrateEndpoint:
         """Auth token from Authorization header is used when body has none."""
         llm = _make_mock_llm()  # direct response
         _setup_ready_state(llm=llm)
-        client = TestClient(app, raise_server_exceptions=False)
+        client = TestClient(
+            app,
+            raise_server_exceptions=False,
+            headers={INTERNAL_KEY_HEADER: TEST_INTERNAL_KEY},
+        )
 
         # Mock _resolve_auth_token to verify it's called with header
         with patch("orchestrator.server._resolve_auth_token", wraps=_resolve_auth_token) as mock_resolve:
@@ -401,7 +431,11 @@ class TestOrchestrateEndpoint:
         llm.close = AsyncMock()
 
         _setup_ready_state(registry=registry, llm=llm)
-        client = TestClient(app, raise_server_exceptions=False)
+        client = TestClient(
+            app,
+            raise_server_exceptions=False,
+            headers={INTERNAL_KEY_HEADER: TEST_INTERNAL_KEY},
+        )
 
         resp = client.post(
             "/orchestrate",
@@ -465,7 +499,11 @@ class TestOrchestrateStreamEndpoint:
         llm = _make_mock_llm(routing)
 
         _setup_ready_state(registry=registry, llm=llm)
-        client = TestClient(app, raise_server_exceptions=False)
+        client = TestClient(
+            app,
+            raise_server_exceptions=False,
+            headers={INTERNAL_KEY_HEADER: TEST_INTERNAL_KEY},
+        )
 
         resp = client.post(
             "/orchestrate/stream",
@@ -527,7 +565,11 @@ class TestOrchestrateStreamEndpoint:
         llm = _make_mock_llm(routing)
 
         _setup_ready_state(registry=registry, llm=llm)
-        client = TestClient(app, raise_server_exceptions=False)
+        client = TestClient(
+            app,
+            raise_server_exceptions=False,
+            headers={INTERNAL_KEY_HEADER: TEST_INTERNAL_KEY},
+        )
 
         resp = client.post(
             "/orchestrate/stream",
@@ -557,7 +599,11 @@ class TestErrorHandling:
         llm.close = AsyncMock()
 
         _setup_ready_state(registry=registry, llm=llm)
-        client = TestClient(app, raise_server_exceptions=False)
+        client = TestClient(
+            app,
+            raise_server_exceptions=False,
+            headers={INTERNAL_KEY_HEADER: TEST_INTERNAL_KEY},
+        )
 
         resp = client.post(
             "/orchestrate",
@@ -586,7 +632,11 @@ class TestErrorHandling:
         llm.close = AsyncMock()
 
         _setup_ready_state(registry=registry, llm=llm)
-        client = TestClient(app, raise_server_exceptions=False)
+        client = TestClient(
+            app,
+            raise_server_exceptions=False,
+            headers={INTERNAL_KEY_HEADER: TEST_INTERNAL_KEY},
+        )
 
         resp = client.post(
             "/orchestrate/stream",
@@ -624,7 +674,11 @@ class TestResponseModel:
         llm = _make_mock_llm(routing)
 
         _setup_ready_state(registry=registry, llm=llm)
-        client = TestClient(app, raise_server_exceptions=False)
+        client = TestClient(
+            app,
+            raise_server_exceptions=False,
+            headers={INTERNAL_KEY_HEADER: TEST_INTERNAL_KEY},
+        )
 
         resp = client.post("/orchestrate", json={"query": "test"})
         body = resp.json()

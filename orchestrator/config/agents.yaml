@@ -176,3 +176,12 @@ orchestrator:
   routing_disable_thinking: true
   routing_structured_output: true
   routing_max_tokens: 2048
+
+  # Hosts a request's llm_override.base_url may point at (hostname only,
+  # any port). The model list in Mongo supplies base_url per request; without
+  # this allowlist any caller could aim the agents at a server it controls.
+  # Add a host here (and restart) before activating a modelList row on it.
+  llm_allowed_hosts:
+    - "mango.cels.anl.gov"    # vLLM: Qwen, Llama 4 Scout
+    - "apps.inside.anl.gov"   # Argo
+    - "rbdgx2.cels.anl.gov"   # Llama 3.3 70B (inactive row)

@@ -22,7 +22,6 @@ import logging
 import os
 import time
 from contextlib import asynccontextmanager
-from pathlib import Path
 from typing import Any, AsyncGenerator
 
 from fastapi import FastAPI, Header, HTTPException, Request
@@ -33,6 +32,13 @@ from sse_starlette.sse import EventSourceResponse
 from orchestrator.config import OrchestratorConfig
 from orchestrator.events.events import Event, EventType
 from orchestrator.events.stream import collect_events
+from orchestrator.internal_auth import (
+    INTERNAL_KEY_HEADER,
+    UNAUTHENTICATED_PATHS,
+    internal_key_matches,
+    llm_host_allowed,
+    load_internal_key,
+)
 from orchestrator.llm.client import LLMClient
 from orchestrator.llm.config import LLMConfig
 from orchestrator.router.models import build_routing_extra_body
@@ -56,6 +62,7 @@ class AppState:
     config: OrchestratorConfig | None = None
     ready: bool = False
     startup_time: float = 0.0
+    internal_key: str | None = None  # Shared secret the gateway must send
 
     # Cache of LLMClient instances keyed by (base_url, api_key, model,
     # max_tokens). Avoids creating a new AsyncOpenAI client (and TLS
@@ -74,39 +81,29 @@ _state = AppState()
 # ---------------------------------------------------------------------------
 
 
-def _load_default_token() -> str | None:
-    """Load the default auth token from auth_token.txt or environment."""
-    token = os.environ.get("BV_BRC_AUTH_TOKEN")
-    if token:
-        return token
-
-    token_file = Path(__file__).parent.parent / "auth_token.txt"
-    if token_file.exists():
-        return token_file.read_text().strip() or None
-
-    return None
-
-
 def _resolve_auth_token(
     body_token: str | None,
     authorization: str | None,
-) -> str | None:
-    """Resolve auth token from multiple sources.
+) -> str:
+    """Return the caller's BV-BRC token, or raise 401.
 
-    Priority: request body > Authorization header > default token.
+    Priority: request body > Authorization header. There is deliberately no
+    server-side default: a request without a token used to run every tool
+    as whoever owned auth_token.txt / BV_BRC_AUTH_TOKEN on this host.
     """
-    # 1. Explicit token in request body
     if body_token:
         return body_token
 
-    # 2. Authorization header (Bearer <token>)
     if authorization:
         if authorization.startswith("Bearer "):
-            return authorization[7:]
-        return authorization
+            authorization = authorization[7:]
+        if authorization.strip():
+            return authorization
 
-    # 3. Default token from env or file
-    return _load_default_token()
+    raise HTTPException(
+        status_code=401,
+        detail="A BV-BRC auth token is required (auth_token or Authorization header).",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -131,12 +128,19 @@ def _build_lifespan(
             config = OrchestratorConfig.from_defaults()
         _state.config = config
 
-        # --- Apply default auth token to agents that lack one ---
-        default_token = _load_default_token()
-        if default_token:
-            for agent_config in config.agents.values():
-                if not agent_config.auth_token:
-                    agent_config.auth_token = default_token
+        # --- Gateway shared secret (required) ---
+        _state.internal_key = load_internal_key()
+        if not _state.internal_key:
+            raise RuntimeError(
+                "No gateway shared secret found. Set COPILOT_INTERNAL_KEY or "
+                "create ~/.copilot_internal_key (chmod 600) with the same "
+                "value the gateway uses. See orchestrator/internal_auth.py."
+            )
+        if not config.llm_allowed_hosts:
+            logger.warning(
+                "orchestrator.llm_allowed_hosts is empty — every request's "
+                "llm_override will be rejected."
+            )
 
         # --- Initialize per-request LLM client cache ---
         # The orchestrator does not maintain a default user-facing LLM
@@ -260,6 +264,20 @@ def create_app(config_path: str | None = None) -> FastAPI:
         lifespan=_build_lifespan(config_path),
     )
 
+    @app.middleware("http")
+    async def require_internal_key(request: Request, call_next):
+        """Reject callers that do not present the gateway shared secret."""
+        if request.url.path in UNAUTHENTICATED_PATHS:
+            return await call_next(request)
+        if not internal_key_matches(
+            _state.internal_key, request.headers.get(INTERNAL_KEY_HEADER)
+        ):
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Missing or invalid internal key."},
+            )
+        return await call_next(request)
+
     # --- Register routes ---
 
     def _resolve_llm(request: OrchestratorRequest) -> LLMClient:
@@ -292,6 +310,19 @@ def create_app(config_path: str | None = None) -> FastAPI:
             )
 
         cfg = _state.config
+        if not llm_host_allowed(override.base_url, cfg.llm_allowed_hosts):
+            logger.warning(
+                f"Rejected llm_override.base_url {override.base_url!r}: host "
+                f"not in orchestrator.llm_allowed_hosts"
+            )
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "llm_override.base_url is not on an allowed host. Add the "
+                    "host to orchestrator.llm_allowed_hosts in agents.yaml."
+                ),
+            )
+
         max_tokens = override.max_tokens or cfg.llm_max_tokens
 
         # LLM_ADMISSION_URL override: when the admission proxy is running

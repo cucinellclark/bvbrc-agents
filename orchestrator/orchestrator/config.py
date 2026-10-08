@@ -109,6 +109,10 @@ class OrchestratorConfig(BaseModel):
     routing_structured_output: bool = True
     routing_max_tokens: int = 2048
 
+    # Hostnames a request's llm_override.base_url may point at (any port).
+    # Empty means every override is rejected. See internal_auth.py.
+    llm_allowed_hosts: list[str] = Field(default_factory=list)
+
     @classmethod
     def from_yaml(cls, path: str | Path) -> OrchestratorConfig:
         """Load configuration from a YAML file."""
