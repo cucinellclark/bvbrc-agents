@@ -440,7 +440,16 @@ async def populate_and_submit(
                 state.question = content
             else:
                 state.status = "error"
-                state.error_message = "LLM produced no tool calls and no text."
+                logger.warning(
+                    "Service populate loop: LLM produced no tool calls and no "
+                    f"text (iteration {iteration + 1})"
+                )
+                # Shown to the user verbatim.
+                state.error_message = (
+                    "Sorry — I wasn't able to put together a response for that. "
+                    "Could you rephrase it, or say a bit more about what you'd "
+                    "like to run or find?"
+                )
             return state
 
         # Add assistant message with tool calls

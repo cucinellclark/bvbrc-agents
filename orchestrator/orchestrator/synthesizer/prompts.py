@@ -73,6 +73,24 @@ def build_synthesis_prompt(
             user_parts.append(f"Sources consulted: {', '.join(sources)}")
         user_parts.append(f"\n{answer}\n")
 
+        # The agent ran tools but wrote nothing: give synthesis what the
+        # tools found (counts, links, errors) so it can still answer.
+        summaries = [
+            (call.get("tool", "tool"), call.get("result_summary"), call.get("error"))
+            for call in (result.get("tool_trace") or [])
+            if call.get("result_summary") or call.get("error")
+        ]
+        if not (answer or "").strip() and summaries:
+            user_parts.append(
+                "### What the agent's tools returned (answer from these; "
+                "the agent did not write a summary)"
+            )
+            import json as _json
+            for tool, summary, error in summaries[-8:]:
+                detail = _json.dumps(summary, default=str) if summary else f"error: {error}"
+                user_parts.append(f"- {tool}: {detail}")
+            user_parts.append("")
+
         if manifest:
             import json as _json
             user_parts.append(

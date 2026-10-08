@@ -148,17 +148,58 @@ def _build_config_kwargs(
     return config_kwargs
 
 
+# Result fields worth keeping in the trace: counts, links and errors.
+# Bulk payloads (docs, file text, facet buckets) are left out on purpose:
+# the trace is persisted with every assistant message.
+_RESULT_SUMMARY_KEYS = (
+    "numFound", "count", "total", "distinct_counts", "distinct_counts_capped",
+    "viewer_url", "download_tsv_url", "download_fasta_dna_url",
+    "download_fasta_protein_url", "workspace_browser_url", "jobs_page_url",
+    "total_size", "is_complete", "error", "errorType",
+)
+_RESULT_SUMMARY_MAX_CHARS = 600
+
+
+def _summarize_tool_result(result: Any) -> dict[str, Any] | None:
+    """A small, persisted digest of a tool result.
+
+    Lets synthesis and the orchestrator's fallback state what a tool found
+    ("4932 records", a viewer link) when the agent's own write-up came back
+    empty, instead of listing the tool's arguments.
+    """
+    if not isinstance(result, dict):
+        return None
+    summary: dict[str, Any] = {}
+    for key in _RESULT_SUMMARY_KEYS:
+        if key in result and result[key] not in (None, "", [], {}):
+            summary[key] = result[key]
+    docs = result.get("docs")
+    if isinstance(docs, list):
+        summary["docs_returned"] = len(docs)
+    if not summary:
+        return None
+    if len(json.dumps(summary, default=str)) > _RESULT_SUMMARY_MAX_CHARS:
+        # distinct_counts can be large; keep only scalars and links.
+        summary = {k: v for k, v in summary.items()
+                   if not isinstance(v, (dict, list))}
+    return summary
+
+
 def _build_tool_trace(result: Any) -> list[dict[str, Any]]:
     """Extract a serializable tool trace from an agent result."""
-    return [
-        {
+    trace = []
+    for ex in result.tool_trace:
+        entry = {
             "tool": ex.tool_call.name,
             "arguments": ex.tool_call.arguments,
             "error": ex.error,
             "duration_ms": ex.duration_ms,
         }
-        for ex in result.tool_trace
-    ]
+        summary = _summarize_tool_result(getattr(ex, "result", None))
+        if summary:
+            entry["result_summary"] = summary
+        trace.append(entry)
+    return trace
 
 
 def _blocked_actions_of(result: Any) -> list[dict[str, Any]]:

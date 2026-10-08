@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import time
 from typing import Any, Callable, Dict
 
@@ -41,11 +42,14 @@ from shared.agent_utils import (
 )
 from shared.agent_messages import (
     DUPLICATE_CALL_WARNING,
+    EMPTY_ANSWER_NUDGE,
     MAX_ITERATIONS_SYNTHESIS,
     MAX_ITERATIONS_FALLBACK,
 )
 from shared.models import BaseAgentState, BaseAgentConfig, ToolCall
 from shared.tools import execute_tool, truncate_result, result_char_limit
+
+logger = logging.getLogger(__name__)
 
 
 ProgressCallback = Any  # async (progress: float, total: float|None, message: str) -> None
@@ -213,6 +217,7 @@ async def run_agent_loop(
 
     # Track fingerprints for duplicate detection
     executed_fingerprints: set[str] = set()
+    empty_answer_nudged = False
     duplicate_count = 0
 
     for iteration in range(config.max_iterations):
@@ -249,6 +254,22 @@ async def run_agent_loop(
         _check_cancelled()
 
         # 2. CHECK -- If no tool calls, the LLM produced a final answer
+        if (
+            not tool_calls
+            and not (content or "").strip()
+            and state.tool_executions
+            and not empty_answer_nudged
+        ):
+            # Empty answer after tools ran: ask once for the write-up
+            # rather than ending the turn with nothing to show.
+            empty_answer_nudged = True
+            logger.warning(
+                "Empty final answer after %d tool call(s); nudging once",
+                len(state.tool_executions),
+            )
+            state.add_user_message(EMPTY_ANSWER_NUDGE)
+            continue
+
         if not tool_calls:
             await emit_progress(
                 progress_callback,

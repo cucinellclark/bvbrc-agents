@@ -20,6 +20,40 @@ from orchestrator.synthesizer.prompts import build_synthesis_prompt
 logger = logging.getLogger(__name__)
 
 
+_LINK_LABELS = (
+    ("viewer_url", "view results"),
+    ("download_tsv_url", "download TSV"),
+    ("workspace_browser_url", "open in workspace"),
+    ("jobs_page_url", "jobs page"),
+)
+
+
+def _describe_tool_result(call: dict[str, Any]) -> str | None:
+    """One user-facing line from a tool trace entry's result_summary."""
+    summary = call.get("result_summary") or {}
+    tool = call.get("tool", "lookup")
+    if call.get("error") and not summary:
+        return None
+    facts = []
+    for key in ("numFound", "count", "total"):
+        if isinstance(summary.get(key), int):
+            facts.append(f"{summary[key]:,} records")
+            break
+    distinct = summary.get("distinct_counts")
+    if isinstance(distinct, dict):
+        for field, n in distinct.items():
+            if isinstance(n, int):
+                facts.append(f"{n:,} distinct {field}")
+    links = [
+        f"[{label}](<{summary[key]}>)"
+        for key, label in _LINK_LABELS
+        if isinstance(summary.get(key), str)
+    ]
+    if not facts and not links:
+        return None
+    return f"- `{tool}`: " + "; ".join(facts + links)
+
+
 def _build_fallback(
     agent_results: list[dict[str, Any]],
     error: str | None = None,
@@ -34,24 +68,20 @@ def _build_fallback(
             parts.append(f"**{agent}**: {answer}")
             continue
 
-        # No textual answer — try to summarise the tool trace
-        tool_trace = result.get("tool_trace") or []
-        if tool_trace:
-            summary_lines = []
-            for call in tool_trace:
-                tool_name = call.get("tool", "unknown")
-                args = call.get("arguments", {})
-                brief = json.dumps(args, default=str)
-                if len(brief) > 200:
-                    brief = brief[:200] + "..."
-                summary_lines.append(f"- `{tool_name}({brief})`")
-            elapsed = result.get("elapsed_seconds", "?")
-            iters = result.get("iterations_used", "?")
+        # No textual answer: say what the tools found, not what they were
+        # called with (the old fallback printed the raw query arguments).
+        found_lines = []
+        for call in result.get("tool_trace") or []:
+            line = _describe_tool_result(call)
+            if line:
+                found_lines.append(line)
+        if found_lines:
             parts.append(
-                f"The **{agent}** agent executed {len(tool_trace)} tool call(s) "
-                f"over {iters} iterations ({elapsed}s) but was unable to produce "
-                f"a textual summary.\n\n"
-                + "\n".join(summary_lines[:10])
+                "I ran the lookups for this but wasn't able to finish writing "
+                "up the answer. Here is what they returned:\n\n"
+                + "\n".join(found_lines[-8:])
+                + "\n\nAsk me to summarize these results, or try the "
+                "question again."
             )
 
     if parts:
@@ -95,13 +125,19 @@ async def synthesize(
         data={"result_count": len(agent_results)},
     )
 
-    # --- Pass-through for single successful agent result ---
+    # --- Pass-through for a single agent result ---
     # Also pass through "needs_input" so the agent's clarification
-    # question reaches the user verbatim (no LLM reformulation).
+    # question reaches the user verbatim (no LLM reformulation), and
+    # "error": error answers are user-facing already (agent_executor's
+    # user_facing_agent_error, or the agent's own explanation). Sending
+    # them through LLM synthesis cost another slow call on an already
+    # failed turn, and when that came back empty the fallback printed
+    # "**data**: <raw error>".
     if (
         not force_llm
         and len(agent_results) == 1
-        and agent_results[0].get("status") in ("completed", "max_iterations", "needs_input")
+        and agent_results[0].get("status")
+        in ("completed", "max_iterations", "needs_input", "error")
         and agent_results[0].get("answer")
     ):
         answer = agent_results[0]["answer"]
@@ -174,7 +210,9 @@ async def synthesize(
             prompt=user_prompt,
             system_prompt=system_prompt,
             temperature=0.1,
-            max_tokens=2048,
+            # No max_tokens override: the model's configured budget
+            # (Mongo modelList / llm.yaml). A thinking model spent the old
+            # hardcoded 2048 on reasoning and returned empty content.
         ):
             response_text += chunk
             yield Event(

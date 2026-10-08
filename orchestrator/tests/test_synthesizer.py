@@ -134,13 +134,13 @@ class TestSynthesize:
         assert done_event.data["method"] == "pass_through"
 
     @pytest.mark.asyncio
-    async def test_llm_synthesis_for_error_result(self):
-        """Test LLM synthesis when agent returned an error."""
-        llm = _make_llm_client("I'm sorry, the search failed.")
+    async def test_single_error_result_passes_through(self):
+        """A single error answer is already user-facing: no LLM synthesis."""
+        llm = _make_llm_client("should not be used")
         request = _make_request()
         agent_results = [{
             "agent": "data",
-            "answer": "Connection timeout",
+            "answer": "Sorry — the data search step could not finish.",
             "status": "error",
         }]
 
@@ -149,9 +149,9 @@ class TestSynthesize:
         )
 
         done_event = next(e for e in events if e.type == EventType.SYNTHESIS_DONE)
-        assert done_event.data["method"] == "llm_synthesis"
-        assert "sorry" in done_event.data["response_text"].lower()
-        llm.complete_stream.assert_called_once()
+        assert done_event.data["method"] == "pass_through"
+        assert done_event.data["response_text"] == "Sorry — the data search step could not finish."
+        llm.complete_stream.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_llm_synthesis_for_empty_answer(self):

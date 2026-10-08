@@ -23,6 +23,38 @@ from orchestrator.models import OrchestratorRequest
 from orchestrator.registry.agent_handle import AgentHandle, InProcessAgentHandle
 from orchestrator.router.models import Step
 
+# Plain-language names for agent keys in user-facing error text.
+_AGENT_LABELS = {
+    "data": "data search",
+    "service": "analysis-service",
+    "workspace": "workspace",
+    "helpdesk": "help",
+    "analysis": "results-analysis",
+    "planning": "planning",
+}
+
+
+def user_facing_agent_error(agent_key: str, exc: BaseException, timeout_seconds: int | None) -> str:
+    """The message a user sees when an agent run raises.
+
+    The exception text is for logs, not users: an asyncio timeout has an
+    empty str(), so the old f"Agent '{key}' execution failed: {e}" showed
+    users a dangling "execution failed: " (42 hackathon turns).
+    """
+    label = _AGENT_LABELS.get(agent_key, agent_key)
+    if isinstance(exc, TimeoutError):
+        minutes = max(1, round((timeout_seconds or 300) / 60))
+        return (
+            f"Sorry — the {label} step took longer than the {minutes}-minute limit "
+            "and was stopped before it could answer. This usually means the question "
+            "needs a lot of data at once. Try narrowing it (for example, one genus, "
+            "one genome group, or a smaller time range), or ask for a count first."
+        )
+    return (
+        f"Sorry — the {label} step ran into an unexpected problem and could not "
+        "finish. Please try again; if it keeps happening, try rephrasing the question."
+    )
+
 logger = logging.getLogger(__name__)
 
 # Default MCP tool name for the agent's chat entry point
@@ -267,8 +299,11 @@ async def execute_agent_step(
 
         # Check for errors from the agent
         if result_data.get("status") == "error":
+            # The agent's error answer is already written for the user
+            # (e.g. the service agent's submission-failure explanation);
+            # no "Agent 'x' returned an error:" prefix in front of it.
             yield error_event(
-                message=f"Agent '{agent.key}' returned an error: {answer}",
+                message=answer or user_facing_agent_error(agent.key, RuntimeError(), None),
                 agent_name=agent.key,
                 details=result_for_ui,
             )
@@ -282,9 +317,17 @@ async def execute_agent_step(
 
     except Exception as e:
         elapsed_ms = (time.monotonic() - start_time) * 1000
-        logger.error(f"Agent step execution failed for '{agent.key}': {e}")
+        logger.error(
+            f"Agent step execution failed for '{agent.key}' after "
+            f"{elapsed_ms / 1000:.0f}s: {type(e).__name__}: {e}"
+        )
         yield error_event(
-            message=f"Agent '{agent.key}' execution failed: {e}",
+            message=user_facing_agent_error(
+                agent.key, e, getattr(agent.config, "timeout_seconds", None)
+            ),
             agent_name=agent.key,
-            details={"elapsed_ms": round(elapsed_ms, 1)},
+            details={
+                "elapsed_ms": round(elapsed_ms, 1),
+                "internal_error": f"{type(e).__name__}: {e}",
+            },
         )

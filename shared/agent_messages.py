@@ -33,6 +33,21 @@ DUPLICATE_CALL_WARNING_SERVICE = (
 )
 
 # ---------------------------------------------------------------------------
+# Empty final answer after tools ran
+# ---------------------------------------------------------------------------
+
+# Thinking models sometimes spend the whole completion on reasoning and
+# return content=None after their tools succeeded; without a nudge the
+# user got "unable to produce a textual summary" over data that was found.
+EMPTY_ANSWER_NUDGE = (
+    "Your last reply was empty. You have already run your tools and their "
+    "results are above. Now write your answer to the user's question in "
+    "plain text, using those results (include the key numbers and links). "
+    "Keep your reasoning short. Do not call more tools unless something "
+    "essential is missing."
+)
+
+# ---------------------------------------------------------------------------
 # Max iterations forced synthesis
 # ---------------------------------------------------------------------------
 
