@@ -12,6 +12,8 @@
 #   ADMISSION_MAX_IN_FLIGHT — max concurrent upstream requests (default: 4)
 #   ADMISSION_MAX_WAITING   — max queued requests before 429 (default: 16)
 #   ADMISSION_PORT          — listen port (default: 8005)
+#   ADMISSION_HOST          — bind address (default: 127.0.0.1; the proxy has no auth,
+#                             so only widen it for a session that needs remote access)
 #
 # Prerequisites:
 #   - Python venv at ../orchestrator/orchestrator_env/ (shared with orchestrator)
@@ -27,7 +29,7 @@ PID_FILE="$SCRIPT_DIR/admission_proxy.pid"
 LOG_FILE="$LOG_DIR/admission_proxy.log"
 
 # ── Defaults ──────────────────────────────────────────────────────────
-HOST="${ADMISSION_HOST:-0.0.0.0}"
+HOST="${ADMISSION_HOST:-127.0.0.1}"
 PORT="${ADMISSION_PORT:-8005}"
 LOG_LEVEL="info"
 BACKGROUND=false

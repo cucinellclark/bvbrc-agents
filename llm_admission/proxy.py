@@ -10,7 +10,7 @@ All other paths (``/v1/models``, etc.) pass through ungated.
 
 Run via::
 
-    uvicorn llm_admission.proxy:app --host 0.0.0.0 --port 8005
+    uvicorn llm_admission.proxy:app --host 127.0.0.1 --port 8005
 
 Or via ``start_admission_proxy.sh``.
 """

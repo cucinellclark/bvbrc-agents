@@ -48,8 +48,12 @@ class AdmissionConfig:
     # Proxy listen port on holly.
     port: int = int(os.environ.get("ADMISSION_PORT", "8005"))
 
-    # Bind host.
-    host: str = os.environ.get("ADMISSION_HOST", "0.0.0.0")
+    # Bind host. Loopback by default: the only client is the orchestrator on
+    # the same host (LLM_ADMISSION_URL=http://127.0.0.1:8005/v1), and the
+    # proxy has no auth — bound to 0.0.0.0 it is an open relay to the GPUs.
+    # Set ADMISSION_HOST=0.0.0.0 (or --host) only for a session that needs
+    # remote access, e.g. collect_metrics.py polling /health from ash.
+    host: str = os.environ.get("ADMISSION_HOST", "127.0.0.1")
 
     # ── Backward-compat property ──────────────────────────────────────
     @property

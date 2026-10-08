@@ -11,6 +11,9 @@ to the holly proxy health endpoint — never through nginx.
 Usage:
   python collect_metrics.py --jsonl /tmp/metrics_20260914.jsonl
 
+  # The admission proxy binds 127.0.0.1 by default, so polling it from ash
+  # needs the proxy started with --host 0.0.0.0 for the test session.
+
   # Or with custom endpoints:
   python collect_metrics.py \
     --proxy-health http://140.221.78.15:8005/health \
