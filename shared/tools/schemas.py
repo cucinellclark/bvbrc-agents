@@ -533,8 +533,11 @@ GET_WORKFLOW_INPUTS = {
                 "workflow_id": {
                     "type": "string",
                     "description": (
-                        "The workflow ID (e.g., 'wf_abc123'). "
-                        "Get this from list_gowe_workflows."
+                        "The workflow NAME exactly as list_gowe_workflows "
+                        "reported it (e.g. 'MetaCATS', 'HA Subtype Numbering "
+                        "Conversion'). PREFER THE NAME over the wf_<uuid> id: "
+                        "both work, but a 36-character UUID is easy to "
+                        "mistype and a wrong one cannot be recovered from."
                     ),
                 },
             },
@@ -557,7 +560,10 @@ SUBMIT_GOWE_JOB = {
             "properties": {
                 "workflow_id": {
                     "type": "string",
-                    "description": "The workflow ID to run.",
+                    "description": (
+                        "The workflow NAME exactly as list_gowe_workflows "
+                        "reported it. PREFER THE NAME over the wf_<uuid> id."
+                    ),
                 },
                 "inputs": {
                     "type": "object",

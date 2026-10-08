@@ -114,7 +114,10 @@ and provide any missing details.
 ambiguous or required details are missing. When exactly ONE workflow \
 matches and the required inputs are already clear from the request or \
 the workspace, you may skip this step.
-5. Call get_workflow_inputs to get the input schema and populate the \
+5. Call get_workflow_inputs using the workflow's NAME, exactly as \
+list_gowe_workflows reported it — not the wf_<uuid> id. Both work, but a \
+36-character UUID is easy to mistype and a wrong one cannot be recovered \
+from; a name typo is caught and corrected for you. Then populate the \
 inputs. Then call submit_gowe_job in BOTH modes: in EXECUTE mode it \
 submits; in PLAN mode it is refused, and that refusal is what gives the \
 user their one-click Submit button. Present the Ready to submit summary \

@@ -22,6 +22,10 @@ workflows.  Follow these rules:
 `list_gowe_workflows` returns a `status` for every workflow.
 
 - `status: "supported"` - submit normally.
+- Pass the workflow **NAME** to `get_workflow_inputs` and `submit_gowe_job`,
+  exactly as `list_gowe_workflows` reported it. The `wf_<uuid>` id also works,
+  but never reconstruct one from memory: a mistyped UUID matches nothing. A
+  name is matched case-insensitively and a near miss is corrected for you.
 - `status: "experimental"` - the workflow is KNOWN to fail inside the BV-BRC
   application, and a `status_reason` explains why. Do NOT submit it silently.
   Tell the user plainly that it is known to be broken, quote the reason, and

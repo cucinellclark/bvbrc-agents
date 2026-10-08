@@ -80,6 +80,63 @@ def _workflow_status(name: str | None) -> tuple[str, str | None]:
     return "supported", None
 
 # ---------------------------------------------------------------------------
+# Workflow reference resolution
+# ---------------------------------------------------------------------------
+
+# GoWe's resolveWorkflow already accepts an id OR a name, on both
+# GET /workflows/:id/inputs and POST /submissions. The failure mode is not the
+# server: it is the LLM inventing a UUID that matches nothing.
+#
+# Observed 2026-10-08, HA Subtype never submitted. The agent tried
+#   wf_893a5074-258b-4682-b9fa-6cb79a52943e   <- HA's prefix + MetaCATS's suffix
+#   wf_893a5074-2c3c-488a-a044-2ed684ec7f50   <- a digit off the real id
+# then gave up, because the only feedback was a bare "GoWeError: No ...".
+#
+# So: tool schemas now ask for the NAME, and a reference that resolves to
+# nothing comes back naming the close matches instead of dead-ending.
+
+
+async def _resolve_workflow_ref(ref: str, config: Any = None) -> tuple[str | None, str | None]:
+    """Resolve a workflow name or id to an id.
+
+    Returns ``(workflow_id, None)`` on success, or ``(None, error_message)``
+    with the nearest catalog entries named so the caller can retry. A value
+    that already matches exactly is returned untouched, so the usual path
+    costs one list call and no guessing.
+    """
+    import difflib
+
+    try:
+        client = _get_client(config)
+        workflows, _ = await client.list_workflows(auth_token=_get_auth(config), limit=200)
+    except Exception:
+        # Catalog unreachable: let the caller's own call produce the error.
+        return ref, None
+
+    by_id = {w.get("id"): w for w in workflows or [] if w.get("id")}
+    if ref in by_id:
+        return ref, None
+    for w in workflows or []:
+        if (w.get("name") or "").strip().lower() == ref.strip().lower():
+            return w["id"], None
+
+    names = [w.get("name", "") for w in workflows or []]
+    close = difflib.get_close_matches(ref, names, n=3, cutoff=0.4)
+    if not close and ref.startswith("wf_"):
+        # A mistyped UUID resembles no name, so suggest by id similarity.
+        close = [
+            by_id[i].get("name", i)
+            for i in difflib.get_close_matches(ref, list(by_id), n=3, cutoff=0.6)
+        ]
+    hint = f" Did you mean: {', '.join(close)}?" if close else ""
+    return None, (
+        f"No workflow matches {ref!r}. Pass the workflow NAME exactly as "
+        f"list_gowe_workflows reported it, not a UUID you reconstructed."
+        f"{hint} Call list_gowe_workflows to see the catalog."
+    )
+
+
+# ---------------------------------------------------------------------------
 # Identifier validation
 # ---------------------------------------------------------------------------
 
@@ -221,13 +278,17 @@ async def get_workflow_inputs(
     if not workflow_id:
         return {"error": "workflow_id is required."}
 
+    resolved, err = await _resolve_workflow_ref(workflow_id, config)
+    if err:
+        return {"error": err}
+
     try:
         client = _get_client(config)
         auth = _get_auth(config)
-        inputs = await client.get_workflow_inputs(workflow_id, auth_token=auth)
+        inputs = await client.get_workflow_inputs(resolved, auth_token=auth)
 
         return {
-            "workflow_id": workflow_id,
+            "workflow_id": resolved,
             "inputs": inputs or [],
             "count": len(inputs or []),
         }
@@ -259,6 +320,14 @@ async def submit_gowe_job(
     auth = _get_auth(config)
     if not auth:
         return {"error": "No authentication token available."}
+
+    # ----- Workflow reference -----
+    # Accepts a name or an id; a reference matching nothing comes back naming
+    # the close matches rather than as a bare GoWe error.
+    resolved, ref_error = await _resolve_workflow_ref(workflow_id, config)
+    if ref_error:
+        return {"error": ref_error, "workflow_id": workflow_id}
+    workflow_id = resolved
 
     # ----- Identifier validation -----
     id_error = _check_identifiers(inputs)
