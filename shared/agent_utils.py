@@ -798,9 +798,28 @@ def format_execution_mode(source: Any) -> str:
 # ---------------------------------------------------------------------------
 
 
+_LETTER_RUN = re.compile(r"[A-Za-z]+")
+_DIGIT_OR_PUNCT = re.compile(r"[^A-Za-z\s]")
+
+
 def estimate_tokens(text: str) -> int:
-    """Rough token estimate: ~4 characters per token for English/JSON."""
-    return len(text) // 4
+    """Token estimate that holds for bioinformatics output, not just prose.
+
+    ``len/4`` is right for English but 2-4x low for tool results: Qwen
+    tokenizes each digit separately, so a DESeq2 table is ~1.1 chars/token,
+    a pathways TSV ~1.5 and FASTA ~1.9 (measured 2026-10-08 against the
+    vLLM ``/tokenize`` endpoint). The old estimate let a 236k-char analysis
+    request pass the trim check and fail with HTTP 400.
+
+    Model: every digit and punctuation mark is one token; a letter run
+    costs one token plus one per 2 letters beyond the 5th. Measured error
+    on 12 samples: -7% (FASTA) to +41% (plain prose) — it errs high, so
+    trimming starts a little early on prose rather than too late on tables.
+    """
+    if not text:
+        return 0
+    words = sum(1 + max(0, len(run) - 5) / 2 for run in _LETTER_RUN.findall(text))
+    return int(words + len(_DIGIT_OR_PUNCT.findall(text)))
 
 
 def estimate_messages_tokens(
@@ -865,11 +884,14 @@ def trim_messages_to_fit(
                 first_shrinkable = i
             last_shrinkable = i
 
-    if first_shrinkable is None:
-        return result
-
-    # Progressively compress old tool results until we fit
-    for i in range(first_shrinkable, (last_shrinkable or first_shrinkable) + 1):
+    # Progressively compress old tool results until we fit. (When every tool
+    # result belongs to the latest exchange there is nothing old to
+    # compress; the last-resort stage below handles that case.)
+    shrink_range = (
+        range(first_shrinkable, (last_shrinkable or first_shrinkable) + 1)
+        if first_shrinkable is not None else range(0)
+    )
+    for i in shrink_range:
         if estimate_messages_tokens(result, tools) <= max_tokens:
             break
 
@@ -947,5 +969,27 @@ def trim_messages_to_fit(
                 break
         if not dropped:
             break
+
+    # Last resort: the pinned latest exchange alone is over budget (e.g.
+    # several large results from parallel tool calls in one response).
+    # Cut the largest results to an excerpt rather than send a request the
+    # model server will reject.
+    while estimate_messages_tokens(result, tools) > max_tokens:
+        tool_idxs = [i for i, m in enumerate(result)
+                     if m.get("role") == "tool" and len(m.get("content") or "") > 2000]
+        if not tool_idxs:
+            break
+        i = max(tool_idxs, key=lambda k: len(result[k]["content"]))
+        content = result[i]["content"]
+        keep = len(content) // 2
+        result[i] = {
+            **result[i],
+            "content": (
+                content[:keep]
+                + f"\n... [CUT TO FIT CONTEXT: kept {keep} of {len(content)} chars. "
+                "Do not request this much data at once: read a smaller range, "
+                "search for specific rows, or make fewer calls per step.]"
+            ),
+        }
 
     return result

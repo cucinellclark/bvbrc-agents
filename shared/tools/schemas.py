@@ -975,13 +975,12 @@ GET_EXPECTED_OUTPUTS = {
     "function": {
         "name": "get_expected_outputs",
         "description": (
-            "Look up the expected output file patterns and metric extraction "
-            "hints for a BV-BRC service type. Returns file path templates "
-            "that can be resolved using output_path and output_file values "
-            "from the workflow context. Also returns hints about which "
-            "metrics to extract from each file. This is a local lookup "
-            "(no API call) -- use it before browsing to know which files "
-            "to look for."
+            "Look up how to analyse a BV-BRC service's outputs: which small "
+            "files hold the key numbers (read_first), which large files to "
+            "avoid, the checks and typical ranges to judge the results "
+            "against, and next steps. Path templates use ${output_folder} = "
+            "output_path + '/.' + output_file. Local lookup (no API call) -- "
+            "call it before reading a job's files."
         ),
         "parameters": {
             "type": "object",

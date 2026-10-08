@@ -80,7 +80,10 @@ class BaseAgentConfig(BaseModel):
     tool_timeout_seconds: int = 30
 
     # Context window management (opt-in per agent)
-    max_context_tokens: int = 90000
+    # Prompt budget for trim_messages_to_fit. Qwen3.6 serves 131072 tokens
+    # with max_tokens=40000 reserved for output, leaving ~91k for the prompt;
+    # 80k leaves room for estimate error (FASTA is underestimated ~7%).
+    max_context_tokens: int = 80000
     max_tool_result_chars: int = 8000
 
     # BV-BRC API

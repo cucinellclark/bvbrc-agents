@@ -33,6 +33,7 @@ TOOL_RESULT_CHAR_LIMITS: dict[str, int] = {
     "search_file":       16_000,   # self-bounded to ~14 000 by file_search.py
     "summarize_file":    12_000,   # Phase 3
     "search_literature": 24_000,   # self-bounded to ~20 000 by literature.py
+    "workspace_browse":  16_000,   # ~45 compact items; job_result entries carry a job block
 }
 
 

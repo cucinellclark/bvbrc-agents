@@ -87,10 +87,9 @@ def _build_workflow_context_message(workflow_context: dict[str, Any]) -> str:
 
     lines.append("")
     lines.append(
-        "Instructions: For each succeeded step, call get_expected_outputs "
-        "with the app_name, resolve the output file paths using output_path "
-        "and output_file, then browse and read the key output files to "
-        "extract metrics."
+        "Instructions: For each step, call get_expected_outputs with the "
+        "app_name, resolve the templates (${output_folder} = output_path + "
+        "'/.' + output_file), then read the key files and judge the results."
     )
 
     return "\n".join(lines)
@@ -134,8 +133,8 @@ def _analysis_result_message(tc: ToolCall, result: Any) -> str:
             known = result.get("known", False)
             svc = result.get("service_name", "")
             if known:
-                n = len(result.get("output_patterns", {}))
-                msg = f"Found {n} expected output patterns for {svc}."
+                n = len(result.get("read_first", {}))
+                msg = f"Found {n} key output files for {svc}."
             else:
                 msg = f"No known output patterns for {svc}, will browse dynamically."
     return msg

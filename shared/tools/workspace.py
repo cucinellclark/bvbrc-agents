@@ -122,6 +122,54 @@ def _path_not_found_result(resolved_path: str) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+def _epoch_to_iso(value: Any) -> Optional[str]:
+    try:
+        from datetime import datetime, timezone
+        return datetime.fromtimestamp(float(value), tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    except (TypeError, ValueError, OverflowError, OSError):
+        return None
+
+
+def compact_workspace_item(item: Any) -> Any:
+    """Turn a Workspace.ls tuple into a small dict the LLM can read.
+
+    The raw tuple is ``[name, type, parent_path, creation_time, id, owner,
+    size, user_meta, auto_meta, user_perm, global_perm, shock_url]``. For a
+    ``job_result`` the auto metadata embeds the whole app spec (1.5-5 KB per
+    entry), so a folder of 43 job results was 1.8 MB and ``truncate_result``
+    left the LLM ~1 item name. The Shock URL needs a Shock token and returns
+    401 in a browser, so it is dropped (agents were offering it as a link).
+
+    Job results keep a ``job`` block with the task id, app and — most
+    important — ``success``: BV-BRC lists a failed job as ``completed``, and
+    ``task_data.success`` is the reliable signal.
+    """
+    if not isinstance(item, list) or len(item) < 7:
+        return item
+    name, typ, parent = item[0], item[1], item[2] or ""
+    out: Dict[str, Any] = {
+        "name": name,
+        "type": typ,
+        "path": parent.rstrip("/") + "/" + name if parent else name,
+        "creation_time": item[3],
+        "size": item[6],
+    }
+    if typ == "job_result":
+        user_meta = item[7] if len(item) > 7 and isinstance(item[7], dict) else {}
+        auto_meta = item[8] if len(item) > 8 and isinstance(item[8], dict) else {}
+        task = user_meta.get("task_data") or {}
+        job = {
+            "task_id": task.get("task_id") or auto_meta.get("id"),
+            "app": task.get("app_id") or (auto_meta.get("app") or {}).get("id"),
+            "success": task.get("success", auto_meta.get("success")),
+            "start_time": _epoch_to_iso(task.get("start_time") or auto_meta.get("start_time")),
+            "end_time": _epoch_to_iso(task.get("end_time") or auto_meta.get("end_time")),
+        }
+        out["job"] = {k: v for k, v in job.items() if v is not None}
+        out["output_folder"] = out["path"].rsplit("/", 1)[0] + "/." + name
+    return out
+
+
 async def workspace_browse(
     path: Optional[str] = None,
     name_contains: Optional[List[str]] = None,
@@ -179,6 +227,11 @@ async def workspace_browse(
             err_val = result.get("error") or result.get("data")
             if err_val and _is_object_not_found(err_val):
                 return _path_not_found_result(resolved_path)
+
+        if isinstance(result, dict) and isinstance(result.get("result"), dict):
+            inner = result["result"]
+            if isinstance(inner.get("items"), list):
+                inner["items"] = [compact_workspace_item(i) for i in inner["items"]]
 
         # Attach a workspace browser URL so the LLM can include a
         # clickable markdown link in its response.
