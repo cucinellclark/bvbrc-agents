@@ -115,6 +115,16 @@ def blocked_by_mode_result(tool_name: str, arguments: Dict[str, Any]) -> Dict[st
     }
 
 
+def is_invalid_arguments_result(result: Any) -> bool:
+    """True when the call was refused because its arguments were not JSON.
+
+    Like a plan-mode block, this is NOT a tool or submission failure: the tool
+    never ran and nothing changed. Loops that count failures must skip it, or a
+    pair of malformed emissions aborts a turn that had nothing wrong with it.
+    """
+    return isinstance(result, dict) and bool(result.get("invalid_arguments"))
+
+
 def is_blocked_result(result: Any) -> bool:
     """True when *result* is the refusal produced by the execution-mode gate."""
     return isinstance(result, dict) and bool(result.get("blocked_by_mode"))
@@ -156,6 +166,24 @@ async def execute_tool(
         return {
             "error": f"Unknown tool: '{tool_name}'",
             "available_tools": sorted(dispatch_table.keys()),
+        }
+
+    # Arguments that could not be parsed as JSON never reach the tool. Passing
+    # them through produced a Python signature error -- "missing 2 required
+    # positional arguments" -- which named the wrong problem, told the model
+    # nothing about how to fix it, and counted against the service agent's
+    # two-failure circuit breaker. Seen on 3 of 5 submissions on 2026-10-08.
+    if "_unparseable_arguments" in arguments:
+        raw = arguments.get("_unparseable_arguments")
+        return {
+            "error": (
+                f"The arguments for '{tool_name}' were not valid JSON, so the "
+                f"tool was not called. Nothing was submitted or changed. Send "
+                f"the arguments again as a single JSON object."
+            ),
+            "invalid_arguments": True,
+            "tool": tool_name,
+            "received": (raw[:400] if isinstance(raw, str) else str(raw)[:400]),
         }
 
     # Execution-mode gate: side-effecting tools only run in EXECUTE mode.

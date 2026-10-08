@@ -48,6 +48,7 @@ from shared.tools.schemas import ALL_TOOL_SCHEMAS as POPULATE_TOOLS
 from shared.tools import (
     execute_tool,
     is_blocked_result,
+    is_invalid_arguments_result,
     result_char_limit,
     truncate_result,
 )
@@ -85,6 +86,33 @@ def _plan_mode_summary(state: AgentState) -> str:
         "to the message box) and ask me to submit when you are ready."
     )
     return "\n".join(lines)
+
+
+def _submitted_summary(state: AgentState) -> str:
+    """Factual confirmation for a turn that submitted but produced no text."""
+    n = len(state.submission_ids)
+    noun = "job" if n == 1 else "jobs"
+    lines = [f"Submitted {n} {noun} to BV-BRC.", ""]
+    for action in state.tool_executions:
+        if action.tool_call.name != "submit_gowe_job":
+            continue
+        inputs = (action.tool_call.arguments or {}).get("inputs") or {}
+        out = inputs.get("output_path") or inputs.get("output_file")
+        if out:
+            lines.append(f"- output: `{out}`")
+    lines.append("")
+    lines.append("Track progress in the Jobs list.")
+    return "\n".join(lines)
+
+
+def _is_nonexecuted_submit(te: Any) -> bool:
+    """True when a submit_gowe_job execution never actually ran.
+
+    Two reasons: the execution-mode gate refused it, or its arguments were not
+    valid JSON. Neither is an attempt and neither is a failure, so both must be
+    excluded from ever_attempted_submit and from the failed-submission count.
+    """
+    return _is_blocked_execution(te) or is_invalid_arguments_result(te.result)
 
 
 def _is_blocked_execution(te: Any) -> bool:
@@ -266,6 +294,12 @@ async def populate_and_submit(
 
         # No tool calls -> LLM produced text (question, answer, or done message)
         if not tool_calls:
+            # get_response_content strips <tool_call> markup, which can empty a
+            # response whose only content was a stray tool call. If jobs did
+            # go out, report them rather than returning nothing and letting the
+            # orchestrator emit "unable to produce a summary".
+            if not content and state.submission_ids:
+                content = _submitted_summary(state)
             if content:
                 if state.submission_ids:
                     # One or more jobs submitted; this is the summary message.
@@ -292,7 +326,7 @@ async def populate_and_submit(
                 )
                 ever_attempted_submit = any(
                     te.tool_call.name == "submit_gowe_job"
-                    and not _is_blocked_execution(te)
+                    and not _is_nonexecuted_submit(te)
                     for te in state.tool_executions
                 )
 
@@ -518,6 +552,22 @@ async def populate_and_submit(
                 state.add_tool_result(tc.id, result_str)
                 if not batch_mode:
                     force_no_tools = True
+                continue
+
+            # Arguments that were not valid JSON: the tool never ran and
+            # nothing was submitted, so this is not a failed submission
+            # either. Counting it burnt a circuit-breaker slot, and two
+            # malformed emissions in one turn would abort a submission with
+            # nothing wrong with it -- this happened on 3 of 5 submissions on
+            # 2026-10-08. Feed the error back and let the model resend; the
+            # message now names the real problem.
+            if tc.name == "submit_gowe_job" and is_invalid_arguments_result(result):
+                logger.warning(
+                    "submit_gowe_job arguments were not valid JSON; not "
+                    "counted as a failed submission"
+                )
+                result_str = truncate_result(result, max_chars=result_char_limit(tc.name))
+                state.add_tool_result(tc.id, result_str)
                 continue
 
             # Circuit breaker: if submit_gowe_job failed, track it and

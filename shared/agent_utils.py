@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import logging
 import random
 from typing import Any, Callable, TypeVar
@@ -401,6 +402,57 @@ def normalize_arguments(args: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
+_FENCE_RE = re.compile(r"^\s*```(?:json)?\s*|\s*```\s*$")
+# Qwen/Hermes XML tool syntax, which some vLLM builds emit as plain CONTENT
+# instead of through the native tool_calls channel.
+_TEXT_TOOL_CALL_RE = re.compile(r"<tool_call>.*?(?:</tool_call>|\Z)", re.S)
+
+
+def _recover_tool_arguments(raw: Any) -> dict | None:
+    """Best-effort repair of tool arguments that are not valid JSON.
+
+    Models wrap arguments in markdown fences, or emit two JSON objects back to
+    back, often enough to be worth one cheap retry before giving up. Returns
+    None when the value cannot be salvaged, so the caller can report the real
+    problem rather than passing junk to the tool.
+    """
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    text = _FENCE_RE.sub("", raw.strip())
+    try:
+        parsed = json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        # raw_decode reads the FIRST complete JSON value and ignores whatever
+        # trails it, which covers two objects emitted back to back -- the case
+        # plain json.loads cannot handle.
+        try:
+            parsed, _end = json.JSONDecoder().raw_decode(text)
+        except (json.JSONDecodeError, TypeError, ValueError):
+            return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def contains_tool_call_markup(text: str | None) -> bool:
+    """True when text carries a tool call the native channel should have had."""
+    return bool(text) and "<tool_call>" in text
+
+
+def strip_tool_call_markup(text: str | None) -> str:
+    """Remove `<tool_call>` blocks from text destined for the user.
+
+    Some models emit a tool call as plain content. The loop then treats that
+    content as the final answer, and the user is shown raw XML -- observed
+    2026-10-08 on two of five submissions, one of which had already submitted
+    successfully, so the user saw markup instead of a confirmation.
+
+    An unterminated block is dropped to the end of the string: a truncated
+    emission is still markup, and leaving the fragment is worse than losing it.
+    """
+    if not text:
+        return ""
+    return _TEXT_TOOL_CALL_RE.sub("", text).strip()
+
+
 def parse_tool_calls(response: Any, tool_call_cls: type) -> list:
     """Extract ToolCall objects from an OpenAI ChatCompletion response.
 
@@ -421,12 +473,19 @@ def parse_tool_calls(response: Any, tool_call_cls: type) -> list:
         try:
             args = json.loads(tc.function.arguments)
         except (json.JSONDecodeError, TypeError):
-            logger.warning(
-                "Failed to parse tool call arguments as JSON for %s: %s",
-                tc.function.name,
-                tc.function.arguments[:200] if tc.function.arguments else "",
-            )
-            args = {"_raw": tc.function.arguments}
+            args = _recover_tool_arguments(tc.function.arguments)
+            if args is None:
+                logger.warning(
+                    "Unparseable tool call arguments for %s: %s",
+                    tc.function.name,
+                    tc.function.arguments[:200] if tc.function.arguments else "",
+                )
+                # Flagged so execute_tool can return a message naming the real
+                # problem. Passing {_raw: ...} straight to the tool produced
+                # "missing 2 required positional arguments", which told the
+                # model nothing and burnt a circuit-breaker slot -- seen on 3
+                # of 5 submissions on 2026-10-08.
+                args = {"_unparseable_arguments": tc.function.arguments}
 
         args = normalize_arguments(args)
 
@@ -450,7 +509,20 @@ def get_response_content(response: Any) -> str | None:
         The text content string, or None if empty.
     """
     choice = response.choices[0]
-    return choice.message.content
+    content = choice.message.content
+    # Some models emit a tool call as plain CONTENT instead of through the
+    # native tool_calls channel. The loop then treats that content as the final
+    # answer and the user is shown raw `<tool_call>` XML -- observed 2026-10-08
+    # on two of five submissions, one of which had already submitted
+    # successfully, so the user saw markup where a confirmation belonged.
+    # Stripped here rather than at the seven call sites, so none can miss it.
+    if contains_tool_call_markup(content):
+        logger.warning(
+            "Response content carried <tool_call> markup; stripped before "
+            "showing it to the user. The model emitted a tool call as text."
+        )
+        return strip_tool_call_markup(content) or None
+    return content
 
 
 def build_tool_calls_message(tool_calls: list) -> list[dict[str, Any]]:
