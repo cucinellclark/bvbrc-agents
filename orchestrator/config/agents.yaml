@@ -151,8 +151,10 @@ orchestrator:
   # classification task — it always uses this model regardless of what
   # model the user selects for their conversation.  This prevents routing
   # failures when the user's model struggles with structured JSON output.
-  routing_model: "Qwen/Qwen3.6-35B-A3B"
-  routing_base_url: "http://mango.cels.anl.gov:8004/v1"
+  # 2026-10-09: Qwen3.8-27B on mango:8008 (Qwen3.6 on :8004 was taken down).
+  # Previously "Qwen/Qwen3.6-35B-A3B" at http://mango.cels.anl.gov:8004/v1.
+  routing_model: "Qwen3.8-27B"
+  routing_base_url: "http://mango.cels.anl.gov:8008/v1"
   routing_api_key: "not-needed"
 
   # Routing is a constrained classification, not a reasoning task.
