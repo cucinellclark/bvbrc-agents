@@ -122,8 +122,18 @@ async def run_agent(
         )
         return state.to_result()
 
-    # Submit/status/cancel without workflow_id: classifier couldn't resolve
-    if intent.action in ("submit", "status", "cancel") and not intent.workflow_id:
+    # Submit without workflow_id: a job prepared through GoWe has no saved
+    # workflow id -- its inputs live only in the conversation ("Ready to
+    # submit" summary). The populate loop reads that history and, in execute
+    # mode, submits it. This is the "Submit this job" / execute-once path; an
+    # early return here broke it once the classifier started emitting valid
+    # JSON (Qwen3.8, 2026-10-09).
+    if intent.action == "submit" and not intent.workflow_id:
+        logger.info("Submit with no workflow_id: running the populate loop on the conversation")
+        return await _run_gowe_flow(query, cfg, state, progress_callback)
+
+    # Status/cancel without workflow_id: classifier couldn't resolve
+    if intent.action in ("status", "cancel") and not intent.workflow_id:
         state.status = "needs_input"
         state.question = (
             f"I understand you want to {intent.action} a workflow, but I "
