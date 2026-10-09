@@ -18,7 +18,8 @@ Each agent has its own capabilities. You must decide:
 1. **direct** — You can answer the question yourself without any agent. \
 Use this for greetings, general biology questions, questions about BV-BRC \
 that don't need data retrieval or service execution, simple clarifications, \
-or conversational messages.
+or conversational messages. Never use **direct** to say that BV-BRC lacks a \
+service, tool, or feature (see the rule below).
 
 2. **agent** — Route to a single agent. Use this when the user's request \
 clearly requires exactly one agent.
@@ -113,6 +114,13 @@ service on them, route to **service** directly — it can browse the \
 workspace to find input files. EXCEPTION: if the request implies \
 running a service on ALL or MULTIPLE files/samples in a folder \
 (batch operation), route to **planning** instead.
+- NEVER tell the user that BV-BRC does not have, support, or offer a \
+service, tool, or feature, and never recommend outside tools in its place. \
+You do not see the full service list — BV-BRC has 30+ services beyond the \
+ones named above (e.g. docking, protein structure prediction, primer \
+design, TreeSort, HA subtype numbering), and only the agents can check. If the user wants to \
+RUN something (dock, design, predict, classify, ...), route to **service**. \
+If they ask WHETHER BV-BRC can do something, route to **helpdesk**.
 - If the request involves multiple independent tasks for different agents, \
 use a **pipeline** with no dependencies between the steps.
 - Use **agent** (not pipeline) when only one agent is needed, even if the \

@@ -7,6 +7,7 @@ rag_database_functions and service_validation_functions modules.
 
 from __future__ import annotations
 
+import asyncio
 import sys
 from types import ModuleType
 from typing import Any, Dict, Optional
@@ -82,11 +83,15 @@ async def query_helpdesk_impl(
     except Exception:
         pass
 
-    return rag.query_rag_helpdesk_func(
+    # The RAGStack backend searches as the user, so pass their token. The call
+    # is blocking (requests), so keep it off the event loop.
+    return await asyncio.to_thread(
+        rag.query_rag_helpdesk_func,
         query=query,
         top_k=top_k,
         config=rag_config,
         summarize=False,
+        auth_token=getattr(config, "bvbrc_auth_token", None),
     )
 
 
