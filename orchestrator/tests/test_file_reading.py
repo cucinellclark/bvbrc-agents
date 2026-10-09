@@ -843,3 +843,17 @@ async def test_search_self_bounds_result_size(range_server):
     n = r["match_count"]
     assert r["next_start"] == sum(len(ln) for ln in lines[:n])
     assert len(json.dumps(r["matches"], indent=2)) <= 12_000
+
+
+@pytest.mark.asyncio
+async def test_search_long_line_clipped_around_match(range_server):
+    """FastQC HTML is one huge line; the match must be in the returned text."""
+    tmpdir, base_url = range_server
+    content = "<html>" + "x" * 50_000 + "<td>[FAIL]</td><td>Per base sequence content</td>" + "y" * 5000 + "\n"
+    _write(tmpdir, "search_oneline.html", content)
+    r = await _search(base_url, "search_oneline.html", pattern="Per base sequence content")
+    m = r["matches"][0]
+    assert m["line_clipped"] and "[FAIL]" in m["line"] and "Per base sequence content" in m["line"]
+    r = await _search(base_url, "search_oneline.html", pattern="<td>")
+    assert r["match_count"] == 2 and r["matches"][1]["hit_in_line"] == 2
+    assert "Per base" in r["matches"][1]["line"]

@@ -56,7 +56,10 @@ output_file; replace ${params.output_path} and ${params.output_file} with \
 the step's values.
 3. Browse the output directory to confirm files exist and discover any \
 additional output files.
-4. Read the key files. read_file_preview returns up to 32 KB per page; call \
+4. Read the key files. For tables (tsv/csv/vcf), FASTA and FASTQ start \
+with summarize_file: exact row/sequence counts, column stats, and \
+where/sort_by to count and rank rows (DE genes, HIGH-impact variants, top \
+species) without paging. read_file_preview returns up to 32 KB per page; call \
 again with start_byte = next_start to continue. Use search_file to find a \
 specific gene, sample, or metric name in a large TSV/log and read from its \
 byte_offset. Bioinformatics tables are expensive (a 32 KB page of a TSV is \

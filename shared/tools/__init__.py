@@ -22,6 +22,7 @@ from typing import Any, Dict, Optional
 TOOL_TIMEOUT_OVERRIDES: dict[str, float] = {
     "find_similar_genomes": 120.0,
     "search_file": 90.0,  # streams up to 25 MB from the workspace
+    "summarize_file": 90.0,  # same scan
 }
 
 # Per-tool result character limits.  Tools that return bulk text (file
@@ -31,7 +32,7 @@ TOOL_TIMEOUT_OVERRIDES: dict[str, float] = {
 TOOL_RESULT_CHAR_LIMITS: dict[str, int] = {
     "read_file_preview": 48_000,   # 32 KB data + JSON escaping + envelope
     "search_file":       16_000,   # self-bounded to ~14 000 by file_search.py
-    "summarize_file":    12_000,   # Phase 3
+    "summarize_file":    12_000,   # self-bounded to ~11 000 by file_summary.py
     "search_literature": 24_000,   # self-bounded to ~20 000 by literature.py
     "workspace_browse":  16_000,   # ~45 compact items; job_result entries carry a job block
 }

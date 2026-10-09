@@ -47,6 +47,17 @@ _AMR_RULES = [
     "identity check fails, treat both as unreliable (a 'mutation' may be the native residue of the "
     "real species).",
     "In specialty-rgi.txt, hits covering <~60% of the reference are fragments.",
+    "Drug class and mechanism come ONLY from the file's Class/Subclass (AMRFinder) or drug columns, "
+    "never from memory or the gene name (e.g. aph(4)-Ia is hygromycin, not kanamycin). AMRFinder "
+    "Scope core/plus is the database subset, not acquired vs intrinsic; do not call a gene "
+    "'acquired' unless a file says so.",
+    "Genes from the k-mer AMR summary in the genome report (e.g. AAC(6')-Ic, class B3 "
+    "beta-lactamases, KatG) are often intrinsic or housekeeping homologs: list them as 'detected by "
+    "k-mer search, may be intrinsic' and never add them to a count of resistance determinants.",
+    "An R prediction that no detected gene explains is an unexplained prediction: say so and suggest "
+    "confirmation. Do not invent a mechanism ('intrinsic', 'efflux') for it, and never link a "
+    "mutation to a drug class other than its own Class column.",
+    "Do not claim one output caused another (e.g. a mislabel 'causing' an evaluation group) unless a file states it.",
 ]
 
 _IDENTITY_RULES = [
@@ -86,6 +97,9 @@ _ASSEMBLY_CHECKS = [
     "(see the Unicycler log's final Component/Status table), is a plasmid candidate; short "
     "contigs at >3× are collapsed repeats or high-copy plasmids. Do not call a contig a "
     "plasmid from its length alone.",
+    "A short-read assembly has no chromosome-scale contig: Unicycler 'component 1' is the largest "
+    "graph component, not 'the chromosome', and an 800 kb contig is ~1/6 of a 5 Mb genome. auN is "
+    "a length-weighted N50-like statistic, not the average contig length.",
 ]
 
 SERVICE_KNOWLEDGE: dict[str, dict[str, Any]] = {
@@ -94,7 +108,7 @@ SERVICE_KNOWLEDGE: dict[str, dict[str, Any]] = {
         "read_first": {
             f"{OF}/details/{NAME}_run_details.json": "QUAST metrics, contig filtering, Pilon rounds, read stats",
             f"{OF}/details/{NAME}_unicycler.log": "Unicycler component table (circular/complete vs incomplete); read the end",
-            f"{OF}/{NAME}_contigs.fasta": "search_file '>' for headers: length, coverage, normalized_cov per contig",
+            f"{OF}/{NAME}_contigs.fasta": "summarize_file: contig count, total length, N50, GC, every contig's depth relative to the genome median, and coverage_outliers (plasmid candidates <0.5×, collapsed repeats >1.5×) — discuss each outlier",
             f"{OF}/{NAME}_AssemblyReport.html": "overview report for the user (mostly SVG; link it, do not page through it)",
         },
         "avoid": {
@@ -157,7 +171,7 @@ SERVICE_KNOWLEDGE: dict[str, dict[str, Any]] = {
         "read_first": {
             f"{OF}/JobFailed.html": "failure report, if present (check the job's output_check first)",
             f"{OF}/summary_table.csv": "per sample: raw, classified, unclassified, host (chordate), bacterial, viral, fungal reads",
-            f"{OF}/<sample>/kraken_output/<sample>_k2_report.txt": "Kraken report: col1 % of reads in clade, col2 clade count, col3 reads assigned DIRECTLY to that taxon, col4 rank",
+            f"{OF}/<sample>/kraken_output/<sample>_k2_report.txt": "Kraken report (no header: column_1 % of reads in clade, column_2 clade count, column_3 reads assigned DIRECTLY to that taxon, column_4 rank, column_6 name). Top species: summarize_file where='column_4 == S' sort_by='-column_2' top_n=10",
             f"{OF}/<sample>/bracken_output/<sample>_bracken_report.txt": "species abundance after redistribution — use this for species %",
             f"{OF}/alpha_diversity.csv": "Shannon, Simpson, Berger-Parker, Fisher per sample",
             f"{OF}/beta_diversity.csv": "Bray-Curtis between samples",
@@ -177,6 +191,9 @@ SERVICE_KNOWLEDGE: dict[str, dict[str, Any]] = {
         "next_steps": [
             "Single dominant organism: assemble and annotate it.",
             "For SRA failures: check the accession exists and is public.",
+            "Diagnose a failure from the failing command in the log: if it ran with a missing or empty "
+            "input (e.g. prefetch with no accession), the job's inputs are wrong — say what to fix; do "
+            "not call it a network problem or suggest resubmitting unchanged.",
         ],
     },
     "MetagenomeBinning": {
@@ -191,9 +208,10 @@ SERVICE_KNOWLEDGE: dict[str, dict[str, Any]] = {
             f"{OF}/.bin.<N>.<taxid>/specialty-amrfinder.txt": "per-bin AMR genes",
             f"{OF}/.bin.<N>.<taxid>/amr-sir.txt": "per-bin predicted S/R",
         },
-        "avoid": {f"{OF}/contigs.fasta": "full assembly", f"{OF}/unplaced.fasta": "MB of contigs (size only)"},
+        "avoid": {f"{OF}/contigs.fasta": "full assembly — use summarize_file (total_length), never page it"},
         "checks": [
-            "Report the share of assembled bp that ended up in bins (bin sizes / coverage.stats.txt letters); "
+            "Unbinned/unplaced bp = summarize_file total_length on unbinned.fasta and unplaced.fasta (file "
+            "size in bytes is not bp). Report the share of assembled bp that ended up in bins (bin sizes / coverage.stats.txt letters); "
             "a large unbinned share means the sample is NOT a near-pure culture.",
             "Fill each MIMAG criterion only from the value that holds it (rRNA and tRNA counts are in the "
             "bin's quality.json feature_summary); a role name like '16sRrnaNMeth' is a methyltransferase, "
@@ -203,14 +221,16 @@ SERVICE_KNOWLEDGE: dict[str, dict[str, Any]] = {
             "medium ≥50% / <10%; low <50%. BV-BRC 'good bin' is commonly quoted as completeness ≥80%, "
             "fine consistency ≥87%, contamination ≤10% (unconfirmed).",
             "Bin depth ≥10× for a reliable draft; N50 >20–50 kb is a good draft.",
-        ] + _AMR_RULES[:2],
+            "Copy counts from bins.stats.txt; do not add or subtract them yourself unless you show the "
+            "sum and it checks out. An rRNA count of 3 does not show that 23S, 16S and 5S are each present.",
+        ] + _AMR_RULES[:2] + _AMR_RULES[6:7],
         "next_steps": ["Annotate good bins individually; compare with references via Similar Genome Finder."],
     },
     "FastqUtils": {
         "verified": True,
         "read_first": {
             f"{OF}/<reads>.fastq_trimming_report.txt": "Trim Galore/Cutadapt: reads/pairs processed, removed, bp trimmed, adapter length histogram",
-            f"{OF}/<reads>_ptrim_fastqc.html": "FastQC: Basic Statistics in the first ~3 KB of text, then module PASS/WARN/FAIL",
+            f"{OF}/<reads>_ptrim_fastqc.html": "FastQC (one very long line). Module status: search_file pattern 'alt=\"\\[(PASS|WARNING|FAIL)\\]\"/><a href=\"#M\\d+\">[^<]+' regex=true — one match per module; FastQC has 11 modules (M0–M10) and the status words are PASS, WARNING, FAIL, so expect 11 matches",
         },
         "avoid": {f"{OF}/*.fq.gz": "the reads themselves"},
         "checks": [
@@ -224,7 +244,9 @@ SERVICE_KNOWLEDGE: dict[str, dict[str, Any]] = {
             "Report total yield (bp) and the depth it implies for the downstream use: 30–100× is adequate "
             "for a bacterial assembly; do not call it low.",
             "Retention = pairs written / pairs processed after the length filter, to two decimals (e.g. "
-            "99.87%), not 100%.",
+            "99.87%). Never round a retention below 100% up to '100%'.",
+            "Report every FastQC module that is WARNING or FAIL by name; never say 'all (other) modules "
+            "passed' unless you saw all 11 statuses.",
         ],
         "next_steps": ["Proceed to assembly/mapping with the trimmed reads."],
     },
@@ -232,17 +254,18 @@ SERVICE_KNOWLEDGE: dict[str, dict[str, Any]] = {
         "verified": True,
         "read_first": {
             f"{OF}/bvbrc_rnaseq_report.html": "alignment rates per sample (small)",
-            f"{OF}/gene_counts_matrix.tsv": "the LAST rows (__no_feature, __ambiguous, __too_low_aQual, __not_aligned) give the gene-assignment rate",
-            f"{OF}/<contrast>.deseq2.tsv": "Gene_Name, baseMean, log2FoldChange, lfcSE, stat, pvalue, padj — count over the WHOLE file",
+            f"{OF}/gene_counts_matrix.tsv": "no name on the gene column (column_1). summarize_file where='column_1 startswith __' gives per-sample sums of the unassigned (__) rows; where='column_1 not startswith __' gives per-sample sums of reads assigned to genes",
+            f"{OF}/<contrast>.deseq2.tsv": "Gene_Name, baseMean, log2FoldChange, lfcSE, stat, pvalue, padj. summarize_file gives row_count (genes tested); where='padj < 0.05' gives the DE count; add 'and log2FoldChange >= 1' / '<= -1' for up/down; sort_by='padj' top_n=10 for top genes",
             f"{OF}/sample_metadata.tsv": "samples and conditions",
             f"{OF}/<cond>/<sample>/<sample>.align_stdout": "unique vs multi-mapped reads",
         },
         "avoid": {f"{OF}/multiqc_report.html": "2.7 MB; link it"},
         "checks": [
-            "Never count genes or DE genes from one page. A DESeq2 table is ~1,700+ rows and several pages; "
-            "search_file stops at 200 matches, so it cannot count rows. If you did not read the whole "
-            "table, give no total — say 'from the first N rows only'.",
-            "Gene-assignment rate = sum of gene counts / (that sum + all __ rows) in gene_counts_matrix.tsv. "
+            "Count genes and DE genes with summarize_file (row_count / matched_rows), never from a page "
+            "or search_file (it stops at 200 matches). Rows with padj NA are not DE; report them apart "
+            "if rows_skipped_non_numeric is large.",
+            "Gene-assignment rate per sample = gene sum / (gene sum + __ sum), from the two summarize_file "
+            "calls on gene_counts_matrix.tsv; give it to one decimal per sample. "
             "__too_low_aQual counts reads with low mapping quality — mostly MULTI-mapped reads (often rRNA), "
             "so a large value is a problem to flag, not 'typical'. alignment_not_unique=0 does not mean no "
             "multi-mapping; take that from <sample>.align_stdout.",
@@ -251,6 +274,10 @@ SERVICE_KNOWLEDGE: dict[str, dict[str, Any]] = {
             "alignment rate does not mean the reads were counted.",
             "Report DE counts at padj<0.05 (and with |log2FC|≥1) as up/down. >~30% of genes DE is a large "
             "shift: check normalisation and library sizes. n=2 per condition is low power. Flag library-size imbalance.",
+            "The verdict must reflect the gene-assignment rate: if <40% of reads were counted on genes "
+            "the run is 'usable with caveats', not 'excellent', whatever the alignment rate.",
+            "Top DE genes come from summarize_file sort_by='padj' (or '-abs(log2FoldChange)' with where="
+            "'padj < 0.05'), never from search_file hits. Quote the minimum padj from the column stats.",
             "Do not describe plots you have not seen.",
         ],
         "next_steps": ["Pathway/function enrichment of the DE genes; more replicates if n≤2."],
@@ -270,7 +297,12 @@ SERVICE_KNOWLEDGE: dict[str, dict[str, Any]] = {
             "Multi-copy rRNA templates run 4–7× deeper than single-copy genes.",
             "CARD rRNA-mutation templates (23S, 16S) and housekeeping targets (gyrA, parC, rpoB, PBPs) show "
             "only that the gene is present; resistance needs specific SNPs (check kma.aln or run Variation).",
-            "Look up gene functions rather than guessing them from the name (e.g. patA/patB are fluoroquinolone efflux).",
+            "Look up gene functions rather than guessing them from the name; if you did not look one up, give "
+            "no mechanism. (patA/patB are an ABC transporter for fluoroquinolone efflux; pmrA here is the "
+            "S. pneumoniae MFS fluoroquinolone efflux pump, not a colistin regulator; tetQ is ribosomal "
+            "protection, not efflux.)",
+            "Template_Identity <100% means mismatches exist: never write 'perfect match' or 'no mutations' "
+            "unless Template_Identity and Template_Coverage are both 100.",
             "The total in kma.mapstat's header is the INPUT fragment count, not fragments mapped. "
             "Fraction on targets = sum of per-template fragmentCount / that total (often ~1% for "
             "shotgun metagenomes — normal, not a sign of a targeted sample).",
@@ -294,6 +326,10 @@ SERVICE_KNOWLEDGE: dict[str, dict[str, Any]] = {
             "When the database was a genome group (db_genome_group in the job parameters), call "
             "get_group_ids(group_name=<last path segment>, group_type='genome') and report which genomes "
             "had no hit or no full-length ortholog. Count hits per genome exactly.",
+            "blast_out.txt has no header (names are in blast_headers.txt), so summarize_file names its columns "
+            "column_1…; count hits meeting a threshold with where (e.g. on the pident column). Before writing "
+            "'all N genomes', list the genome ids that pass and check each. A genome whose best hit is below "
+            "the ortholog threshold has NO ortholog — say so by genome name; do not call that hit a 'second hit'.",
         ],
         "next_steps": ["Raise blast_max_hits if truncated; build a GeneTree of the hits to separate orthologs from paralogs."],
     },
@@ -315,6 +351,14 @@ SERVICE_KNOWLEDGE: dict[str, dict[str, Any]] = {
             "Tip branches >100× the median = outlier genome (contamination, MAG, misidentification).",
             "RAxML 'identical sequences' warnings: the order of identical genomes is arbitrary.",
             "Name organisms only from the tree-with-names file or a genome lookup, never from ID prefixes.",
+            "20 or fewer genes gives a coarse tree; say so rather than calling it adequate.",
+            "max_allowed_dups sets how many duplicated copies a gene may have per genome and still be used; "
+            "it does not remove identical genomes.",
+            "Give node or support counts only if you counted them in the newick; do not estimate them. "
+            "Quote a support value only next to the clade it belongs to in the newick.",
+            "Gene counts (available, used, disqualified) come from analysisStats exactly; incomplete "
+            "genomes/MAGs are the ones with far fewer genes in genesPerGenome.txt — name them.",
+            "Do not claim RAxML excluded identical sequences unless RAxML_info says so.",
         ],
         "next_steps": ["Increase number_of_genes; drop outlier/incomplete genomes and re-run."],
     },
@@ -329,12 +373,17 @@ SERVICE_KNOWLEDGE: dict[str, dict[str, Any]] = {
         "avoid": {},
         "checks": [
             "Sequence IDs look like PATRIC.<genome_id>.<contig>.CDS…; look genomes up with search_data(genome) — never name genera from IDs.",
-            "Ungapped length outliers (<50% of the median) are fragments and inflate gap %. Gap % >30% suggests fragments or mixed domains.",
+            "Ungapped length outliers (<50% of the median) are fragments and inflate gap %. Gap % >30% suggests fragments or mixed domains. "
+            "summarize_file on the aligned FASTA gives ungapped min/median/max; alignment_width is columns, not protein length.",
+            "Count genomes as distinct genome ids in the sequence IDs; if a name lookup returns fewer, say which ids were not found.",
             "Internal branches >1 substitution/site, or genomes contributing >1 sequence, indicate paralogs or a mixed family — "
             "separate orthologs before reading the tree as species history.",
             "RELL support runs slightly higher than standard bootstrap; use the CodonTree bands cautiously.",
             "Different genome ids with the same prefix (e.g. 487514.3 and 487514.18) are different genomes, "
-            "not paralogs. RAxML may mention an '.reduced' alignment; it is not saved in the output folder.",
+            "not paralogs. RAxML may mention an '.reduced' alignment; it is not saved in the output folder — "
+            "never recommend or link it.",
+            "To say where a long branch sits, list the tips below it from the newick; do not assign it to "
+            "a clade from memory. Report the RELL support of the main splits.",
         ],
         "next_steps": ["Re-run with trim_threshold / gap_threshold set; remove fragments and paralogs."],
     },
@@ -342,7 +391,7 @@ SERVICE_KNOWLEDGE: dict[str, dict[str, Any]] = {
         "verified": True,
         "read_first": {
             f"{OF}/summary.txt": "reads, mapping %, coverage mean/median, ≤10× and zero-coverage fractions, variant counts",
-            f"{OF}/all.var.tsv": "variants with Type, snpEff_impact, gene, Var_frac, Var_cov (~15 KB)",
+            f"{OF}/all.var.tsv": "variants with Type, snpEff_impact, gene, Var_frac, Var_cov (~15 KB). summarize_file gives exact counts per Type and snpEff_impact (top_values); where='snpEff_impact == HIGH' lists them",
             f"{OF}/Text_Files_Circular_Viewer/all.High_var_circular_view_input.txt": "HIGH-impact variants",
         },
         "avoid": {f"{OF}/*.bam": "alignments (hundreds of MB)", f"{OF}/*.consensus.fa": "consensus genome"},
@@ -352,6 +401,12 @@ SERVICE_KNOWLEDGE: dict[str, dict[str, Any]] = {
             "High-quality variant count vs relatedness: <100 SNPs to the reference = same lineage.",
             "Report counts by Type and snpEff_impact and list HIGH-impact genes. Var_frac clusters at 0.3–0.7 "
             "suggest a mixed population or duplicated region (tentative). Var_cov <10 is low support.",
+            "Counts per Type / snpEff_impact come from summarize_file top_values on all.var.tsv; the "
+            "coverage range of HIGH-impact calls from where='snpEff_impact == HIGH' (Var_cov min/max). For "
+            "impact within a Type use where='Type == Insertion' and read snpEff_impact top_values; never "
+            "assume an impact for a Type.",
+            "Locus tags and gene names only from the file's columns (sample_rows / top_rows), never built or recalled.",
+            "Var_frac spread: count where='Var_frac < 0.9' before calling the sample clonal.",
         ],
         "next_steps": ["Check HIGH-impact genes against phenotype; choose a closer reference if divergence is high."],
     },
@@ -359,7 +414,7 @@ SERVICE_KNOWLEDGE: dict[str, dict[str, Any]] = {
         "verified": True,
         "read_first": {
             f"{OF}/report.txt": "genomes with pathway/subsystem/protein-family data (186 B)",
-            f"{OF}/{NAME}_subsystems_variant_mtx.tsv": "per subsystem × genome: active / likely / inactive (~46 KB; two pages)",
+            f"{OF}/{NAME}_subsystems_variant_mtx.tsv": "per subsystem × genome status. Row 1 = genome names, row 2 = labels + genome ids, but data rows have ONE MORE count column than the labels, so names are shifted: the LAST n columns are the n genomes' statuses in the order of the ids in row 2. Use summarize_file with has_header=false: top_values of each of the last n columns give per-genome active/likely/inactive totals; where (e.g. 'column_10 == inactive and column_9 == active') finds differing subsystems",
             f"{OF}/{NAME}_subsystems_tables.json": "first 16 KB only: 'overview' block with per-superclass counts",
         },
         "avoid": {
@@ -372,7 +427,12 @@ SERVICE_KNOWLEDGE: dict[str, dict[str, Any]] = {
             "Report per-genome active/likely/inactive subsystem totals exactly (count the status column), "
             "and name the subsystems that differ. Only claim a difference after checking that row's "
             "per-genome statuses actually differ.",
+            "With has_header=false, row_count includes the genome-name and genome-id rows: subsystems = "
+            "row_count − 2 (check sample_rows). Name the differing subsystems: one summarize_file where per "
+            "comparison (e.g. one genome 'inactive' while the others are 'active') returns them in "
+            "sample_rows (up to 10) — list them, with matched_rows as the total.",
             "'Inactive' means not all roles were found, not proof of absence. '-- gjo' variant subsystems mirror a base subsystem.",
+            "Link only URLs a tool returned; there is no comparative-systems viewer URL in the outputs.",
             "For pathway counts per genome, one facet_query on the pathway collection by genome_id is far cheaper than the files.",
         ],
         "next_steps": ["Open the job in BV-BRC's comparative systems viewer (the *_tables.json files feed it)."],
@@ -415,8 +475,9 @@ GENERAL_RULES = [
     "Check that sample names / accessions in the outputs match the job parameters.",
     "Read the small summary files listed by get_expected_outputs first; never scan or page "
     "through multi-MB tables or HTML reports. Make few tool calls per step.",
-    "Never extrapolate counts from one page. Compare bytes read with total_size; page to the end "
-    "or use search_file with max_matches and next_start, or state 'from the first N rows only'.",
+    "Count rows with summarize_file (row_count; where=... for matched_rows; column sums), never by "
+    "extrapolating from one page or from search_file matches. If summarize_file says partial, report "
+    "the *_scanned count as a lower bound.",
     "Map every number to its column header before reporting it. Copy exact values; do not write "
     "'~' or '+' for numbers the file gives exactly, and make sure counts you list add up.",
     "Report only values you read. For any checklist (MIMAG tiers, quality criteria) write 'not "

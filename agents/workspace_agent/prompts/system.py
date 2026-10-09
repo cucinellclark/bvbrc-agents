@@ -94,7 +94,9 @@ the actual content.
 wants to know about file contents or format. Do not preview files just to list \
 them. The tool returns up to 32 KB per call; page with start_byte = next_start \
 until is_complete is true. To find something specific in a file, use search_file \
-and then read_file_preview from the match's byte_offset instead of paging."""
+and then read_file_preview from the match's byte_offset instead of paging. For \
+"how many rows / sequences / reads" or column statistics of a table, FASTA or \
+FASTQ, use summarize_file (where= to count matching rows) instead of paging."""
 
 _RESPONSE_FORMAT = """
 === RESPONSE FORMAT ===

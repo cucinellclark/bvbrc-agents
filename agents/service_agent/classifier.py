@@ -114,6 +114,7 @@ async def classify_intent(
         base_url=config.llm_base_url,
         api_key=config.llm_api_key,
         timeout=config.llm_timeout_seconds or 180,
+        max_retries=0,  # retries are llm_call_with_retry's job; the SDK default (2) stacked on top
     )
 
     # Build a compact context summary for the classifier

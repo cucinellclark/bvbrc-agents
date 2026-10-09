@@ -81,9 +81,19 @@ def _resolve_path(path: Optional[str], user_id: Optional[str]) -> str:
     if path.startswith(f"/{user_id}/"):
         return path
 
-    # Other absolute path (another user or /public)
-    if path.startswith("/"):
+    # Other absolute path: another user's tree (/<user>@<realm>/...) or the root
+    first = path.lstrip("/").split("/", 1)[0]
+    if path.startswith("/") and ("@" in first or first == ""):
         return path
+
+    # "/home/x" or "/Folder/x" without the user prefix: every workspace path
+    # starts with /<user>@<realm>/, so these can only mean the user's home.
+    # (The LLM wrote "/WorkspaceOutputFolder/..." and got "User lacks
+    # permission to /" three times in one turn.)
+    if path.startswith("/"):
+        path = path.lstrip("/")
+        if path == "home" or path.startswith("home/"):
+            return f"/{user_id}/{path}"
 
     # "home" by itself
     if path == "home":

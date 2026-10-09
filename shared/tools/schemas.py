@@ -3,9 +3,9 @@
 This is the SINGLE SOURCE OF TRUTH for tool schemas. Every agent uses these
 definitions. No per-agent schema variants.
 
-27 tools total:
+28 tools total:
   Data:      search_data, facet_query, probe_data, list_collections, get_collection_fields
-  Workspace: workspace_browse, get_file_metadata, read_file_preview, search_file
+  Workspace: workspace_browse, get_file_metadata, read_file_preview, search_file, summarize_file
   GoWe:      list_gowe_workflows, get_workflow_inputs, submit_gowe_job
   Groups:    create_group, list_groups, get_group_ids
   SRA:       get_sra_metadata
@@ -1333,11 +1333,76 @@ SEARCH_FILE = {
     },
 }
 
+SUMMARIZE_FILE = {
+    "type": "function",
+    "function": {
+        "name": "summarize_file",
+        "description": (
+            "Structure and statistics of one workspace file without reading "
+            "it page by page. Tables (tsv/csv/vcf, tab-separated tool output): "
+            "exact row_count, columns with type, min/max/mean/sum or top "
+            "values. FASTA: sequence count, total length, N50, GC. FASTQ: read "
+            "count, length stats. Use it to COUNT rows: where filters rows "
+            "(e.g. \"padj < 0.05 and abs(log2FoldChange) >= 1\") and returns "
+            "matched_rows plus column stats over the matching rows only; "
+            "sort_by + top_n return the top rows. Compressed .gz files are "
+            "read transparently. Scans up to 25 MB; if partial is true, counts "
+            "are named *_scanned and cover only that part."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Full workspace path to the file.",
+                },
+                "where": {
+                    "type": "string",
+                    "description": (
+                        "Tables only. Conditions joined by 'and': <col> <op> "
+                        "<value> with ops < <= > >= == != contains, not "
+                        "contains, startswith, not startswith, is null, is not "
+                        "null; abs(<col>) for absolute values. Quote column "
+                        "names with spaces in backticks. A table with no "
+                        "header row has columns column_1, column_2, ... "
+                        "Rows whose tested cell is NA do not match. "
+                        "Examples: 'padj < 0.05', 'column_1 startswith __', "
+                        "'`% Identity` >= 90 and Class contains BETA-LACTAM'."
+                    ),
+                },
+                "sort_by": {
+                    "type": "string",
+                    "description": (
+                        "Tables only. Numeric column to rank matching rows by, "
+                        "ascending; prefix '-' for descending; abs(<col>) "
+                        "allowed (e.g. '-abs(log2FoldChange)')."
+                    ),
+                },
+                "top_n": {
+                    "type": "integer",
+                    "description": "Rows to return with sort_by. Default 10, max 50.",
+                    "default": 10,
+                },
+                "format": {
+                    "type": "string",
+                    "enum": ["table", "csv", "tsv", "fasta", "fastq", "text"],
+                    "description": "Override the detected format.",
+                },
+                "has_header": {
+                    "type": "boolean",
+                    "description": "Override header detection for a table.",
+                },
+            },
+            "required": ["path"],
+        },
+    },
+}
+
 # ===================================================================
 # MASTER LISTS
 # ===================================================================
 
-# All 27 tools in a single list
+# All 28 tools in a single list
 ALL_TOOL_SCHEMAS: list[dict] = [
     # Data
     SEARCH_DATA,
@@ -1350,6 +1415,7 @@ ALL_TOOL_SCHEMAS: list[dict] = [
     GET_FILE_METADATA,
     READ_FILE_PREVIEW,
     SEARCH_FILE,
+    SUMMARIZE_FILE,
     # GoWe
     LIST_GOWE_WORKFLOWS,
     GET_WORKFLOW_INPUTS,

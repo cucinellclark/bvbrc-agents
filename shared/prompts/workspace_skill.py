@@ -119,6 +119,11 @@ error message inside a file — it is grep for one file. Each match carries \
 a ``byte_offset``; pass it as ``read_file_preview(start_byte=byte_offset)`` \
 to read from there. For FASTA header matches, ``record_length`` is the \
 sequence length, so "is gene X in this file and how long is it" is one call.
+- ``summarize_file`` gives the structure of a table (tsv/csv/vcf), FASTA \
+or FASTQ without reading it: exact row / sequence / read counts, column \
+types and min/max/mean/sum, N50. To count or rank rows use ``where`` \
+(``"padj < 0.05 and abs(log2FoldChange) >= 1"``) and ``sort_by`` + \
+``top_n``. Use it whenever the user asks "how many" about a file.
 - Do not read a large file end to end. Check ``total_size`` first \
 (``get_file_metadata`` or the first read). If the file is over ~200 KB, \
 ``search_file`` for what the user asked about, or read the first page and \

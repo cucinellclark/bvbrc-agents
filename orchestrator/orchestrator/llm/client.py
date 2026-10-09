@@ -73,6 +73,7 @@ class LLMClient:
             base_url=self.config.base_url,
             api_key=self.config.api_key,
             timeout=self.config.timeout_seconds,
+            max_retries=0,  # retries are llm_call_with_retry's job; the SDK default (2) stacked on top
         )
 
     async def complete(

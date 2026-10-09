@@ -43,6 +43,18 @@ def _clip(text: str) -> tuple[str, bool]:
     return text, False
 
 
+def _clip_around(text: str, start: int, end: int) -> tuple[str, bool]:
+    """Clip a long line to MAX_LINE_CHARS around the match, so a match deep
+    inside a one-line file (HTML reports, JSON) is still visible."""
+    if len(text) <= MAX_LINE_CHARS:
+        return text, False
+    lo = max(0, min(start - MAX_LINE_CHARS // 3, len(text) - MAX_LINE_CHARS))
+    if end - lo > MAX_LINE_CHARS:  # very long match: show its start
+        lo = start
+    window = text[lo:lo + MAX_LINE_CHARS]
+    return ("…" + window if lo else window), True
+
+
 def _strip_gz(name: str) -> str:
     return name[:-3] if name.lower().endswith(".gz") else name
 
@@ -201,8 +213,9 @@ async def search_file(
                 before.append(text)
                 continue
 
-            if compiled.search(text):
-                clipped, was_clipped = _clip(text)
+            hit = compiled.search(text)
+            if hit:
+                clipped, was_clipped = _clip_around(text, hit.start(), hit.end())
                 m: Dict[str, Any] = {
                     "line_number": line_no,
                     "byte_offset": abs_off,
@@ -218,6 +231,19 @@ async def search_file(
                     open_record = m
                     in_fasta_record_len = 0
                 matches.append(m)
+                if was_clipped:
+                    # A long line (one-line HTML/JSON) can hold many hits;
+                    # each gets its own clipped window.
+                    for k, more in enumerate(compiled.finditer(text, hit.end()), start=2):
+                        if len(matches) >= max_matches:
+                            break
+                        matches.append({
+                            "line_number": line_no,
+                            "byte_offset": abs_off,
+                            "line": _clip_around(text, more.start(), more.end())[0],
+                            "line_clipped": True,
+                            "hit_in_line": k,
+                        })
                 if len(matches) >= max_matches:
                     hit_cap = True
                     resume_at = line_end

@@ -125,6 +125,10 @@ class AgentState(BaseAgentState):
                     "is_complete": result.get("is_complete", False),
                 })
 
+        elif tool_name == "summarize_file" and "_summary" in result:
+            # Counts only (the compact _summary), so the report can cite them
+            self.collected_metrics.append(dict(result["_summary"]))
+
     def to_result(self) -> "AgentResult":
         elapsed = time.time() - self.start_time
 

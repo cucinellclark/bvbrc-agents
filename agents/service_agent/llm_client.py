@@ -25,6 +25,7 @@ def create_client(config: AgentConfig) -> AsyncOpenAI:
         base_url=config.llm_base_url,
         api_key=config.llm_api_key,
         timeout=config.llm_timeout_seconds,
+        max_retries=0,  # retries are llm_call_with_retry's job; the SDK default (2) stacked on top
     )
 
 

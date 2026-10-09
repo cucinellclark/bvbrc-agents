@@ -111,6 +111,8 @@ def _analysis_progress_message(tc: ToolCall) -> str:
         return "Reading output file..."
     elif tc.name == "search_file":
         return f"Searching output file for '{args.get('pattern', '')}'..."
+    elif tc.name == "summarize_file":
+        return "Summarizing output file..."
     elif tc.name == "get_expected_outputs":
         svc = args.get("service_name", "")
         return f"Looking up expected outputs for {svc}..."
