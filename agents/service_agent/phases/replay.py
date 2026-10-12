@@ -26,6 +26,7 @@ from shared.tools import (
     execute_tool,
     is_already_submitted_result,
     is_blocked_result,
+    is_needs_user_input_result,
 )
 from shared.tools.registry import TOOL_DISPATCH
 
@@ -120,6 +121,25 @@ async def replay_blocked_actions(
             )
             succeeded += 1
             continue
+        if is_needs_user_input_result(result):
+            # The prepared job lacks something only the user can give (the
+            # organism for CGA / annotation).  The tool text is written for
+            # the model, so say it plainly instead.
+            if result.get("wrong_workflow"):
+                lines.append(
+                    f"Did not submit **{summary}**: this workflow annotates a single "
+                    f"organism's genome and cannot run on a metagenome. For a "
+                    f"metagenomic sample, ask for Metagenomic Binning or Taxonomic "
+                    f"Classification instead."
+                )
+            else:
+                lines.append(
+                    f"Did not submit **{summary}**: it needs the organism (its "
+                    f"scientific name and NCBI taxonomy ID). Tell me which organism "
+                    f"this genome is and I will prepare it again."
+                )
+            failed = True
+            break
         if is_blocked_result(result):
             lines.append(
                 f"Not run: **{summary}**. This chat is in Plan mode, so nothing "

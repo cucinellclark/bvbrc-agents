@@ -52,6 +52,7 @@ from shared.tools import (
     is_already_submitted_result,
     is_blocked_result,
     is_invalid_arguments_result,
+    is_needs_user_input_result,
     result_char_limit,
     truncate_result,
 )
@@ -142,6 +143,11 @@ def _asks_user(content: str) -> bool:
     lines = [ln for ln in lines if ln]
     if lines and lines[-1].endswith("?"):
         return True
+    # A question in the closing paragraph ("Which organism is this? I need
+    # it to run CGA.") ends the turn just the same.
+    last_paragraph = content.strip().rsplit("\n\n", 1)[-1]
+    if "?" in last_paragraph:
+        return True
     lowered = content.lower()
     return any(p in lowered for p in _ASKS_USER_PHRASES)
 
@@ -219,6 +225,7 @@ def _is_nonexecuted_submit(te: Any) -> bool:
         _is_blocked_execution(te)
         or is_invalid_arguments_result(te.result)
         or is_already_submitted_result(te.result)
+        or is_needs_user_input_result(te.result)
     )
 
 
@@ -553,11 +560,19 @@ async def populate_and_submit(
                 asks_user = _asks_user(content) and not any(
                     p in content.lower() for p in SUCCESS_PHRASES
                 )
+                # submit_gowe_job itself asked for user input (the organism
+                # for CGA / annotation): asking is the right next step.
+                needs_user = any(
+                    te.tool_call.name == "submit_gowe_job"
+                    and is_needs_user_input_result(te.result)
+                    for te in state.tool_executions
+                )
                 if (
                     got_inputs
                     and not ever_attempted_submit
                     and not ever_blocked_submit
                     and not asks_user
+                    and not needs_user
                 ):
                     # The LLM prepared to submit but never called
                     # submit_gowe_job.  Push it back into the loop
@@ -761,6 +776,15 @@ async def populate_and_submit(
                 state.add_tool_result(tc.id, result_str)
                 if not batch_mode:
                     force_no_tools = True
+                continue
+
+            # A pre-submit check that the user can resolve (the organism for
+            # CGA / annotation): nothing was submitted and nothing failed.
+            # Feed it back so the model asks; no circuit-breaker strike.
+            if tc.name == "submit_gowe_job" and is_needs_user_input_result(result):
+                logger.info("submit_gowe_job needs user input: %s", result.get("missing_input"))
+                result_str = truncate_result(result, max_chars=result_char_limit(tc.name))
+                state.add_tool_result(tc.id, result_str)
                 continue
 
             # Arguments that were not valid JSON: the tool never ran and

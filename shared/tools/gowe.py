@@ -217,6 +217,71 @@ def _workflow_status(name: str | None) -> tuple[str, str | None]:
 # nothing comes back naming the close matches instead of dead-ending.
 
 
+# id -> name, filled by _resolve_workflow_ref from the catalog it already
+# fetches, so checks keyed on the workflow name work when the model passes
+# a wf_<uuid>.
+_workflow_names: Dict[str, str] = {}
+
+
+def _workflow_name(workflow_ref: str, workflow_id: str) -> str:
+    if not workflow_ref.startswith("wf_"):
+        return workflow_ref
+    return _workflow_names.get(workflow_id, workflow_ref)
+
+
+# ---------------------------------------------------------------------------
+# Organism check for annotation workflows
+# ---------------------------------------------------------------------------
+# taxonomy_id is optional in the app specs, our CWL and GoWe /inputs, but the
+# BV-BRC website never submits CGA or annotation without one, and the app
+# does not cope: mshukla's CGA (scientific_name "metagenome", no taxonomy_id)
+# failed in annotation on "Cannot parse 'taxon_id:'"; marcnguy's CGA was sent
+# scientific_name "bau_sim" (a read-file prefix).  service_status.md has both.
+
+_ORGANISM_REQUIRED_WORKFLOWS = frozenset({"comprehensivegenomeanalysis", "genomeannotation"})
+_NOT_AN_ORGANISM_RE = re.compile(
+    r"/|\.(fa|fasta|fna|faa|fastq|fq|gz|txt|contigs?)\b|^[SED]RR\d+|^\d+\.\d+$",
+    re.IGNORECASE,
+)
+_NOT_AN_ORGANISM_WORDS = frozenset({"metagenome", "unknown", "sample", "na", "none", "organism"})
+
+
+def _check_organism(workflow_name: str, inputs: Dict[str, Any]) -> Optional[tuple[str, str]]:
+    """Return ``(kind, reason)`` when the organism inputs are unusable, else None.
+
+    *kind* is ``"wrong_workflow"`` (a metagenome) or ``"missing_organism"``.
+    """
+    if re.sub(r"[^a-z]", "", workflow_name.lower()) not in _ORGANISM_REQUIRED_WORKFLOWS:
+        return None
+    name = str(inputs.get("scientific_name") or "").strip()
+    tax = inputs.get("taxonomy_id")
+    tax_ok = (isinstance(tax, int) and not isinstance(tax, bool) and tax > 0) or (
+        isinstance(tax, str) and tax.strip().isdigit() and int(tax) > 0
+    )
+    lookup = (
+        "Ask the user which organism this genome is (if they have not said), "
+        "then look up its id with search_data(collection=\"taxonomy\", "
+        "query='taxon_name:\"<Genus species>\" AND taxon_rank:species', "
+        "select=[\"taxon_id\",\"taxon_name\"]) and use the entry whose "
+        "taxon_name matches exactly. Never use a filename or sample name as the organism."
+    )
+    if name.lower() in ("metagenome",) or "metagenom" in name.lower():
+        return "wrong_workflow", (
+            f"{workflow_name} annotates a single organism's genome; it cannot run on a "
+            f"metagenome. For a metagenomic sample use Metagenomic Binning (then annotate "
+            f"the bins) or Taxonomic Classification. Tell the user this; do not submit."
+        )
+    if not name or name.lower() in _NOT_AN_ORGANISM_WORDS or _NOT_AN_ORGANISM_RE.search(name):
+        what = f"scientific_name {name!r} is not an organism name" if name else "scientific_name is missing"
+        return "missing_organism", f"{workflow_name} needs the organism: {what}. {lookup}"
+    if not tax_ok:
+        return "missing_organism", (
+            f"{workflow_name} needs the NCBI taxonomy_id for {name!r} (the BV-BRC "
+            f"website always sends it, and annotation fails without it). {lookup}"
+        )
+    return None
+
+
 async def _resolve_workflow_ref(ref: str, config: Any = None) -> tuple[str | None, str | None]:
     """Resolve a workflow name or id to an id.
 
@@ -235,6 +300,7 @@ async def _resolve_workflow_ref(ref: str, config: Any = None) -> tuple[str | Non
         return ref, None
 
     by_id = {w.get("id"): w for w in workflows or [] if w.get("id")}
+    _workflow_names.update({i: w.get("name", "") for i, w in by_id.items()})
     if ref in by_id:
         return ref, None
     for w in workflows or []:
@@ -456,6 +522,19 @@ async def submit_gowe_job(
     if id_error:
         logger.warning("Identifier check failed for workflow %s: %s", workflow_id, id_error)
         return {"error": id_error, "workflow_id": workflow_id}
+
+    # ----- Organism (CGA / Genome Annotation) -----
+    # Fixable by asking the user, so it is not a failed submission.
+    organism_problem = _check_organism(_workflow_name(workflow_ref, workflow_id), inputs)
+    if organism_problem:
+        kind, reason = organism_problem
+        logger.warning("Organism check failed for workflow %s: %s", workflow_id, reason)
+        return {
+            "error": reason,
+            "needs_user_input": True,
+            **({"wrong_workflow": True} if kind == "wrong_workflow" else {"missing_input": "taxonomy_id"}),
+            "workflow_id": workflow_id,
+        }
 
     try:
         client = _get_client(config)

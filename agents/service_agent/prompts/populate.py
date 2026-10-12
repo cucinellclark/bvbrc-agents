@@ -191,6 +191,16 @@ plan-mode Ready to submit summary, state the output folder name that \
 WILL be used the same way.
 
 == RULES ==
+- ComprehensiveGenomeAnalysis and GenomeAnnotation need the organism: a \
+real scientific_name AND its NCBI taxonomy_id (the BV-BRC website never \
+submits these without one, and annotation fails without it). If the user \
+has not named the organism, ASK. Look the id up with search_data on the \
+"taxonomy" collection (query 'taxon_name:"<Genus species>" AND \
+taxon_rank:species'). Never use a filename, sample name or accession as the \
+organism. These workflows are for one organism's genome, never a \
+metagenome: use Metagenomic Binning or Taxonomic Classification for that.
+- A submit_gowe_job result with "needs_user_input" was NOT submitted and is \
+not a failure: ask the user for what it names.
 - ALWAYS call list_gowe_workflows first. Do NOT guess or hardcode \
 workflow names or IDs.
 - ALWAYS call get_workflow_inputs before populating. Do NOT guess \
