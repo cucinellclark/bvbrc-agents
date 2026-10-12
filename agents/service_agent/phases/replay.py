@@ -66,7 +66,9 @@ def valid_replay_actions(actions: Any) -> list[dict[str, Any]] | None:
 def _submit_line(summary: str, result: dict[str, Any]) -> str:
     out = result.get("output_path")
     where = f" Results will be saved to `{out}`." if out else ""
-    return f"Submitted **{summary}**.{where}"
+    note = result.get("output_path_note")
+    why = f" {note}" if note else ""
+    return f"Submitted **{summary}**.{where}{why}"
 
 
 def _group_line(summary: str, result: dict[str, Any]) -> str:

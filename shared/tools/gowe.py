@@ -16,6 +16,7 @@ import json
 import logging
 import re
 import time
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from shared.tools._mcp_imports import get_gowe_client
@@ -70,6 +71,74 @@ def _reserve_submission(key: str) -> Optional[Dict[str, Any]]:
         }
     _recent_submissions[key] = (None, now)
     return None
+
+
+# ---------------------------------------------------------------------------
+# Output folder placement
+# ---------------------------------------------------------------------------
+# Every chat-submitted job writes under /<user>/home/chats/<session>/.  The
+# model picks the subfolder name: the folder the user named ("to the Testing
+# folder"), or a descriptive one.  The code only steps in when that name is
+# unusable, and says so, because users were not told when their folder was
+# replaced (Chris, dovie, cmao) and the chat folder passed as-is nested
+# chats/<sid>/<sid> (parrello, Oct 9).
+
+_RESERVED_FOLDER_NAMES = frozenset({"", "home", "chats", ".", ".."})
+
+
+def _generated_folder_name(workflow_ref: str, now: datetime | None = None) -> str:
+    label = "" if workflow_ref.startswith("wf_") else re.sub(r"[^A-Za-z0-9]+", "", workflow_ref)
+    stamp = (now or datetime.now(timezone.utc)).strftime("%Y%m%d_%H%M")
+    return f"{label or 'job'}_{stamp}"
+
+
+def place_output_path(
+    requested: Any,
+    session_base: str,
+    session_id: str,
+    workflow_ref: str,
+    now: datetime | None = None,
+) -> tuple[str, Optional[str]]:
+    """Return ``(final_output_path, note)`` for a job in this chat's folder.
+
+    *note* is a user-facing sentence when the requested folder was moved or
+    renamed, else ``None``.
+    """
+    req = requested.strip() if isinstance(requested, str) else ""
+    trimmed = req.rstrip("/")
+
+    # Already inside this chat's folder: keep it.
+    if trimmed.startswith(session_base + "/"):
+        return trimmed, None
+
+    last = trimmed.rsplit("/", 1)[-1] if trimmed else ""
+    if (
+        not trimmed
+        or trimmed == session_base
+        or last == session_id
+        or last in _RESERVED_FOLDER_NAMES
+        or last.endswith("@patricbrc.org")
+        or last.endswith("@bvbrc")
+    ):
+        final = f"{session_base}/{_generated_folder_name(workflow_ref, now)}"
+        why = (
+            "No output folder name was given"
+            if not trimmed
+            else f"`{req}` is not a usable folder name for a job"
+        )
+        return final, (
+            f"{why}, so the results go to a new folder in this chat's "
+            f"workspace folder: `{final}`."
+        )
+
+    final = f"{session_base}/{last}"
+    if "/" in trimmed:
+        return final, (
+            f"Copilot keeps every job's results in this chat's workspace folder, "
+            f"so `{req}` was saved as `{final}` (the folder name `{last}` was "
+            f"kept)."
+        )
+    return final, None
 
 
 def _extract_user_from_token(auth_token: str | None) -> str | None:
@@ -376,6 +445,7 @@ async def submit_gowe_job(
     # ----- Workflow reference -----
     # Accepts a name or an id; a reference matching nothing comes back naming
     # the close matches rather than as a bare GoWe error.
+    workflow_ref = workflow_id
     resolved, ref_error = await _resolve_workflow_ref(workflow_id, config)
     if ref_error:
         return {"error": ref_error, "workflow_id": workflow_id}
@@ -413,23 +483,25 @@ async def submit_gowe_job(
         # Otherwise, fall back to the user's home directory.
         session_id = getattr(config, "session_id", None)
         workspace_path = getattr(config, "workspace_path", None)
+        output_note: Optional[str] = None
 
-        if "output_path" in cleaned_inputs:
+        if session_id and workspace_path and "output_path" in cleaned_inputs:
+            # Primary path: always under this chat's folder.
+            session_base = f"{workspace_path}/chats/{session_id}"
+            original_output_path = cleaned_inputs.get("output_path")
+            cleaned_inputs["output_path"], output_note = place_output_path(
+                original_output_path, session_base, session_id, workflow_ref,
+            )
+            logger.info(
+                "Placed output_path: %r -> %s (session=%s)",
+                original_output_path,
+                cleaned_inputs["output_path"],
+                session_id,
+            )
+        elif "output_path" in cleaned_inputs:
             original_output_path = cleaned_inputs["output_path"]
-            # Extract the last path segment as the descriptive subfolder
             subfolder = original_output_path.rstrip("/").rsplit("/", 1)[-1]
-
-            if session_id and workspace_path:
-                # Primary path: place under session folder
-                session_base = f"{workspace_path}/chats/{session_id}"
-                cleaned_inputs["output_path"] = f"{session_base}/{subfolder}"
-                logger.info(
-                    "Rewrote output_path: %s -> %s (session=%s)",
-                    original_output_path,
-                    cleaned_inputs["output_path"],
-                    session_id,
-                )
-            elif not original_output_path.startswith("/"):
+            if not original_output_path.startswith("/"):
                 # Fallback: session context missing but output_path is
                 # relative (bare folder name).  Construct an absolute path
                 # from the auth token's username so BV-BRC doesn't reject
@@ -496,20 +568,23 @@ async def submit_gowe_job(
         )
 
         out_path = cleaned_inputs.get("output_path", "")
-        return {
+        response = {
             "workflow_id": workflow_id,
             "submission_id": submission_id,
             "status": result.get("state", "PENDING"),
             "message": (
                 f"Job submitted. Results will be saved to {out_path} "
                 f"(the chats/ session folder in the user's home workspace). "
-                f"Tell the user this path. When the job finishes, a completion "
-                f"message is added to this chat — reopen or refresh the chat "
-                f"to see it, or check the Jobs list."
+                f"Tell the user this exact path. When the job finishes, a "
+                f"completion message is added to this chat — reopen or refresh "
+                f"the chat to see it, or check the Jobs list."
                 if out_path else "Job submitted."
             ),
             "output_path": out_path,
         }
+        if output_note:
+            response["output_path_note"] = output_note
+        return response
 
     except Exception as e:
         logger.error("Failed to submit job: %s", e)

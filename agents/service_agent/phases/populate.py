@@ -195,8 +195,11 @@ def _submitted_summary(state: AgentState) -> str:
     for action in state.tool_executions:
         if action.tool_call.name != "submit_gowe_job":
             continue
+        # The path actually used (after placement under the chat folder),
+        # not the one the model asked for.
+        result = action.result if isinstance(action.result, dict) else {}
         inputs = (action.tool_call.arguments or {}).get("inputs") or {}
-        out = inputs.get("output_path") or inputs.get("output_file")
+        out = result.get("output_path") or inputs.get("output_file")
         if out:
             lines.append(f"- output: `{out}`")
     lines.append("")
@@ -241,6 +244,25 @@ def _skipped_note(state: AgentState) -> str:
         + "; ".join(skipped)
         + ". Ask for each of these in its own message."
     )
+
+
+def _output_location_note(state: AgentState) -> str:
+    """Fixed text for submissions whose output folder was moved or renamed.
+
+    The model is told to give the final path, but users were not told when
+    the folder they named was replaced, so the reason is appended verbatim.
+    """
+    notes = [
+        te.result["output_path_note"]
+        for te in state.tool_executions
+        if te.tool_call.name == "submit_gowe_job"
+        and isinstance(te.result, dict)
+        and te.result.get("submission_id")
+        and te.result.get("output_path_note")
+    ]
+    if not notes:
+        return ""
+    return "\n\n**Output location:** " + " ".join(notes)
 
 
 def _duplicate_note(state: AgentState) -> str:
@@ -457,7 +479,10 @@ async def populate_and_submit(
                     state.status = "completed"
                     state.current_phase = "done"
                     state.operation_message = (
-                        content + _duplicate_note(state) + _skipped_note(state)
+                        content
+                        + _output_location_note(state)
+                        + _duplicate_note(state)
+                        + _skipped_note(state)
                     )
                     return state
 

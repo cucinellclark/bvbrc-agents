@@ -215,3 +215,9 @@ async def test_repeat_click_reports_already_submitted():
     assert "was already submitted from this chat" in result.operation_message
     assert "Tell the user" not in result.operation_message
     assert result.submission_ids == []
+
+
+async def test_replay_reply_includes_output_location_note():
+    ok = {**_submit_ok(), "output_path_note": "No output folder name was given, so ..."}
+    result, _ = await _run([TC_ACTION], [ok])
+    assert "No output folder name was given" in result.operation_message
