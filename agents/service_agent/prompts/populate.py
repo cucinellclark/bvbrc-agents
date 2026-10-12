@@ -285,6 +285,8 @@ instructions you receive — if told to submit separate jobs, do so; \
 if told to submit one job with all samples, do that instead.
 
 == SUBMISSION FAILURES ==
+A submit_gowe_job result with "_skipped" means that job was NOT \
+submitted (one job per message). Never describe it as submitted.
 If submit_gowe_job returns an error with "blocked_by_mode", the \
 session is in plan mode: nothing was submitted and nothing failed. \
 Do NOT retry and do NOT change any inputs — produce the Ready to \

@@ -47,6 +47,7 @@ from service_agent.models import AgentConfig, AgentState, ToolCall
 from service_agent.prompts.populate import build_populate_prompt
 from shared.tools.schemas import ALL_TOOL_SCHEMAS as POPULATE_TOOLS
 from shared.tools import (
+    describe_blocked_action,
     execute_tool,
     is_already_submitted_result,
     is_blocked_result,
@@ -215,6 +216,30 @@ def _is_nonexecuted_submit(te: Any) -> bool:
         _is_blocked_execution(te)
         or is_invalid_arguments_result(te.result)
         or is_already_submitted_result(te.result)
+    )
+
+
+SKIPPED_SUBMIT_MESSAGE = (
+    "NOT submitted — only one job is submitted per message. Do not describe "
+    "this job as submitted. Tell the user it was not submitted and that they "
+    "can ask for it in a follow-up message."
+)
+
+
+def _skipped_note(state: AgentState) -> str:
+    """Fixed text naming the jobs the one-job-per-message cap skipped, or ''.
+
+    The model used to describe skipped jobs as submitted ("Both annotation jobs
+    have been submitted", semenleyn; "flagged as duplicates", mshukla), so the
+    truth is appended regardless of what the prose says.
+    """
+    skipped = getattr(state, "_skipped_submits", None) or []
+    if not skipped:
+        return ""
+    return (
+        "\n\n**Not submitted (one job per message):** "
+        + "; ".join(skipped)
+        + ". Ask for each of these in its own message."
     )
 
 
@@ -431,7 +456,9 @@ async def populate_and_submit(
                     # One or more jobs submitted; this is the summary message.
                     state.status = "completed"
                     state.current_phase = "done"
-                    state.operation_message = content + _duplicate_note(state)
+                    state.operation_message = (
+                        content + _duplicate_note(state) + _skipped_note(state)
+                    )
                     return state
 
                 # Every submit was a repeat of a recent job: nothing new went
@@ -629,15 +656,17 @@ async def populate_and_submit(
                 logger.warning(
                     "Single-submission cap: skipping extra submit_gowe_job call %s", tc.id
                 )
+                # A repeat of the call that just went out is not a second
+                # job; only a different job is reported as not submitted.
+                if call_fingerprint(tc) not in executed_fingerprints:
+                    summary = describe_blocked_action("submit_gowe_job", tc.arguments or {})
+                    skipped = getattr(state, "_skipped_submits", None) or []
+                    if summary not in skipped:
+                        skipped.append(summary)
+                    state._skipped_submits = skipped
                 state.add_tool_result(
                     tc.id,
-                    json.dumps({
-                        "_skipped": True,
-                        "_message": (
-                            "A job has already been submitted for this request. "
-                            "Do NOT submit again. Summarize the submission for the user."
-                        ),
-                    }),
+                    json.dumps({"_skipped": True, "_message": SKIPPED_SUBMIT_MESSAGE}),
                 )
                 continue
 
