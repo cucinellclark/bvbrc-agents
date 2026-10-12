@@ -293,7 +293,7 @@ async def execute_agent_step(
         # in the pipeline and in the synthesizer.
         _STANDARD_KEYS = {
             "answer", "status", "sources", "elapsed_seconds",
-            "iterations_used", "tool_trace",
+            "iterations_used", "tool_trace", "known_links",
         }
         for key, value in result_data.items():
             if key not in _STANDARD_KEYS and key not in result_for_ui:
@@ -315,6 +315,7 @@ async def execute_agent_step(
             agent_name=agent.key,
             result_for_llm=result_for_llm,
             result_for_ui=result_for_ui,
+            known_links=result_data.get("known_links"),
         )
 
     except Exception as e:

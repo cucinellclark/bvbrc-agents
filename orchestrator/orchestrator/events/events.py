@@ -112,16 +112,18 @@ def agent_result_event(
     agent_name: str,
     result_for_llm: str,
     result_for_ui: dict[str, Any] | None = None,
+    known_links: list[str] | None = None,
 ) -> Event:
-    return Event(
-        type=EventType.AGENT_RESULT,
-        agent_name=agent_name,
-        data={
-            "agent": agent_name,
-            "result_for_llm": result_for_llm,
-            "result_for_ui": result_for_ui or {},
-        },
-    )
+    data: dict[str, Any] = {
+        "agent": agent_name,
+        "result_for_llm": result_for_llm,
+        "result_for_ui": result_for_ui or {},
+    }
+    # URLs the agent's tools returned (shared.answer_filter); kept out of
+    # result_for_ui, which the gateway sends to the browser and persists.
+    if known_links:
+        data["known_links"] = known_links
+    return Event(type=EventType.AGENT_RESULT, agent_name=agent_name, data=data)
 
 
 def error_event(

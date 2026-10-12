@@ -23,6 +23,7 @@ from orchestrator.registry.agent_registry import AgentRegistry
 from orchestrator.router.models import Plan, Step
 from orchestrator.router.router import route
 from orchestrator.synthesizer.synthesizer import synthesize
+from shared.answer_filter import filter_answer
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +115,8 @@ async def orchestrate(
         # 2. Handle DIRECT response (no agent needed)
         # ------------------------------------------------------------------
         if decision.decision == "direct":
-            response_text = decision.direct_response or ""
+            # No tools ran, so only links to pages url_utils builds survive.
+            response_text, _ = filter_answer(decision.direct_response or "", [])
             logger.info(
                 f"Direct response: {len(response_text)} chars, "
                 f"preview={response_text[:80]!r}"
@@ -153,6 +155,8 @@ async def orchestrate(
         agent_results: list[dict[str, Any]] = []
         agents_used: list[str] = []
         tool_calls: list[dict[str, Any]] = []
+        # URLs every agent's tools returned this turn (shared.answer_filter).
+        turn_known_links: list[str] = []
 
         async for event in execute_plan(decision.plan, registry, request):
             yield event
@@ -161,6 +165,7 @@ async def orchestrate(
             if event.type == EventType.AGENT_RESULT:
                 result_for_ui = event.data.get("result_for_ui", {})
                 agent_results.append(result_for_ui)
+                turn_known_links.extend(event.data.get("known_links") or [])
                 agent_name = event.data.get("agent", event.agent_name or "unknown")
                 if agent_name not in agents_used:
                     agents_used.append(agent_name)
@@ -447,8 +452,9 @@ async def orchestrate(
                 and ar["step_execution"].get("agent") == "direct"
             ):
                 step_exec = ar["step_execution"]
-                direct_answer = step_exec.get(
-                    "direct_answer", ar.get("answer", "")
+                direct_answer, _ = filter_answer(
+                    step_exec.get("direct_answer", ar.get("answer", "")),
+                    turn_known_links,
                 )
 
                 yield Event(
@@ -490,6 +496,10 @@ async def orchestrate(
 
             if event.type == EventType.SYNTHESIS_DONE:
                 response_text = event.data.get("response_text", "")
+
+        # Agent answers were filtered in dispatch_agent; a synthesized answer
+        # can add links of its own, so filter it against every agent's tools.
+        response_text, _ = filter_answer(response_text, turn_known_links)
 
         # Merge result_for_ui from all agent results
         if len(agent_results) == 1:

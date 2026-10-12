@@ -49,6 +49,8 @@ _solr_api_path = str(_REPO_ROOT / "mcp_server" / "bvbrc-python-api")
 if Path(_solr_api_path).is_dir() and _solr_api_path not in sys.path:
     sys.path.insert(0, _solr_api_path)
 
+from shared.answer_filter import collect_known_links, filter_answer  # noqa: E402
+
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -202,6 +204,13 @@ def _build_tool_trace(result: Any) -> list[dict[str, Any]]:
     return trace
 
 
+def _known_links(result: Any) -> list[str]:
+    """URLs/DOIs the agent's tools returned this turn (for filter_answer)."""
+    return collect_known_links(
+        getattr(ex, "result", None) for ex in getattr(result, "tool_trace", None) or []
+    )
+
+
 def _blocked_actions_of(result: Any) -> list[dict[str, Any]]:
     """Gated tool calls refused in plan mode (empty when none)."""
     return list(getattr(result, "blocked_actions", None) or [])
@@ -331,6 +340,7 @@ async def _run_data_agent(
         "iterations_used": result.iterations_used,
         "elapsed_seconds": result.elapsed_seconds,
         "tool_trace": _build_tool_trace(result),
+        "known_links": _known_links(result),
     }
     if result.structured_data:
         response["structured_data"] = result.structured_data
@@ -375,6 +385,7 @@ async def _run_service_agent(
         "sources": result.sources,
         "elapsed_seconds": result.elapsed_seconds,
         "tool_trace": tool_trace,
+        "known_links": _known_links(result),
     }
     if result.manifest:
         response["manifest"] = result.manifest
@@ -427,6 +438,7 @@ async def _run_workspace_agent(
         "iterations_used": result.iterations_used,
         "elapsed_seconds": result.elapsed_seconds,
         "tool_trace": tool_trace,
+        "known_links": _known_links(result),
         # Workspace agent structured payload for rich UI rendering
         "items": getattr(result, "items", []),
         "metadata": getattr(result, "metadata", []),
@@ -461,6 +473,7 @@ async def _run_helpdesk_agent(
         "iterations_used": result.iterations_used,
         "elapsed_seconds": result.elapsed_seconds,
         "tool_trace": _build_tool_trace(result),
+        "known_links": _known_links(result),
     }, result)
 
 
@@ -492,6 +505,7 @@ async def _run_analysis_agent(
         "iterations_used": result.iterations_used,
         "elapsed_seconds": result.elapsed_seconds,
         "tool_trace": tool_trace,
+        "known_links": _known_links(result),
         # Analysis agent structured payload for rich UI rendering
         "output_files": result.output_files,
         "metrics": result.metrics,
@@ -529,6 +543,7 @@ async def _run_planning_agent(
         "iterations_used": result.iterations_used,
         "elapsed_seconds": result.elapsed_seconds,
         "tool_trace": tool_trace,
+        "known_links": _known_links(result),
     }
 
     # Planning-specific fields
@@ -594,7 +609,18 @@ async def dispatch_agent(
         return _error_response(f"Unknown agent type: {agent_type}")
 
     try:
-        return await runner(query, config_kwargs, ctx, progress_callback)
+        response = await runner(query, config_kwargs, ctx, progress_callback)
     except Exception as e:
         traceback.print_exc(file=sys.stderr)
         return _error_response(_classify_agent_error(e, agent_type))
+
+    # Unwrap links no tool returned this turn (models invent BV-BRC URLs).
+    # known_links stays on the response so the orchestrator can filter a
+    # synthesized answer the same way.
+    if isinstance(response, dict) and isinstance(response.get("answer"), str):
+        response["answer"], removed = filter_answer(
+            response["answer"], response.get("known_links") or []
+        )
+        if removed:
+            response["links_removed"] = removed
+    return response
