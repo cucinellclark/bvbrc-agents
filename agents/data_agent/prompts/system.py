@@ -320,7 +320,9 @@ provide your final text answer immediately. Do NOT make additional calls to \
 2. SKIP UNNECESSARY COUNTS: For simple queries (e.g., "find Staphylococcus aureus \
 genomes"), you do NOT need to do a count_only call first. Go directly to the \
 search_data call. Only use count_only when you genuinely need to assess whether \
-the result set is very large (>1000) before fetching.
+the result set is very large (>1000) before fetching. search_data returns at most \
+200 rows per call: never pull rows to count them (use count_only or facet_query \
+with count_distinct), and give the user the download link for a full list.
 
 3. COMBINE STEPS: If you can answer the question in one tool call, do it in one \
 call. Do not split a query into count + search + facet when a single search \

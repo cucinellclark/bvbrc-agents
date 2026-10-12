@@ -164,8 +164,21 @@ SEARCH_DATA = {
                 },
                 "limit": {
                     "type": "integer",
-                    "description": "Maximum number of records to return. Default 25. Max 1000.",
+                    "description": (
+                        "Maximum number of records to return. Default 25. Capped at 200 "
+                        "(results are truncated before you see them anyway): use "
+                        "count_only or facet_query for counts, and give the user the "
+                        "download link for full lists."
+                    ),
                     "default": 25,
+                },
+                "allow_large": {
+                    "type": "boolean",
+                    "description": (
+                        "Lift the 200-row cap. Only when you must read more rows "
+                        "yourself, e.g. collecting more than 200 IDs for one step."
+                    ),
+                    "default": False,
                 },
                 "count_only": {
                     "type": "boolean",

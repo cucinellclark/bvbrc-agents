@@ -49,6 +49,14 @@ def _get_solr_functions():
 # ---------------------------------------------------------------------------
 
 
+# Rows an agent gets per search_data call unless it sets allow_large.  The
+# loop cuts every tool result to ~8000 chars, so a 1000-row pull is mostly
+# thrown away -- marcnguy's turn (Oct 9) spent its 300 s on two cursor-paged
+# 1000-row pulls (all S. pneumoniae genomes, all tetracycline AMR records)
+# before timing out.  Counts belong in count_only / facet_query.
+AGENT_SEARCH_LIMIT = 200
+
+
 async def search_data(
     collection: str,
     query: str,
@@ -56,6 +64,7 @@ async def search_data(
     sort: Optional[str] = None,
     limit: int = 25,
     count_only: bool = False,
+    allow_large: bool = False,
     base_url: Optional[str] = None,
     headers: Optional[Dict[str, str]] = None,
     **kwargs: Any,
@@ -78,6 +87,10 @@ async def search_data(
     """
     solr_query_fn, _, _ = _get_solr_functions()
 
+    capped_from: Optional[int] = None
+    if not count_only and not allow_large and isinstance(limit, int) and limit > AGENT_SEARCH_LIMIT:
+        capped_from, limit = limit, AGENT_SEARCH_LIMIT
+
     token = _extract_token(headers)
     result = await solr_query_fn(
         collection=collection,
@@ -89,6 +102,15 @@ async def search_data(
         token=token,
         base_url=base_url,
     )
+
+    if capped_from is not None and isinstance(result, dict) and not result.get("error"):
+        result["limit_note"] = (
+            f"Returned at most {AGENT_SEARCH_LIMIT} rows (you asked for {capped_from}); "
+            f"larger results are cut off before you see them anyway. For counts use "
+            f"count_only=true or facet_query (count_distinct=true for distinct values); "
+            f"to pick examples use a small limit. numFound is the true total. Give the "
+            f"user the download link for the full list."
+        )
 
     # Attach actionable URLs so the LLM can embed clickable markdown
     # links in its response (viewer page, TSV download, FASTA download).

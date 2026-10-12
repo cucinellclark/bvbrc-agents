@@ -74,7 +74,10 @@ Pattern: query collection A → extract IDs → filter collection B with those I
 Batch ``genome_id`` filters at max 50 IDs per query.
 
 ### Constraints
-- Default limit: 25 results.  Use ``count_only=true`` before large fetches.
+- Default limit: 25 results, capped at 200 per call (``allow_large`` lifts it
+  only when you must read more rows yourself). Results are truncated before you
+  see them, so never pull rows to count them: use ``count_only=true`` or
+  ``facet_query`` (``count_distinct=true``), and give the user the download link.
 - ``genome_status`` values: Complete, WGS, Partial, Plasmid, Deprecated.
   ``genome_quality`` values: Good, Poor.
   For general queries, do NOT filter by these unless the user asks.
