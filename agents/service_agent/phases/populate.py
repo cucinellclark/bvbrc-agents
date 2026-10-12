@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import sys
 import time
 from pathlib import Path
@@ -68,12 +69,108 @@ SUCCESS_PHRASES = (
 )
 
 PLAN_MODE_NUDGE = (
-    "SYSTEM: This session is in PLAN mode. Nothing was submitted — "
+    "This session is in PLAN mode. Nothing was submitted — "
     "submit_gowe_job was refused. Do NOT claim a job was submitted. "
     "Rewrite your answer as a 'Ready to submit' summary (workflow, each "
     "input value, output folder name) and tell the user to switch to "
     "Execute mode to run it."
 )
+
+
+SUBMIT_NUDGE = (
+    "You have NOT submitted any job yet — submit_gowe_job was never called. "
+    "You MUST call submit_gowe_job to actually submit the workflow. If you "
+    "cannot submit due to missing required information or errors, clearly "
+    "tell the user what went wrong and what they need to provide. Do NOT "
+    "claim a job was submitted."
+)
+
+FAILED_SUBMIT_NUDGE = (
+    "Your submission FAILED. Do NOT claim it was successful. The "
+    "submit_gowe_job tool returned an error. Report the actual error to the "
+    "user honestly."
+)
+
+CIRCUIT_BREAKER_NUDGE = (
+    "Job submission has failed multiple times. Do NOT retry. Respond to the "
+    "user with a clear explanation of the error and suggest they try again "
+    "later or contact support."
+)
+
+# Mid-loop corrections go in as user messages (vLLM/Qwen reject a system
+# message after the conversation starts), and the model answered them as if
+# the user had said them: replies opened with "You're absolutely right — I
+# haven't submitted…" on a first turn (20+ turns across the Sep codeathon and
+# Oct 9).  The prefix says who is speaking; _strip_nudge_echo removes what
+# still leaks.
+SYSTEM_CHECK_PREFIX = (
+    "[SYSTEM CHECK — not from the user. Do not acknowledge, thank, apologize "
+    "for, or quote this note. Write your reply to the user's original "
+    "request.] "
+)
+
+# Phrases that mean the reply is waiting on the user.  A question is a
+# legitimate end of turn; nudging it to "submit now" is what produced the
+# echoes.
+_ASKS_USER_PHRASES = (
+    "please provide", "please confirm", "please let me know", "please specify",
+    "please choose", "please select", "which of", "which one", "do you want",
+    "would you like", "could you", "can you", "let me know", "shall i",
+    "should i", "before i submit", "i need the following", "i need you to",
+)
+
+# Openers that answer a nudge instead of the user.
+_NUDGE_ECHO_OPENERS = re.compile(
+    r"^(you'?re|you are) (absolutely |completely |totally )?(right|correct)"
+    r"|^(i )?apologi[sz]e|^(my )?apologies|^sorry\b|^understood\b"
+    r"|^i understand (that )?you want|^thank you for (pointing|the reminder|catching)"
+    r"|^good catch|^thanks for (pointing|the reminder|catching)",
+    re.IGNORECASE,
+)
+
+
+def _add_nudge(state: AgentState, text: str) -> None:
+    """Send a mid-loop correction, marked as a system check."""
+    state.add_user_message(SYSTEM_CHECK_PREFIX + text)
+    state._nudged = True
+
+
+def _asks_user(content: str) -> bool:
+    """True when *content* ends the turn by asking the user something."""
+    lines = [ln.strip().strip("*_ ").strip() for ln in content.strip().splitlines()]
+    lines = [ln for ln in lines if ln]
+    if lines and lines[-1].endswith("?"):
+        return True
+    lowered = content.lower()
+    return any(p in lowered for p in _ASKS_USER_PHRASES)
+
+
+def _strip_nudge_echo(content: str) -> str:
+    """Drop leading sentences that answer a nudge ("You're absolutely right…").
+
+    Only the opening sentences of the first paragraph are examined, and the
+    text is returned unchanged if stripping would leave nothing.
+    """
+    if not content:
+        return content
+    text = content.replace("\u2019", "'").lstrip()
+    head, sep, rest = text.partition("\n\n")
+    sentences = re.split(r"(?<=[.!])\s+", head)
+    dropped = 0
+    while dropped < len(sentences):
+        lead = sentences[dropped].lstrip("*_>#- ").strip()
+        if not _NUDGE_ECHO_OPENERS.match(lead):
+            break
+        dropped += 1
+    if not dropped:
+        return content
+    kept_head = " ".join(sentences[dropped:]).strip()
+    result = (kept_head + sep + rest) if kept_head else rest
+    result = result.strip()
+    if not result:
+        return content
+    logger.info("Stripped nudge echo: %r", " ".join(sentences[:dropped])[:200])
+    return result
 
 
 def _plan_mode_summary(state: AgentState) -> str:
@@ -282,7 +379,7 @@ async def populate_and_submit(
 
         # If stuck in a loop, force text response
         if duplicate_count >= 3:
-            state.add_user_message(STUCK_MESSAGE)
+            _add_nudge(state, STUCK_MESSAGE)
             try:
                 response = await chat_completion(
                     client=client,
@@ -292,6 +389,8 @@ async def populate_and_submit(
                     tool_choice="none",
                 )
                 content = get_response_content(response)
+                if content and getattr(state, "_nudged", False):
+                    content = _strip_nudge_echo(content)
                 if content:
                     state.status = "needs_input"
                     state.question = content
@@ -316,6 +415,8 @@ async def populate_and_submit(
 
         tool_calls = _parse_tool_calls(response)
         content = get_response_content(response)
+        if content and getattr(state, "_nudged", False):
+            content = _strip_nudge_echo(content)
 
         # No tool calls -> LLM produced text (question, answer, or done message)
         if not tool_calls:
@@ -382,7 +483,7 @@ async def populate_and_submit(
                             state.add_assistant_message(
                                 content=content, tool_calls=[],
                             )
-                            state.add_user_message(PLAN_MODE_NUDGE)
+                            _add_nudge(state, PLAN_MODE_NUDGE)
                             continue
                         logger.warning(
                             "LLM still claimed success after plan-mode "
@@ -394,7 +495,18 @@ async def populate_and_submit(
                     state.operation_message = content
                     return state
 
-                if got_inputs and not ever_attempted_submit and not ever_blocked_submit:
+                # A reply that asks the user something is a legitimate end of
+                # turn -- unless it also claims a submission that never
+                # happened, which is what this guard exists to catch.
+                asks_user = _asks_user(content) and not any(
+                    p in content.lower() for p in SUCCESS_PHRASES
+                )
+                if (
+                    got_inputs
+                    and not ever_attempted_submit
+                    and not ever_blocked_submit
+                    and not asks_user
+                ):
                     # The LLM prepared to submit but never called
                     # submit_gowe_job.  Push it back into the loop
                     # (up to 2 times) to either actually submit or
@@ -415,16 +527,7 @@ async def populate_and_submit(
                         # LLM backends (vLLM/Qwen) reject system
                         # messages that appear after the conversation
                         # has started.
-                        state.add_user_message(
-                            "You have NOT submitted any job yet — "
-                            "submit_gowe_job was never called. You "
-                            "MUST call submit_gowe_job to actually "
-                            "submit the workflow. If you cannot submit "
-                            "due to missing required information or "
-                            "errors, clearly tell the user what went "
-                            "wrong and what they need to provide. "
-                            "Do NOT claim a job was submitted."
-                        )
+                        _add_nudge(state, SUBMIT_NUDGE)
                         continue
 
                 if not state.submission_ids and ever_attempted_submit:
@@ -449,13 +552,7 @@ async def populate_and_submit(
                             state.add_assistant_message(
                                 content=content, tool_calls=[],
                             )
-                            state.add_user_message(
-                                "SYSTEM: Your submission FAILED. Do NOT "
-                                "claim it was successful. The "
-                                "submit_gowe_job tool returned an error. "
-                                "Report the actual error to the user "
-                                "honestly."
-                            )
+                            _add_nudge(state, FAILED_SUBMIT_NUDGE)
                             continue
                         # Nudge did not work — hard-overwrite.
                         state.status = "error"
@@ -643,12 +740,7 @@ async def populate_and_submit(
                     # user-facing explanation, then force a text response.
                     result_str = truncate_result(result, max_chars=result_char_limit(tc.name))
                     state.add_tool_result(tc.id, result_str)
-                    state.add_user_message(
-                        "Job submission has failed multiple times. "
-                        "Do NOT retry. Respond to the user with a clear "
-                        "explanation of the error and suggest they try "
-                        "again later or contact support."
-                    )
+                    _add_nudge(state, CIRCUIT_BREAKER_NUDGE)
                     try:
                         final_resp = await chat_completion(
                             client=client,
@@ -657,7 +749,9 @@ async def populate_and_submit(
                             config=config,
                             tool_choice="none",
                         )
-                        final_content = get_response_content(final_resp)
+                        final_content = _strip_nudge_echo(
+                            get_response_content(final_resp)
+                        )
                     except Exception:
                         final_content = None
 
