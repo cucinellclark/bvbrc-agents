@@ -131,15 +131,13 @@ async def run_agent(
             progress_callback,
         )
 
-    # Unknown with no workflow_id: probably ambiguous, ask for clarification
+    # Unknown: the classifier could not label it.  Do NOT answer with a fixed
+    # "I'm not sure which workflow you're referring to" -- that reached users
+    # for an MD5 question, a FASTA lookup and "closest genome" (parrello,
+    # Sep).  The populate loop reads the request with all tools and asks a
+    # real question if it needs one.
     if intent.action == "unknown":
-        state.status = "needs_input"
-        state.question = (
-            "I'm not sure which workflow you're referring to. "
-            "Could you clarify which workflow you'd like to "
-            "submit, check, or cancel?"
-        )
-        return state.to_result()
+        return await _run_gowe_flow(query, cfg, state, progress_callback)
 
     # Submit without workflow_id: a job prepared through GoWe has no saved
     # workflow id -- its inputs live only in the conversation ("Ready to

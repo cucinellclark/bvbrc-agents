@@ -90,6 +90,8 @@ async def orchestrate(
             "confidence": decision.confidence,
             "reasoning": (decision.plan.reasoning if decision.plan else None),
         }
+        if decision.routing_override:
+            routing_event_data["routing_override"] = decision.routing_override
         if decision.plan and decision.plan.steps:
             if decision.decision == "pipeline":
                 routing_event_data["steps"] = [

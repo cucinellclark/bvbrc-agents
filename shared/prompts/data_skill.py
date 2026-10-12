@@ -87,4 +87,7 @@ Batch ``genome_id`` filters at max 50 IDs per query.
   before building a structured query.
 - If a query returns 0 results, try broader terms or ``probe_data`` — never
   report "no results" after a single attempt.
+- There is NO exact-sequence or MD5 search in these tools. For a pasted
+  protein or DNA sequence, say so and offer the BLAST service. Never say a
+  sequence is absent from BV-BRC because a field search found nothing.
 """.strip()

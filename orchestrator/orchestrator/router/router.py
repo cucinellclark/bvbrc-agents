@@ -169,6 +169,59 @@ async def route(
         )
 
 
+# One rule for "direct" answers (2026-10-12).  The router model answers
+# direct from memory, and on Oct 9 it got BV-BRC facts wrong even after the
+# prompt said not to: genome ids "look like GCF_…" (calling 5482.50 a typo),
+# the microbiome pipeline is "16S/SILVA".  A message that mentions BV-BRC or
+# carries a BV-BRC-style id goes to the helpdesk agent instead.  Each
+# override is logged as ROUTER_DIRECT_OVERRIDE and stored on the message.
+_BVBRC_REFERENCE_RE = re.compile(
+    r"bv-?brc|patric|\b\d+\.\d+\b|fig\||\b[SED]RR\d+",
+    re.IGNORECASE,
+)
+
+FALLBACK_AGENT = "helpdesk"
+
+
+def _direct_or_helpdesk(
+    direct_response: str | None,
+    query: str,
+    registry: AgentRegistry,
+    confidence: float,
+) -> RoutingDecision:
+    """Return the router's direct answer, or send the query to helpdesk.
+
+    Helpdesk is used when the router gave no text (this used to reach users
+    as "I can help with that. Could you provide a bit more detail?") or when
+    the query refers to BV-BRC.
+    """
+    text = (direct_response or "").strip()
+    if not text:
+        override = "empty_direct"
+    elif _BVBRC_REFERENCE_RE.search(query):
+        override = "bvbrc_reference"
+    else:
+        return RoutingDecision(decision="direct", direct_response=text, confidence=confidence)
+
+    if FALLBACK_AGENT not in registry.agents:
+        logger.warning("ROUTER_DIRECT_OVERRIDE skipped (%s): no %s agent", override, FALLBACK_AGENT)
+        return RoutingDecision(
+            decision="direct",
+            direct_response=text or "Sorry, I couldn't work out how to help with that. Could you rephrase it?",
+            confidence=confidence,
+        )
+    logger.warning("ROUTER_DIRECT_OVERRIDE reason=%s query=%r", override, query[:120])
+    return RoutingDecision(
+        decision="agent",
+        plan=Plan(
+            reasoning=f"Direct answer replaced ({override}); sent to {FALLBACK_AGENT}.",
+            steps=[Step(agent_key=FALLBACK_AGENT, task=query)],
+        ),
+        confidence=confidence,
+        routing_override=override,
+    )
+
+
 def _parse_routing_response(
     raw: str,
     query: str,
@@ -224,12 +277,7 @@ def _parse_routing_response(
     reasoning = data.get("reasoning", "")
 
     if decision_type == "direct":
-        return RoutingDecision(
-            decision="direct",
-            direct_response=data.get("direct_response")
-            or "I can help with that. Could you provide a bit more detail?",
-            confidence=0.9,
-        )
+        return _direct_or_helpdesk(data.get("direct_response"), query, registry, 0.9)
 
     elif decision_type == "agent":
         agent_key = data.get("agent_key", "")
@@ -313,9 +361,4 @@ def _parse_routing_response(
             f"Router returned unknown decision type '{decision_type}', "
             "treating as direct"
         )
-        return RoutingDecision(
-            decision="direct",
-            direct_response=data.get("direct_response")
-            or "I can help with that. Could you provide a bit more detail?",
-            confidence=0.5,
-        )
+        return _direct_or_helpdesk(data.get("direct_response"), query, registry, 0.5)

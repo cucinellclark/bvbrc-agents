@@ -44,6 +44,10 @@ class RoutingDecision(BaseModel):
     plan: Plan | None = None
     direct_response: str | None = None  # Only set when decision == "direct"
     confidence: float = 1.0  # Router's confidence in this decision
+    # Set when code replaced the router model's "direct" answer with an agent
+    # (see router._direct_or_helpdesk).  Stored on the message as
+    # agent_metadata.routing_override so the rate can be tracked.
+    routing_override: str | None = None
 
 
 # ---------------------------------------------------------------------------

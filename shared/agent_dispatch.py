@@ -243,7 +243,6 @@ def _classify_agent_error(error: Exception, agent_type: str) -> str:
             "context_length_exceeded",
             "too many tokens",
             "prompt is too long",
-            "input_text",
             "token limit",
         ]
     ):

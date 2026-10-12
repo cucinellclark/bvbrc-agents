@@ -253,6 +253,13 @@ When to probe:
 """
 
 _SRA_LOOKUP = """\
+=== PASTED SEQUENCES ===
+
+There is NO exact-sequence or MD5 search in your tools. For a pasted protein \
+or DNA sequence, say so and offer the BLAST service (homology search). Never \
+say a sequence is absent from BV-BRC because a field search found nothing \
+(a known Brucella protein was once reported "NOT found in any genome").
+
 === SRA METADATA LOOKUP ===
 
 When the user provides an SRA accession (SRR, SRX, ERR, DRR prefixes) or asks \
