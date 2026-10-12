@@ -315,17 +315,37 @@ class InProcessAgentHandle:
         context = arguments.get("context", {})
         token = arguments.get("token", "") or ""
 
+        from shared.agent_dispatch import timeout_partial_result
+        from shared.models import TOOL_PROGRESS
+
         timeout = self.config.timeout_seconds or 300
-        return await asyncio.wait_for(
-            dispatch_agent(
-                agent_type=agent_type,
-                query=query,
-                context=context,
-                token=token,
-                progress_callback=progress_handler,
-            ),
-            timeout=timeout,
-        )
+        # Collect tool steps as they finish (BaseAgentState.record_execution);
+        # wait_for runs dispatch_agent in a task that copies this context, so
+        # it appends to this same list.
+        progress: list = []
+        progress_token = TOOL_PROGRESS.set(progress)
+        try:
+            return await asyncio.wait_for(
+                dispatch_agent(
+                    agent_type=agent_type,
+                    query=query,
+                    context=context,
+                    token=token,
+                    progress_callback=progress_handler,
+                ),
+                timeout=timeout,
+            )
+        except asyncio.TimeoutError:
+            partial = timeout_partial_result(agent_type or self.key, progress, timeout)
+            if partial is None:
+                raise  # nothing done yet: the executor's generic timeout text
+            logger.warning(
+                "Agent '%s' hit the %ss limit after %d tool steps; returning partial result",
+                self.key, timeout, len(progress),
+            )
+            return partial
+        finally:
+            TOOL_PROGRESS.reset(progress_token)
 
     def catalog_entry(self) -> str:
         """Format this agent as a catalog entry for the routing LLM."""

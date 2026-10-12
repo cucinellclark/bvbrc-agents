@@ -187,6 +187,85 @@ def _summarize_tool_result(result: Any) -> dict[str, Any] | None:
     return summary
 
 
+def _progress_line(step: dict[str, Any]) -> str:
+    """One readable line for a tool step done before a timeout."""
+    tool = step.get("tool", "tool")
+    args = step.get("arguments") or {}
+    what = args.get("collection") or args.get("workflow_id") or args.get("path") or ""
+    head = f"`{tool}`" + (f" ({what})" if what else "")
+    result = step.get("result")
+    if step.get("error"):
+        return f"- {head}: failed — {str(step['error'])[:200]}"
+    if tool == "submit_gowe_job" and isinstance(result, dict) and result.get("submission_id"):
+        out = result.get("output_path")
+        return f"- {head}: job submitted" + (f", results in `{out}`" if out else "")
+    summary = _summarize_tool_result(result) or {}
+    bits = []
+    for key in ("numFound", "count", "total"):
+        if key in summary:
+            bits.append(f"{summary[key]:,} records" if isinstance(summary[key], int) else f"{summary[key]} records")
+            break
+    if summary.get("viewer_url"):
+        bits.append(f"[view](<{summary['viewer_url']}>)")
+    return f"- {head}: " + (", ".join(bits) if bits else "done")
+
+
+def timeout_partial_result(
+    agent_type: str,
+    progress: list[dict[str, Any]],
+    timeout_seconds: float,
+) -> Dict[str, Any] | None:
+    """The answer for an agent run stopped by the time limit, or None.
+
+    Lists the steps that finished so the user sees how far it got. Jobs
+    submitted before the cut-off keep their submission_ids (status
+    "completed"), so the gateway still registers watches and completion
+    messages; otherwise status "error" (the answer is shown verbatim).
+    """
+    if not progress:
+        return None
+    minutes = max(1, round(timeout_seconds / 60))
+    lines = [_progress_line(step) for step in progress[:20]]
+    if len(progress) > 20:
+        lines.append(f"- … and {len(progress) - 20} more steps")
+    submission_ids = [
+        step["result"]["submission_id"]
+        for step in progress
+        if step.get("tool") == "submit_gowe_job"
+        and isinstance(step.get("result"), dict)
+        and step["result"].get("submission_id")
+        and not step.get("error")
+    ]
+    answer = (
+        f"I ran out of time (the {minutes}-minute limit) before I could finish. "
+        f"Here is how far I got:\n\n" + "\n".join(lines) + "\n\n"
+        + ("The submitted job keeps running; a completion message will appear in this "
+           "chat. " if submission_ids else "")
+        + "Ask me to continue from here, or narrow the request (for example one genus, "
+          "one genome group, or a count first)."
+    )
+    answer, _ = filter_answer(
+        answer, collect_known_links(step.get("result") for step in progress)
+    )
+    response: Dict[str, Any] = {
+        "answer": answer,
+        "status": "completed" if submission_ids else "error",
+        "timed_out": True,
+        "sources": [],
+        "elapsed_seconds": float(timeout_seconds),
+        "tool_trace": [
+            {"tool": s.get("tool"), "arguments": s.get("arguments"), "error": s.get("error"),
+             **({"result_summary": rs} if (rs := _summarize_tool_result(s.get("result"))) else {})}
+            for s in progress
+        ],
+    }
+    if submission_ids:
+        response["submission_ids"] = submission_ids
+        response["submission_id"] = submission_ids[-1]
+        response["auto_submitted"] = True
+    return response
+
+
 def _build_tool_trace(result: Any) -> list[dict[str, Any]]:
     """Extract a serializable tool trace from an agent result."""
     trace = []

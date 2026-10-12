@@ -19,12 +19,21 @@ Usage::
 from __future__ import annotations
 
 import time
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 from shared.config import LLM_DEFAULTS
+
+# Tool executions of the current agent run, visible to whoever set the list.
+# InProcessAgentHandle sets it before dispatching so that when the 300 s
+# agent limit cancels the run it can still report what was done (and any job
+# already submitted).  Before, the result -- tool trace included -- was lost
+# and the user got only a generic "took too long" message.
+TOOL_PROGRESS: ContextVar[list | None] = ContextVar("tool_progress", default=None)
+MAX_TOOL_PROGRESS = 50
 
 
 # ---------------------------------------------------------------------------
@@ -241,6 +250,9 @@ class BaseAgentState(BaseModel):
                 iteration=iteration if iteration is not None else self.iteration,
             )
         )
+        progress = TOOL_PROGRESS.get()
+        if progress is not None and len(progress) < MAX_TOOL_PROGRESS:
+            progress.append({"tool": tc.name, "arguments": tc.arguments, "result": result, "error": error})
         # A refusal from the execution-mode gate is not a failure — the
         # tool never ran.  Track it so the result can surface what the
         # user needs to switch to Execute mode to run.
