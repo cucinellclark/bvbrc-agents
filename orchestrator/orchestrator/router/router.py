@@ -9,12 +9,22 @@ from __future__ import annotations
 import json
 import logging
 import re
+import sys
+from pathlib import Path
 
 from orchestrator.llm.client import LLMClient
 from orchestrator.models import OrchestratorRequest
 from orchestrator.registry.agent_registry import AgentRegistry
 from orchestrator.router.models import Plan, RoutingDecision, Step
 from orchestrator.router.prompts import build_routing_prompt
+
+# The orchestrator's import chain runs before agent_dispatch.py puts the
+# bvbrc-agents repo root on sys.path (same as documents.py).
+_REPO_ROOT = str(Path(__file__).resolve().parents[3])
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
+from shared.agent_utils import format_recent_messages  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -77,15 +87,15 @@ async def route(
     # conversations.  The router only needs enough context to classify
     # intent — the current query (in ## User Request) plus a few
     # truncated recent messages is sufficient.
-    context_parts: list[str] = []
-    if request.recent_messages:
-        recent = request.recent_messages[-5:]  # Last 5 messages
-        for msg in recent:
-            role = msg.get("role", "user")
-            content = msg.get("content", "")
-            if content:
-                context_parts.append(f"{role}: {content[:500]}")
-    conversation_context = "\n".join(context_parts) if context_parts else None
+    # Last 5 messages, start and end of each: the router only classifies,
+    # but "do the next steps" / "submit it" refer to the END of the last
+    # reply, which a head-only cut dropped.
+    conversation_context = format_recent_messages(
+        request.recent_messages,
+        max_per_message=700,
+        max_messages=5,
+        max_last_assistant=1500,
+    ) or None
 
     # --- Call the routing LLM ---
     catalog = registry.catalog()

@@ -670,29 +670,54 @@ def format_attached_documents(
     return "\n".join(parts)
 
 
+def clip_middle(text: str, head: int, tail: int) -> str:
+    """Keep the first *head* and last *tail* characters of *text*.
+
+    Long replies put the plan, the "Ready to submit" inputs and the next
+    steps at the end, so a head-only cut loses exactly what a follow-up
+    ("let's do the next steps", "submit it") refers to.
+    """
+    if not text or len(text) <= head + tail:
+        return text
+    return f"{text[:head]}\n…[middle omitted]…\n{text[-tail:]}"
+
+
 def format_recent_messages(
     recent_messages: list[dict[str, Any]] | None,
-    max_per_message: int = 500,
+    max_per_message: int = 1500,
     max_messages: int = 5,
+    max_last_assistant: int = 4000,
 ) -> str:
     """Format a ``recent_messages`` list into a compact conversation context.
 
     Used by agents to inject bounded conversation context into their system
-    prompt.  Each message is truncated to *max_per_message* characters to
-    keep the context concise.
+    prompt.  Each message keeps its start and end (``clip_middle``) within
+    *max_per_message* characters; the most recent assistant reply -- the one
+    a follow-up usually refers to -- gets *max_last_assistant*.
+
+    Before 2026-10-12 every message was cut to its first 500 characters, so
+    plans and next steps at the end of long replies were lost (nbowers was
+    asked to re-list jobs 2-4; marcnguy's "let's do the next steps" got
+    "please clarify").
 
     Returns an empty string if *recent_messages* is falsy or empty.
     """
     if not recent_messages:
         return ""
+    window = recent_messages[-max_messages:]
+    last_assistant = max(
+        (i for i, m in enumerate(window) if m.get("role") == "assistant"),
+        default=None,
+    )
     parts: list[str] = []
-    for msg in recent_messages[-max_messages:]:
+    for i, msg in enumerate(window):
         role = msg.get("role", "user")
         content = msg.get("content", "")
         if not content:
             continue
-        if len(content) > max_per_message:
-            content = content[:max_per_message] + "..."
+        budget = max_last_assistant if i == last_assistant else max_per_message
+        head = budget * 3 // 5
+        content = clip_middle(content, head, budget - head)
         parts.append(f"{role}: {content}")
     return "\n".join(parts)
 
