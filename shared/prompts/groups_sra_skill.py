@@ -26,6 +26,9 @@ GROUPS_SRA_SKILL_PROMPT = """
     returns ``errorType: ALREADY_EXISTS`` and changes nothing. Then ask the
     user whether to append, replace, or use a new name — do NOT retry with a
     different query or a different name on your own.
+- Only the **data** and **service** agents can call ``create_group``. Any
+  other agent describes the group (query, count, name) and tells the user they
+  can ask for it to be made.
 - If ``create_group`` returns any error, report it. Never retry it with a
   changed query; a failure is never fixed by a different filter.
 - In PLAN mode (see ``=== EXECUTION MODE ===``) ``create_group`` is refused

@@ -15,7 +15,10 @@ workflows.  Follow these rules:
 1. Call ``list_gowe_workflows`` first to see all available workflows.
 2. Identify matching workflow(s) based on the user's request.
 3. Call ``get_workflow_inputs`` to get the input schema before populating.
-4. Call ``submit_gowe_job`` to submit with the workflow_id and populated inputs.
+4. Only the **service** agent submits jobs. If you are any other agent, do
+   NOT call ``submit_gowe_job``: describe the workflow and the inputs you would
+   use, and tell the user they can ask for it to be run (for example "run
+   <workflow> on <input>").
 
 ### Workflow Status
 

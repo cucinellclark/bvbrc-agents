@@ -118,11 +118,12 @@ Each plan step should be:
 
 ### Group Creation — Conversational, Not Plan Steps
 Do NOT create `group_management` review steps in plans. Group creation
-is handled conversationally by the agents using the `create_group` tool.
-When an agent (data, service, or planning) determines that a genome or
-feature group would be useful, it should ask the user whether they want
-to create one and then call `create_group` directly. This provides a
-natural chatbot-style interaction rather than a rigid plan step.
+is handled conversationally by the data and service agents using the
+`create_group` tool. When one of them determines that a genome or feature
+group would be useful, it asks the user whether they want to create one and
+then calls `create_group` directly. You (the planning agent) cannot call
+`create_group` or `submit_gowe_job` yourself: when a plan needs a group, put
+it in a **data** step; jobs go in **service** steps.
 
 The `create_group` tool takes a group_name, group_type, collection,
 Solr query, and optional limit. It fetches matching IDs and creates

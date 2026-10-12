@@ -588,6 +588,7 @@ async def dispatch_agent(
     auth_token = _resolve_auth_token(token)
     ctx = _parse_context(context)
     config_kwargs = _build_config_kwargs(auth_token, ctx)
+    config_kwargs["agent_key"] = agent_type
 
     runner = _AGENT_RUNNERS.get(agent_type)
     if runner is None:

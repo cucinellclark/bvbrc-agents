@@ -63,6 +63,18 @@ EXECUTE_ONLY_TOOLS: frozenset[str] = frozenset({"submit_gowe_job", "create_group
 
 EXECUTION_MODES: frozenset[str] = frozenset({"plan", "execute"})
 
+# Which agents may call each side-effecting tool.  Every agent has every tool
+# schema, and on 2026-09-18 / 10-09 the data agent submitted jobs in answer
+# to plain questions (parrello a05b7324, e88f5e12) and the helpdesk agent
+# resubmitted a job when a user complained (Chris dae698e5).  Jobs from a
+# non-service agent also carried no submission_ids, so no workflow watch and
+# no completion message.  Groups stay with data too: "make a group of these"
+# is a data request.
+TOOL_AGENT_ALLOWLIST: Dict[str, frozenset[str]] = {
+    "submit_gowe_job": frozenset({"service"}),
+    "create_group": frozenset({"service", "data"}),
+}
+
 PLAN_MODE_BLOCKED_MESSAGE = (
     "This chat session is in PLAN mode, so {tool} was NOT executed and "
     "nothing was submitted or created. Do not call it again in this turn "
@@ -126,6 +138,37 @@ def is_invalid_arguments_result(result: Any) -> bool:
     pair of malformed emissions aborts a turn that had nothing wrong with it.
     """
     return isinstance(result, dict) and bool(result.get("invalid_arguments"))
+
+
+def wrong_agent_result(tool_name: str, agent_key: str) -> Dict[str, Any]:
+    """Refusal for a gated tool called by an agent that may not use it."""
+    allowed = " or ".join(sorted(TOOL_AGENT_ALLOWLIST.get(tool_name, ())))
+    if tool_name == "submit_gowe_job":
+        next_step = (
+            "Tell the user which workflow and inputs you would use and that "
+            "they can ask for it to be run as a job (for example \"run "
+            "<workflow> on <input>\")."
+        )
+    else:
+        next_step = (
+            "Tell the user what you would create and that they can ask for it "
+            "directly (for example \"make a genome group of these\")."
+        )
+    return {
+        "error": (
+            f"{tool_name} is not available to the {agent_key} agent (only the "
+            f"{allowed} agent can call it). Nothing was run. {next_step} Do "
+            f"not call {tool_name} again."
+        ),
+        "wrong_agent": True,
+        "tool": tool_name,
+        "agent": agent_key,
+    }
+
+
+def is_wrong_agent_result(result: Any) -> bool:
+    """True when *result* is the agent-allowlist refusal."""
+    return isinstance(result, dict) and bool(result.get("wrong_agent"))
 
 
 def is_blocked_result(result: Any) -> bool:
@@ -193,6 +236,14 @@ async def execute_tool(
             "tool": tool_name,
             "received": (raw[:400] if isinstance(raw, str) else str(raw)[:400]),
         }
+
+    # Agent gate, BEFORE the plan-mode gate: a data agent in plan mode would
+    # otherwise produce a "Submit this job" card, and its replay would run
+    # the job anyway.  A config without agent_key is not restricted.
+    agent_key = getattr(config, "agent_key", None)
+    allowed_agents = TOOL_AGENT_ALLOWLIST.get(tool_name)
+    if agent_key and allowed_agents is not None and agent_key not in allowed_agents:
+        return wrong_agent_result(tool_name, agent_key)
 
     # Execution-mode gate: side-effecting tools only run in EXECUTE mode.
     # A missing config (or a config without the attribute) is treated as

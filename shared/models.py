@@ -128,6 +128,12 @@ class BaseAgentConfig(BaseModel):
     # ``shared/agent_dispatch.py:_build_config_kwargs``.
     execution_mode: Literal["plan", "execute"] = "plan"
 
+    # Which agent this config belongs to ("data", "service", ...), set by
+    # ``shared/agent_dispatch.py:dispatch_agent``.  ``execute_tool`` uses it
+    # to keep job submission with the service agent (TOOL_AGENT_ALLOWLIST).
+    # None (direct callers, tests) is not restricted.
+    agent_key: str | None = None
+
 
 # ---------------------------------------------------------------------------
 # Base agent state
