@@ -47,6 +47,7 @@ from service_agent.prompts.populate import build_populate_prompt
 from shared.tools.schemas import ALL_TOOL_SCHEMAS as POPULATE_TOOLS
 from shared.tools import (
     execute_tool,
+    is_already_submitted_result,
     is_blocked_result,
     is_invalid_arguments_result,
     result_char_limit,
@@ -108,11 +109,35 @@ def _submitted_summary(state: AgentState) -> str:
 def _is_nonexecuted_submit(te: Any) -> bool:
     """True when a submit_gowe_job execution never actually ran.
 
-    Two reasons: the execution-mode gate refused it, or its arguments were not
-    valid JSON. Neither is an attempt and neither is a failure, so both must be
-    excluded from ever_attempted_submit and from the failed-submission count.
+    Three reasons: the execution-mode gate refused it, its arguments were not
+    valid JSON, or it repeated a recent submission (duplicate guard). None is
+    an attempt and none is a failure, so all must be excluded from
+    ever_attempted_submit and from the failed-submission count.
     """
-    return _is_blocked_execution(te) or is_invalid_arguments_result(te.result)
+    return (
+        _is_blocked_execution(te)
+        or is_invalid_arguments_result(te.result)
+        or is_already_submitted_result(te.result)
+    )
+
+
+def _duplicate_note(state: AgentState) -> str:
+    """Fixed text for submissions the duplicate guard refused, or ''."""
+    dups = [
+        te.result.get("duplicate_of")
+        for te in state.tool_executions
+        if te.tool_call.name == "submit_gowe_job"
+        and is_already_submitted_result(te.result)
+    ]
+    if not dups:
+        return ""
+    ids = ", ".join(d for d in dups if d)
+    earlier = f" (earlier submission: {ids})" if ids else ""
+    return (
+        "\n\n**Not submitted again:** this exact job was already submitted from "
+        f"this chat in the last few minutes{earlier}. Check the Jobs list for its "
+        "progress."
+    )
 
 
 def _is_blocked_execution(te: Any) -> bool:
@@ -305,7 +330,17 @@ async def populate_and_submit(
                     # One or more jobs submitted; this is the summary message.
                     state.status = "completed"
                     state.current_phase = "done"
-                    state.operation_message = content
+                    state.operation_message = content + _duplicate_note(state)
+                    return state
+
+                # Every submit was a repeat of a recent job: nothing new went
+                # out, and that is not a failure.  Say so in fixed text so a
+                # "submitted successfully" in the prose cannot mislead.
+                dup_note = _duplicate_note(state)
+                if dup_note:
+                    state.status = "completed"
+                    state.current_phase = "done"
+                    state.operation_message = content + dup_note
                     return state
 
                 # No jobs submitted yet.  Check whether the LLM fetched
@@ -556,6 +591,20 @@ async def populate_and_submit(
                     "submit_gowe_job refused by execution-mode gate "
                     "(plan mode): %s",
                     result.get("summary"),
+                )
+                result_str = truncate_result(result, max_chars=result_char_limit(tc.name))
+                state.add_tool_result(tc.id, result_str)
+                if not batch_mode:
+                    force_no_tools = True
+                continue
+
+            # The duplicate guard refused a repeat of a recent submission.
+            # Nothing was sent to GoWe, so this is not a failure: feed it back
+            # and (single-job) force the summary instead of a retry.
+            if tc.name == "submit_gowe_job" and is_already_submitted_result(result):
+                logger.info(
+                    "submit_gowe_job refused as a duplicate of %s",
+                    result.get("duplicate_of"),
                 )
                 result_str = truncate_result(result, max_chars=result_char_limit(tc.name))
                 state.add_tool_result(tc.id, result_str)

@@ -21,7 +21,12 @@ import logging
 from typing import Any
 
 from service_agent.models import AgentConfig, AgentState, ToolCall
-from shared.tools import EXECUTE_ONLY_TOOLS, execute_tool, is_blocked_result
+from shared.tools import (
+    EXECUTE_ONLY_TOOLS,
+    execute_tool,
+    is_already_submitted_result,
+    is_blocked_result,
+)
 from shared.tools.registry import TOOL_DISPATCH
 
 logger = logging.getLogger(__name__)
@@ -102,6 +107,17 @@ async def replay_blocked_actions(
         error = result.get("error") if isinstance(result, dict) else "no result"
         state.record_execution(tc=tc, result=result, error=error, iteration=0)
 
+        if is_already_submitted_result(result):
+            # A repeat click (or a second turn) for a job that already went
+            # out: not a failure, and nothing new was submitted.
+            earlier = result.get("duplicate_of")
+            lines.append(
+                f"**{summary}** was already submitted from this chat in the last "
+                f"few minutes{f' ({earlier})' if earlier else ''}, so it was not "
+                f"submitted again. Check the Jobs list for its progress."
+            )
+            succeeded += 1
+            continue
         if is_blocked_result(result):
             lines.append(
                 f"Not run: **{summary}**. This chat is in Plan mode, so nothing "

@@ -133,6 +133,11 @@ def is_blocked_result(result: Any) -> bool:
     return isinstance(result, dict) and bool(result.get("blocked_by_mode"))
 
 
+def is_already_submitted_result(result: Any) -> bool:
+    """True when submit_gowe_job refused a repeat of a recent submission."""
+    return isinstance(result, dict) and bool(result.get("already_submitted"))
+
+
 async def execute_tool(
     tool_name: str,
     arguments: Dict[str, Any],

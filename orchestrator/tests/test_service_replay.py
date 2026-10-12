@@ -205,3 +205,13 @@ async def test_executor_forwards_replay_actions_in_context():
     context = seen.get("context") or {}
     assert context.get("replay_actions") == [TC_ACTION]
     assert context.get("execution_mode") == "execute"
+
+
+async def test_repeat_click_reports_already_submitted():
+    dup = {"error": "This exact job ... NOT submitted again. Tell the user ...",
+           "already_submitted": True, "duplicate_of": "sub_1", "workflow_id": "wf_tc"}
+    result, _ = await _run([TC_ACTION], [dup])
+    assert result.status == "completed"
+    assert "was already submitted from this chat" in result.operation_message
+    assert "Tell the user" not in result.operation_message
+    assert result.submission_ids == []

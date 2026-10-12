@@ -11,13 +11,65 @@ Each function accepts a generic *config* object (needs ``gowe_url``,
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import re
+import time
 from typing import Any, Dict, Optional
 
 from shared.tools._mcp_imports import get_gowe_client
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Duplicate-submission guard
+# ---------------------------------------------------------------------------
+# The same job reached GoWe several times on 2026-10-09: two "go ahead"
+# messages each submitted it (nbowers, jobs 23731569 / 23731575), and one
+# card click became five concurrent turns (parrello, five Comparative Systems
+# jobs in 5 s).  A job is a duplicate when the same chat (or user) submits the
+# same workflow with the same inputs inside the window.  output_path and
+# output_file are left out of the comparison: the model invents a new folder
+# name each turn, so including them would let every repeat through.
+#
+# Process-local: the orchestrator runs as one process.  The check and the
+# reservation happen with no await in between, so concurrent turns in the
+# event loop cannot both pass.
+
+DUPLICATE_SUBMIT_WINDOW_S = 600.0
+_DEDUP_IGNORED_INPUTS = frozenset({"output_path", "output_file"})
+# key -> (submission_id or None while the submit is in flight, monotonic time)
+_recent_submissions: Dict[str, tuple[Optional[str], float]] = {}
+
+
+def _submission_key(owner: str, workflow_id: str, inputs: Dict[str, Any]) -> str:
+    material = {k: v for k, v in inputs.items() if k not in _DEDUP_IGNORED_INPUTS}
+    raw = json.dumps([owner, workflow_id, material], sort_keys=True, default=str)
+    return hashlib.sha1(raw.encode()).hexdigest()
+
+
+def _reserve_submission(key: str) -> Optional[Dict[str, Any]]:
+    """Reserve *key*, or return the refusal if it was submitted recently."""
+    now = time.monotonic()
+    for k, (_, t) in list(_recent_submissions.items()):
+        if now - t > DUPLICATE_SUBMIT_WINDOW_S:
+            del _recent_submissions[k]
+    if key in _recent_submissions:
+        sub_id, t = _recent_submissions[key]
+        when = f"{int(now - t)} s ago"
+        what = f"as {sub_id}" if sub_id else "and is still being submitted"
+        return {
+            "error": (
+                f"This exact job (same workflow and inputs) was already submitted "
+                f"from this chat {when} {what}. It was NOT submitted again. Tell "
+                f"the user it is already running and do not retry."
+            ),
+            "already_submitted": True,
+            "duplicate_of": sub_id,
+        }
+    _recent_submissions[key] = (None, now)
+    return None
 
 
 def _extract_user_from_token(auth_token: str | None) -> str | None:
@@ -407,14 +459,35 @@ async def submit_gowe_job(
         if session_id:
             labels = {"session_id": session_id, "source": "copilot"}
 
-        result = await client.create_submission(
-            workflow_id=workflow_id,
-            inputs=cleaned_inputs,
-            auth_token=auth,
-            labels=labels,
+        dedup_key = _submission_key(
+            session_id or _extract_user_from_token(auth) or auth,
+            workflow_id,
+            cleaned_inputs,
         )
+        duplicate = _reserve_submission(dedup_key)
+        if duplicate:
+            logger.warning(
+                "Duplicate submission refused: workflow_id=%s, duplicate_of=%s, session=%s",
+                workflow_id, duplicate["duplicate_of"], session_id,
+            )
+            return {**duplicate, "workflow_id": workflow_id}
+
+        try:
+            result = await client.create_submission(
+                workflow_id=workflow_id,
+                inputs=cleaned_inputs,
+                auth_token=auth,
+                labels=labels,
+            )
+        except BaseException:
+            _recent_submissions.pop(dedup_key, None)
+            raise
 
         submission_id = result.get("id", "")
+        if submission_id:
+            _recent_submissions[dedup_key] = (submission_id, time.monotonic())
+        else:
+            _recent_submissions.pop(dedup_key, None)
         logger.info(
             "Job submitted: workflow_id=%s, submission_id=%s, state=%s",
             workflow_id,
