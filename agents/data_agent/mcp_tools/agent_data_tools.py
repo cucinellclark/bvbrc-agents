@@ -330,12 +330,22 @@ async def solr_query(
         return result
 
     except Exception as e:
-        return {
+        failure = {
             "error": f"solr_query failed: {type(e).__name__}: {str(e)}",
             "collection": collection,
             "query": query,
             "source": "bvbrc-mcp-data",
         }
+        # Sort now reaches Solr (it was silently dropped before), and a
+        # multi-valued or text field cannot be sorted on.
+        if sort_expr:
+            failure["sort"] = sort_expr
+            failure["hint"] = (
+                "If this error is about sorting, the field may not be sortable. "
+                "Retry without sort, or sort on a numeric/date field such as "
+                "genome_length, contigs, gc_content or completion_date."
+            )
+        return failure
 
 
 # Upper bound on buckets fetched for count_distinct.  Solr accepts -1 for
