@@ -120,6 +120,8 @@ async def execute_agent_step(
 
     # Execution mode gates submit_gowe_job / create_group in execute_tool.
     context_data["execution_mode"] = request.execution_mode
+    if request.replay_actions:
+        context_data["replay_actions"] = request.replay_actions
 
     # Forward page context (description of the page the user is viewing)
     if request.page_context:

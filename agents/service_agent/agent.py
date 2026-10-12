@@ -32,6 +32,7 @@ from service_agent.classifier import classify_intent
 from service_agent.handlers import handle_submit, handle_status, handle_cancel
 from service_agent.models import AgentConfig, AgentResult, AgentState
 from service_agent.phases.populate import populate_and_submit
+from service_agent.phases.replay import replay_blocked_actions, valid_replay_actions
 
 logger = logging.getLogger(__name__)
 
@@ -63,8 +64,26 @@ async def run_agent(
         AgentResult with operation result or error.
     """
     cfg = config or AgentConfig()
-    ctx = context or {}
+    ctx = dict(context or {})
+    replay = ctx.pop("replay_actions", None)
     state = AgentState(query=query, context=ctx)
+
+    # ------------------------------------------------------------------
+    # "Submit this job": run the prepared calls verbatim, no LLM.
+    # ------------------------------------------------------------------
+    if replay is not None:
+        actions = valid_replay_actions(replay)
+        if actions is None:
+            state.status = "error"
+            state.error_message = (
+                "I could not run the prepared job: the request was not in the "
+                "expected form. Please ask me to prepare it again."
+            )
+            return state.to_result()
+        await emit_progress(progress_callback, 0, 1, "Submitting the prepared job...")
+        state = await replay_blocked_actions(actions, cfg, state)
+        await emit_progress(progress_callback, 1, 1, "Done.")
+        return state.to_result()
 
     # ------------------------------------------------------------------
     # Step 1: Classify intent

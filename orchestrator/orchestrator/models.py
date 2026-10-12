@@ -102,6 +102,12 @@ class OrchestratorRequest(BaseModel):
     # reads this from the session document on every turn.
     execution_mode: Literal["plan", "execute"] = "plan"
 
+    # "Submit this job" on an execution_blocked card: the refused calls'
+    # exact arguments ({tool, arguments, summary}), checked by the gateway
+    # against the card stored in the session.  The service agent runs them
+    # verbatim instead of rebuilding the job with the LLM.
+    replay_actions: list[dict[str, Any]] | None = None
+
     # User-attached text files (inline content from browser upload)
     attached_files: list[dict[str, Any]] = Field(default_factory=list)
 
