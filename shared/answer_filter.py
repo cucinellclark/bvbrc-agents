@@ -39,10 +39,16 @@ _VIEWERS = (
 )
 _BUILT_PATTERNS = [
     re.compile(r"^https://www\.bv-brc\.org/?$"),
+    re.compile(r"^https://www\.bv-brc\.org/about/?$"),  # helpdesk prompt points here
     re.compile(r"^https://www\.bv-brc\.org/view/(" + "|".join(sorted(_VIEWERS)) + r")(/|\?|#|$)"),
     re.compile(r"^https://www\.bv-brc\.org/workspace/"),
     re.compile(r"^https://www\.bv-brc\.org/app/[A-Za-z0-9_]+/?$"),
 ]
+# Hosts that no longer resolve but still appear in retrieved documents
+# (BV-BRC-Docs capabilities_and_functionality.rst links docs.bv-brc.org 58
+# times; see current_plans/bvbrc_docs_issues.md).  Removed even when a tool
+# returned them.
+_DEAD_HOST_RE = re.compile(r"^https?://docs\.bv-brc\.org(/|$)", re.IGNORECASE)
 _DOI_URL_RE = re.compile(r"^https?://(dx\.)?doi\.org/(10\..+)$", re.IGNORECASE)
 
 
@@ -102,6 +108,8 @@ def collect_known_links(tool_results: Iterable[Any]) -> list[str]:
 
 def _allowed(url: str, known: set[str]) -> bool:
     url = _norm(url)
+    if _DEAD_HOST_RE.match(url):
+        return False
     if url in known:
         return True
     doi = _DOI_URL_RE.match(url)

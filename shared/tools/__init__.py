@@ -130,6 +130,35 @@ def blocked_by_mode_result(tool_name: str, arguments: Dict[str, Any]) -> Dict[st
     }
 
 
+def _add_output_location(result: Dict[str, Any], arguments: Dict[str, Any], config: Any) -> None:
+    """Tell a plan-mode summary where the job's results will really go.
+
+    The folder is placed at submission (place_output_path), so a "Ready to
+    submit" summary only knew the bare name: "your Testing folder" (Oct 13).
+    The card's arguments are left unchanged; the replayed submission places
+    the folder the same way.
+    """
+    session_id = getattr(config, "session_id", None)
+    workspace_path = getattr(config, "workspace_path", None)
+    inputs = arguments.get("inputs") if isinstance(arguments, dict) else None
+    if not (session_id and workspace_path and isinstance(inputs, dict)):
+        return
+    from shared.tools.gowe import place_output_path
+
+    final, note = place_output_path(
+        inputs.get("output_path"),
+        f"{workspace_path}/chats/{session_id}",
+        session_id,
+        str(arguments.get("workflow_id") or "Job"),
+    )
+    result["output_location"] = final
+    tell = f"In the summary, give the output folder as `{final}`."
+    if note:
+        result["output_location_note"] = note
+        tell += f" Also tell the user: {note}"
+    result["error"] += " " + tell
+
+
 def is_invalid_arguments_result(result: Any) -> bool:
     """True when the call was refused because its arguments were not JSON.
 
@@ -254,7 +283,10 @@ async def execute_tool(
     # A missing config (or a config without the attribute) is treated as
     # PLAN — the safe default.
     if tool_name in EXECUTE_ONLY_TOOLS and execution_mode_of(config) != "execute":
-        return blocked_by_mode_result(tool_name, arguments)
+        result = blocked_by_mode_result(tool_name, arguments)
+        if tool_name == "submit_gowe_job":
+            _add_output_location(result, arguments, config)
+        return result
 
     # Apply per-tool timeout overrides (use the larger of caller vs override)
     timeout_seconds = max(timeout_seconds, TOOL_TIMEOUT_OVERRIDES.get(tool_name, 0.0))

@@ -50,6 +50,10 @@ files and query BV-BRC data to gather inputs for the workflow. \
 Key signal words: "assemble", "annotate", "run", "submit", "align", \
 "blast", "tree", "analyze" (when paired with an action, not just \
 viewing existing data).
+- A pasted DNA or protein sequence with a question like "is this in \
+BV-BRC?", "what is this?", "find matches/homologs for this" goes to the \
+**service** agent: the only way to answer it is a BLAST job. The data \
+agent cannot search by sequence.
 - Route workspace browsing questions (listing files, finding workspace \
 items, checking job results) to the **workspace** agent.
 - Route how-to questions, usage guidance, FAQ-style questions, \

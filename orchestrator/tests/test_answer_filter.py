@@ -165,3 +165,13 @@ def test_tool_urls_with_raw_spaces_are_kept():
     known = collect_known_links([r])
     text = f"[view](<{r['viewer_url']}>) and [TSV](<{r['download_tsv_url']}>)"
     assert filter_answer(text, known) == (text, [])
+
+
+def test_dead_docs_host_is_removed_even_when_a_tool_returned_it():
+    """Oct 13: the helpdesk corpus links docs.bv-brc.org (no DNS)."""
+    url = "https://docs.bv-brc.org/website/personnel.html"
+    known = collect_known_links([{"content": f"Personnel: <{url}> About: <https://www.bv-brc.org/about>"}])
+    text, removed = filter_answer(f"- **Personnel** — {url}\n- [About](https://www.bv-brc.org/about)", known)
+    assert removed == [url]
+    assert "docs.bv-brc.org" not in text
+    assert "(link removed)" in text

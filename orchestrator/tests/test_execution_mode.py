@@ -444,3 +444,43 @@ class TestPopulateLoopPlanMode:
         )
         assert submit.await_count == 2
         assert state.status == "error"
+
+
+# --- Plan-mode summary knows the real output folder (Oct 13, "my Testing folder") ---
+
+WS = "/alice@patricbrc.org/home"
+SID = "11111111-2222-3333-4444-555555555555"
+
+
+async def _blocked_submit(output_path):
+    table = {"submit_gowe_job": AsyncMock()}
+    cfg = SimpleNamespace(execution_mode="plan", session_id=SID, workspace_path=WS)
+    args = {"workflow_id": "GenomeAssembly", "inputs": {"srr_ids": ["SRR1"], "output_path": output_path}}
+    result = await execute_tool("submit_gowe_job", args, table, config=cfg)
+    table["submit_gowe_job"].assert_not_called()
+    return result, args
+
+
+@pytest.mark.asyncio
+async def test_plan_block_reports_output_location():
+    result, args = await _blocked_submit("Testing")
+    assert result["blocked_by_mode"]
+    assert result["output_location"] == f"{WS}/chats/{SID}/Testing"
+    assert f"`{WS}/chats/{SID}/Testing`" in result["error"]
+    assert result["arguments"]["inputs"]["output_path"] == "Testing"   # card unchanged
+
+
+@pytest.mark.asyncio
+async def test_plan_block_explains_a_moved_folder():
+    result, _ = await _blocked_submit(f"{WS}/Testing")
+    assert result["output_location"] == f"{WS}/chats/{SID}/Testing"
+    assert "output_location_note" in result
+    assert result["output_location_note"] in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_plan_block_without_session_has_no_location():
+    table = {"submit_gowe_job": AsyncMock()}
+    result = await execute_tool("submit_gowe_job", {"workflow_id": "wf", "inputs": {"output_path": "x"}},
+                                table, config=SimpleNamespace(execution_mode="plan"))
+    assert result["blocked_by_mode"] and "output_location" not in result
