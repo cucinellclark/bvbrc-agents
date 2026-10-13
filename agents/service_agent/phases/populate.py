@@ -33,6 +33,7 @@ from agent_utils import (
     format_attached_documents,
     format_recent_messages,
     format_session_workspace,
+    format_handoff,
     parse_tool_calls as _parse_tool_calls_raw,
     get_response_content,
     build_tool_calls_message,
@@ -51,6 +52,7 @@ from shared.tools import (
     execute_tool,
     is_already_submitted_result,
     is_blocked_result,
+    is_handoff_result,
     is_invalid_arguments_result,
     is_needs_user_input_result,
     result_char_limit,
@@ -357,6 +359,10 @@ async def populate_and_submit(
         session_ws = format_session_workspace(state.context)
         if session_ws:
             system_prompt += f"\n\n{session_ws}"
+        # Another agent passed this turn on (F1 handoff)
+        handoff_section = format_handoff(state.context)
+        if handoff_section:
+            system_prompt += f"\n\n{handoff_section}"
 
         # Inject bounded conversation context from recent_messages
         recent_msgs = state.context.get("recent_messages")
@@ -378,7 +384,7 @@ async def populate_and_submit(
             if k not in (
                 "page_context", "images",
                 "conversation_summary", "recent_messages",
-                "parsed_documents", "attached_files",
+                "parsed_documents", "attached_files", "handoff",
                 "batch_mode",
             )
         }
@@ -745,6 +751,14 @@ async def populate_and_submit(
                 duration_ms=duration_ms,
                 iteration=iteration,
             )
+
+            # F1 handoff (create_plan -> planning): the dispatcher returns
+            # status "handoff" and the executor runs the planning agent.
+            if is_handoff_result(result):
+                logger.info("Handing off to %s (%s)", result.get("handoff_to"), tc.name)
+                state.status = "completed"
+                state.current_phase = "handoff"
+                return state
 
             # Execution-mode gate refused the call (plan mode).  The
             # tool never ran, so this is not a failed submission: feed

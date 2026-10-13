@@ -28,6 +28,7 @@ from shared.agent_utils import (
     format_recent_messages,
     format_execution_mode,
     format_session_workspace,
+    format_handoff,
 )
 from shared.models import ToolCall
 
@@ -199,6 +200,10 @@ async def run_agent(
         session_ws = format_session_workspace(context)
         if session_ws:
             system_content += f"\n\n{session_ws}"
+        # Another agent passed this turn on (F1 handoff)
+        handoff_section = format_handoff(context)
+        if handoff_section:
+            system_content += f"\n\n{handoff_section}"
 
         system_content += f"\n\n{format_execution_mode(config or context)}"
 
@@ -207,7 +212,7 @@ async def run_agent(
             if k not in (
                 "workflow_context", "page_context", "images",
                 "conversation_summary", "recent_messages",
-                "parsed_documents", "attached_files",
+                "parsed_documents", "attached_files", "handoff",
             )
         }
         if ctx_for_prompt:
@@ -241,7 +246,7 @@ async def run_agent(
         result_message_fn=_analysis_result_message,
         trim_messages=True,
         max_tool_result_chars=cfg.max_tool_result_chars,
-        excluded_context_keys={"workflow_context", "page_context", "images", "conversation_summary", "recent_messages", "parsed_documents", "attached_files"},
+        excluded_context_keys={"workflow_context", "page_context", "images", "conversation_summary", "recent_messages", "parsed_documents", "attached_files", "handoff"},
         start_message="Analyzing job outputs...",
         done_message="Analysis complete.",
     )

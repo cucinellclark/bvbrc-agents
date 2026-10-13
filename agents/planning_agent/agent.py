@@ -32,6 +32,7 @@ from agent_utils import (  # noqa: E402
     format_recent_messages,
     format_execution_mode,
     format_session_workspace,
+    format_handoff,
     parse_tool_calls as _parse_tool_calls_raw,
     get_response_content,
     build_tool_calls_message,
@@ -163,6 +164,10 @@ async def _analyze_and_plan(
         session_ws = format_session_workspace(context)
         if session_ws:
             system_prompt += f"\n\n{session_ws}"
+        # Another agent passed this turn on (F1 handoff)
+        handoff_section = format_handoff(context)
+        if handoff_section:
+            system_prompt += f"\n\n{handoff_section}"
 
         system_prompt += f"\n\n{format_execution_mode(config)}"
 
@@ -180,7 +185,7 @@ async def _analyze_and_plan(
             if k not in {
                 "page_context", "images",
                 "conversation_summary", "recent_messages",
-                "parsed_documents", "attached_files",
+                "parsed_documents", "attached_files", "handoff",
             }
         }
         if ctx_for_prompt:
@@ -240,6 +245,10 @@ async def _plan_with_answers(
         session_ws = format_session_workspace(context)
         if session_ws:
             system_prompt += f"\n\n{session_ws}"
+        # Another agent passed this turn on (F1 handoff)
+        handoff_section = format_handoff(context)
+        if handoff_section:
+            system_prompt += f"\n\n{handoff_section}"
 
         system_prompt += f"\n\n{format_execution_mode(config)}"
 
@@ -256,7 +265,7 @@ async def _plan_with_answers(
             if k not in {
                 "page_context", "images",
                 "conversation_summary", "recent_messages",
-                "parsed_documents", "attached_files",
+                "parsed_documents", "attached_files", "handoff",
             }
         }
         if ctx_for_prompt:
@@ -638,6 +647,15 @@ async def _run_planning_loop(
                 error=error,
                 duration_ms=duration_ms,
             )
+
+            # F1 handoff (submit_gowe_job -> service, create_group -> data):
+            # stop; the executor runs that agent next.
+            from shared.tools import is_handoff_result
+
+            if is_handoff_result(result):
+                state.status = "handoff"
+                state.final_answer = ""
+                return state.to_result()
 
             # Handle special tool results
             if tc.name == "ask_clarification" and result.get("status") == "valid":

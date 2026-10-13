@@ -29,6 +29,7 @@ from shared.agent_utils import (
     format_recent_messages,
     format_execution_mode,
     format_session_workspace,
+    format_handoff,
     parse_tool_calls as _parse_tool_calls_raw,
     get_response_content,
     build_tool_calls_message,
@@ -101,6 +102,10 @@ async def plan_only(
         session_ws = format_session_workspace(context)
         if session_ws:
             system_content += f"\n\n{session_ws}"
+        # Another agent passed this turn on (F1 handoff)
+        handoff_section = format_handoff(context)
+        if handoff_section:
+            system_content += f"\n\n{handoff_section}"
 
         system_content += f"\n\n{format_execution_mode(config or context)}"
 
@@ -118,7 +123,7 @@ async def plan_only(
             if k not in (
                 "page_context", "images",
                 "conversation_summary", "recent_messages",
-                "parsed_documents", "attached_files",
+                "parsed_documents", "attached_files", "handoff",
             )
         }
         if ctx_for_prompt:

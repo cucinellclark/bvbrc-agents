@@ -67,6 +67,7 @@ async def execute_agent_step(
     request: OrchestratorRequest,
     step_index: int = 0,
     upstream_results: dict[str, Any] | None = None,
+    handoff: dict[str, Any] | None = None,
 ) -> AsyncGenerator[Event, None]:
     """Execute a single agent step via the agent's chat tool.
 
@@ -81,6 +82,9 @@ async def execute_agent_step(
         upstream_results: Results from upstream pipeline steps to thread
             into this agent's context. Keys are like "step_0_data" and
             values are the result_for_ui dicts from those steps.
+        handoff: Set when another agent handed this turn over (F1):
+            ``{from, to, tool, arguments, findings}``, forwarded as
+            ``context["handoff"]``.
 
     Yields:
         Event objects: AGENT_START, AGENT_TOOL_CALL, AGENT_TOOL_RESULT,
@@ -163,6 +167,9 @@ async def execute_agent_step(
     # multiple submissions are permitted (planning-delegated steps only)
     if step.batch_mode:
         context_data["batch_mode"] = True
+
+    if handoff:
+        context_data["handoff"] = handoff
 
     if context_data:
         arguments["context"] = context_data

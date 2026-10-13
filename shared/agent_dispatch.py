@@ -147,6 +147,11 @@ def _build_config_kwargs(
     if workspace_path:
         config_kwargs["workspace_path"] = workspace_path
 
+    # F1: an agent that received a handoff cannot hand off again.
+    handoff = ctx.get("handoff")
+    if isinstance(handoff, dict) and handoff.get("from"):
+        config_kwargs["handoff_from"] = handoff["from"]
+
     return config_kwargs
 
 
@@ -636,6 +641,31 @@ async def _run_planning_agent(
     return _with_blocked_actions(response, result)
 
 
+def _handoff_response(agent_type: str, slot: dict[str, Any], response: Any) -> Dict[str, Any]:
+    """Result for a run that handed the turn to another agent (F1).
+
+    The answer is empty on purpose: the executor runs ``handoff.to`` next and
+    the user sees that agent's answer.  ``findings`` (the source agent's
+    bounded trace) tells the receiving agent what was already looked up.
+    """
+    trace = response.get("tool_trace", []) if isinstance(response, dict) else []
+    findings = [step for step in trace if step.get("tool") != slot.get("tool")]
+    return {
+        "answer": "",
+        "status": "handoff",
+        "handoff": {
+            "from": agent_type,
+            "to": slot.get("to"),
+            "tool": slot.get("tool"),
+            "arguments": slot.get("arguments") or {},
+            "findings": findings[-15:],
+        },
+        "sources": [],
+        "elapsed_seconds": response.get("elapsed_seconds", 0.0) if isinstance(response, dict) else 0.0,
+        "tool_trace": trace,
+    }
+
+
 _AGENT_RUNNERS: dict[str, Callable] = {
     "data": _run_data_agent,
     "service": _run_service_agent,
@@ -687,11 +717,20 @@ async def dispatch_agent(
     if runner is None:
         return _error_response(f"Unknown agent type: {agent_type}")
 
+    from shared.models import HANDOFF
+
+    handoff_slot: dict[str, Any] = {}
+    handoff_token = HANDOFF.set(handoff_slot)
     try:
         response = await runner(query, config_kwargs, ctx, progress_callback)
     except Exception as e:
         traceback.print_exc(file=sys.stderr)
         return _error_response(_classify_agent_error(e, agent_type))
+    finally:
+        HANDOFF.reset(handoff_token)
+
+    if handoff_slot:
+        return _handoff_response(agent_type, handoff_slot, response)
 
     # Unwrap links no tool returned this turn (models invent BV-BRC URLs).
     # known_links stays on the response so the orchestrator can filter a

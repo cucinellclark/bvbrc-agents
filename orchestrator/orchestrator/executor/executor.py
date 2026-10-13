@@ -223,6 +223,7 @@ async def _run_single_step(
         )
 
     # Execute the step
+    handoff: dict[str, Any] | None = None
     async for event in execute_agent_step(
         step=step,
         agent=agent,
@@ -230,4 +231,83 @@ async def _run_single_step(
         step_index=step_index,
         upstream_results=upstream_results,
     ):
+        if event.type == EventType.AGENT_RESULT:
+            ui = event.data.get("result_for_ui") or {}
+            if ui.get("status") == "handoff" and isinstance(ui.get("handoff"), dict):
+                handoff = ui["handoff"]
+                continue  # the receiving agent's result replaces it
+        yield event
+
+    if handoff:
+        async for event in _run_handoff(handoff, step, step_index, registry, request, upstream_results):
+            yield event
+
+
+# What the user sees while the turn moves to another agent (F1).
+_HANDOFF_PROGRESS = {
+    "service": "Passing this to the job-submission agent…",
+    "data": "Passing this to the data agent…",
+    "planning": "Passing this to the planning agent…",
+}
+
+
+async def _run_handoff(
+    handoff: dict[str, Any],
+    step: Step,
+    step_index: int,
+    registry: AgentRegistry,
+    request: OrchestratorRequest,
+    upstream_results: dict[str, Any] | None,
+) -> AsyncGenerator[Event, None]:
+    """Run the agent another agent handed this turn to (one hop, F1).
+
+    The receiving agent gets the original task plus ``context["handoff"]``;
+    its config has ``handoff_from`` set, so it cannot hand off again.  Its
+    results carry ``handoff`` metadata so the stored message records it.
+    """
+    target = handoff.get("to")
+    source = handoff.get("from")
+    logger.warning(
+        "AGENT_HANDOFF from=%s to=%s trigger=%s", source, target, handoff.get("tool")
+    )
+    try:
+        agent = registry.get(target)
+    except KeyError:
+        yield error_event(
+            message=(
+                "Sorry — this request needs a step I can't run right now. "
+                "Please try again, or ask for it directly."
+            ),
+            agent_name=source,
+            details={"internal_error": f"handoff target {target!r} not in registry"},
+        )
+        return
+
+    yield Event(
+        type=EventType.AGENT_PROGRESS,
+        agent_name=source,
+        step_index=step_index,
+        data={
+            "agent": source,
+            "message": _HANDOFF_PROGRESS.get(target, f"Passing this to the {target} agent…"),
+            "progress": 0,
+            "total": None,
+        },
+    )
+    meta = {"from": source, "to": target, "trigger": handoff.get("tool")}
+    target_step = step.model_copy(update={"agent_key": target})
+    async for event in execute_agent_step(
+        step=target_step,
+        agent=agent,
+        request=request,
+        step_index=step_index,
+        upstream_results=upstream_results,
+        handoff=handoff,
+    ):
+        if event.type == EventType.AGENT_RESULT:
+            ui = event.data.get("result_for_ui")
+            if isinstance(ui, dict):
+                ui["handoff"] = meta
+        elif event.type == EventType.ORCHESTRATOR_ERROR:
+            event.data["handoff"] = meta
         yield event

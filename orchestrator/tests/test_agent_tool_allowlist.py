@@ -5,6 +5,10 @@ plain questions (parrello a05b7324 Sep 18, e88f5e12 Oct 9), the helpdesk agent
 resubmitted a job when a user complained it had not run (Chris dae698e5), and
 a job from a non-service agent carried no submission_ids, so it got no
 workflow watch and no completion message.
+
+Since F1 (2026-10-13) the first such call hands the turn to the owning agent
+(tests/test_agent_handoff.py); the refusal below is what an agent that
+already received a handoff gets, so these tests set handoff_from.
 """
 
 import sys
@@ -20,18 +24,19 @@ from shared import agent_dispatch  # noqa: E402
 from shared.tools import (  # noqa: E402
     execute_tool,
     is_blocked_result,
+    is_handoff_result,
     is_wrong_agent_result,
 )
 
 
-def _cfg(agent_key, mode="execute"):
-    return SimpleNamespace(agent_key=agent_key, execution_mode=mode)
+def _cfg(agent_key, mode="execute", handoff_from="helpdesk"):
+    return SimpleNamespace(agent_key=agent_key, execution_mode=mode, handoff_from=handoff_from)
 
 
-async def _call(tool, agent_key, mode="execute"):
+async def _call(tool, agent_key, mode="execute", handoff_from="helpdesk"):
     fn = AsyncMock(return_value={"ok": True})
     result = await execute_tool(tool, {"workflow_id": "wf", "inputs": {}}, {tool: fn},
-                                config=_cfg(agent_key, mode), inject_config=False)
+                                config=_cfg(agent_key, mode, handoff_from), inject_config=False)
     return result, fn
 
 
@@ -73,6 +78,13 @@ async def test_agent_gate_runs_before_plan_mode_gate():
     result, fn = await _call("submit_gowe_job", "data", mode="plan")
     fn.assert_not_awaited()
     assert is_wrong_agent_result(result)
+    assert not is_blocked_result(result)
+
+    # First hop: handed to service (whose own plan gate then applies), still
+    # never a blocked card from the data agent.
+    result, fn = await _call("submit_gowe_job", "data", mode="plan", handoff_from=None)
+    fn.assert_not_awaited()
+    assert is_handoff_result(result) and result["handoff_to"] == "service"
     assert not is_blocked_result(result)
 
 

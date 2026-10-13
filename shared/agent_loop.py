@@ -34,6 +34,7 @@ from shared.agent_utils import (
     format_recent_messages,
     format_execution_mode,
     format_session_workspace,
+    format_handoff,
     parse_tool_calls as _parse_tool_calls_raw,
     get_response_content,
     build_tool_calls_message,
@@ -47,7 +48,7 @@ from shared.agent_messages import (
     MAX_ITERATIONS_FALLBACK,
 )
 from shared.models import BaseAgentState, BaseAgentConfig, ToolCall
-from shared.tools import execute_tool, truncate_result, result_char_limit
+from shared.tools import execute_tool, is_handoff_result, truncate_result, result_char_limit
 
 logger = logging.getLogger(__name__)
 
@@ -151,7 +152,7 @@ async def run_agent_loop(
         excluded_context_keys = {
             "page_context", "images",
             "conversation_summary", "recent_messages",
-            "parsed_documents", "attached_files",
+            "parsed_documents", "attached_files", "handoff",
         }
 
     # Build initial messages if the caller hasn't already set them up.
@@ -180,6 +181,10 @@ async def run_agent_loop(
             session_ws = format_session_workspace(context)
             if session_ws:
                 system_content += f"\n\n{session_ws}"
+            # Another agent passed this turn on (F1 handoff)
+            handoff_section = format_handoff(context)
+            if handoff_section:
+                system_content += f"\n\n{handoff_section}"
 
             # Inject bounded conversation context from recent_messages.
             recent_msgs = context.get("recent_messages")
@@ -341,6 +346,16 @@ async def run_agent_loop(
             await emit_progress(
                 progress_callback, iteration, config.max_iterations, res_msg
             )
+
+            # --- F1 handoff: the call belongs to another agent ---
+            # record_execution has filled the dispatcher's handoff slot;
+            # stop without writing a reply (the user sees the next agent's).
+            if is_handoff_result(result):
+                state.status = "handoff"
+                state.final_answer = ""
+                state.add_tool_result(tc.id, json.dumps(result, default=str))
+                should_exit = True
+                break
 
             # --- ask_clarification detection ---
             # When an agent explicitly calls ask_clarification with a

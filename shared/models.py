@@ -35,6 +35,12 @@ from shared.config import LLM_DEFAULTS
 TOOL_PROGRESS: ContextVar[list | None] = ContextVar("tool_progress", default=None)
 MAX_TOOL_PROGRESS = 50
 
+# F1 agent handoff.  dispatch_agent sets an empty dict; record_execution
+# fills it when a tool call came back as a handoff (execute_tool decided the
+# call belongs to another agent), and dispatch_agent then returns
+# status "handoff" for the executor to run that agent.
+HANDOFF: ContextVar[dict | None] = ContextVar("agent_handoff", default=None)
+
 
 # ---------------------------------------------------------------------------
 # Tool call / execution records (identical across all agents)
@@ -142,6 +148,9 @@ class BaseAgentConfig(BaseModel):
     # to keep job submission with the service agent (TOOL_AGENT_ALLOWLIST).
     # None (direct callers, tests) is not restricted.
     agent_key: str | None = None
+    # The agent that handed this turn to us (F1), or None.  A recipient
+    # cannot hand off again: execute_tool gives it the plain refusal.
+    handoff_from: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -158,6 +167,7 @@ AgentStatus = Literal[
     "needs_input",
     "needs_approval",
     "step_ready",
+    "handoff",
 ]
 
 
@@ -253,6 +263,13 @@ class BaseAgentState(BaseModel):
         progress = TOOL_PROGRESS.get()
         if progress is not None and len(progress) < MAX_TOOL_PROGRESS:
             progress.append({"tool": tc.name, "arguments": tc.arguments, "result": result, "error": error})
+        slot = HANDOFF.get()
+        if slot is not None and not slot and isinstance(result, dict) and result.get("handoff_to"):
+            slot.update(
+                to=result["handoff_to"],
+                tool=tc.name,
+                arguments=result.get("arguments") or {},
+            )
         # A refusal from the execution-mode gate is not a failure — the
         # tool never ran.  Track it so the result can surface what the
         # user needs to switch to Execute mode to run.

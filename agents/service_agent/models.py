@@ -205,7 +205,7 @@ class AgentState(BaseAgentState):
     """
 
     # Phase tracking
-    current_phase: Literal["decompose", "build", "compose", "populate", "ready", "done"] = "decompose"
+    current_phase: Literal["decompose", "build", "compose", "populate", "ready", "done", "handoff"] = "decompose"
 
     # Phase 1 output
     workflow_plan: WorkflowPlan | None = None

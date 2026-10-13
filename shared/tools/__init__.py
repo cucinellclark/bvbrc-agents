@@ -195,6 +195,48 @@ def wrong_agent_result(tool_name: str, agent_key: str) -> Dict[str, Any]:
     }
 
 
+# F1 agent handoff: a call that belongs to another agent hands the turn to
+# it instead of dead-ending (Oct 13 case 9: the data agent prepared BLAST,
+# got the allowlist refusal, and could only tell the user to "switch to
+# Execute mode", which never works for it).  One hop per turn: an agent that
+# received a handoff (config.handoff_from) gets the plain refusal instead.
+HANDOFF_TARGETS: Dict[str, str] = {
+    "submit_gowe_job": "service",
+    "create_group": "data",
+    "create_plan": "planning",
+}
+
+
+def handoff_target(tool_name: str, config: Any) -> Optional[str]:
+    """The agent this call should be handed to, or None to run it here."""
+    target = HANDOFF_TARGETS.get(tool_name)
+    agent_key = getattr(config, "agent_key", None)
+    if not target or not agent_key or getattr(config, "handoff_from", None):
+        return None
+    if tool_name == "create_plan":
+        return target if agent_key != "planning" else None
+    allowed = TOOL_AGENT_ALLOWLIST.get(tool_name)
+    return target if allowed is not None and agent_key not in allowed else None
+
+
+def handoff_result(tool_name: str, arguments: Dict[str, Any], target: str) -> Dict[str, Any]:
+    """Tool result for a call handed to *target*.  Not an error: nothing ran."""
+    return {
+        "handoff_to": target,
+        "tool": tool_name,
+        "arguments": _safe_args(arguments),
+        "message": (
+            f"Passed to the {target} agent, which will finish this request. "
+            "Stop now: do not call more tools and do not write a reply."
+        ),
+    }
+
+
+def is_handoff_result(result: Any) -> bool:
+    """True when *result* hands the turn to another agent (F1)."""
+    return isinstance(result, dict) and bool(result.get("handoff_to"))
+
+
 def is_wrong_agent_result(result: Any) -> bool:
     """True when *result* is the agent-allowlist refusal."""
     return isinstance(result, dict) and bool(result.get("wrong_agent"))
@@ -274,6 +316,10 @@ async def execute_tool(
     # Agent gate, BEFORE the plan-mode gate: a data agent in plan mode would
     # otherwise produce a "Submit this job" card, and its replay would run
     # the job anyway.  A config without agent_key is not restricted.
+    target = handoff_target(tool_name, config)
+    if target:
+        return handoff_result(tool_name, arguments, target)
+
     agent_key = getattr(config, "agent_key", None)
     allowed_agents = TOOL_AGENT_ALLOWLIST.get(tool_name)
     if agent_key and allowed_agents is not None and agent_key not in allowed_agents:
