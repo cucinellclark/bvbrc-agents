@@ -5,12 +5,20 @@ These tools use data parsed from ``data_types.xlsx`` rather than the MCP
 server's prompt-file-based implementations.  The spreadsheet provides
 richer metadata (field types, definitions, examples).
 
+The tools read ``data_types.json``, generated from the spreadsheet, because
+openpyxl is not installed in the orchestrator env (the loader returned an
+empty catalog for every collection).  After editing the spreadsheet,
+regenerate it with a Python that has openpyxl::
+
+    python3 shared/tools/collections.py
+
 Any agent can import ``list_collections`` / ``get_collection_fields`` to
 discover what data is available.
 """
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -21,6 +29,8 @@ from typing import Any, Dict, List, Optional
 
 _COLLECTION_DATA: Optional[Dict[str, Dict[str, Any]]] = None
 _COLLECTION_INDEX: Optional[List[Dict[str, str]]] = None
+
+JSON_PATH = Path(__file__).resolve().parent.parent.parent / "agents" / "data_agent" / "data_types.json"
 
 
 def _load_collection_data() -> tuple[list[dict[str, str]], dict[str, dict[str, Any]]]:
@@ -35,18 +45,24 @@ def _load_collection_data() -> tuple[list[dict[str, str]], dict[str, dict[str, A
     if _COLLECTION_DATA is not None and _COLLECTION_INDEX is not None:
         return _COLLECTION_INDEX, _COLLECTION_DATA
 
-    try:
-        import openpyxl
-    except ImportError:
-        _COLLECTION_INDEX = []
-        _COLLECTION_DATA = {}
+    _COLLECTION_INDEX, _COLLECTION_DATA = [], {}
+    if JSON_PATH.exists():
+        data = json.loads(JSON_PATH.read_text())
+        _COLLECTION_INDEX, _COLLECTION_DATA = data["index"], data["collections"]
         return _COLLECTION_INDEX, _COLLECTION_DATA
 
     xlsx_path = _find_spreadsheet()
-    if xlsx_path is None:
-        _COLLECTION_INDEX = []
-        _COLLECTION_DATA = {}
-        return _COLLECTION_INDEX, _COLLECTION_DATA
+    if xlsx_path is not None:
+        try:
+            _COLLECTION_INDEX, _COLLECTION_DATA = _parse_spreadsheet(xlsx_path)
+        except ImportError:
+            pass
+    return _COLLECTION_INDEX, _COLLECTION_DATA
+
+
+def _parse_spreadsheet(xlsx_path: Path) -> tuple[list[dict[str, str]], dict[str, dict[str, Any]]]:
+    """Read the index sheet and one sheet per collection (needs openpyxl)."""
+    import openpyxl
 
     wb = openpyxl.load_workbook(str(xlsx_path), read_only=True)
 
@@ -118,15 +134,15 @@ def _load_collection_data() -> tuple[list[dict[str, str]], dict[str, dict[str, A
         }
 
     wb.close()
-
-    _COLLECTION_INDEX = index
-    _COLLECTION_DATA = collections
-    return _COLLECTION_INDEX, _COLLECTION_DATA
+    return index, collections
 
 
 def _find_spreadsheet() -> Optional[Path]:
     """Locate ``data_types.xlsx``."""
     candidates = [
+        # Where the file lives (moved with the data agent; the shared-tools
+        # refactor dropped this path and both collection tools returned nothing).
+        Path(__file__).resolve().parent.parent.parent / "agents" / "data_agent" / "data_types.xlsx",
         # Relative to the agents/ directory
         Path(__file__).resolve().parent.parent.parent / "agents" / "data_types.xlsx",
         # Legacy location
@@ -190,3 +206,12 @@ async def get_collection_fields(collection: str, **kwargs: Any) -> Dict[str, Any
         "field_count": len(cdata["fields"]),
         "fields": cdata["fields"],
     }
+
+
+if __name__ == "__main__":
+    src = _find_spreadsheet()
+    if src is None:
+        raise SystemExit("data_types.xlsx not found")
+    index, collections = _parse_spreadsheet(src)
+    JSON_PATH.write_text(json.dumps({"index": index, "collections": collections}, indent=1) + "\n")
+    print(f"wrote {JSON_PATH} ({len(index)} index rows, {len(collections)} collections)")

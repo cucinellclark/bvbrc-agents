@@ -1,0 +1,4681 @@
+{
+ "index": [
+  {
+   "name": "antibiotics",
+   "purpose": "Chemical, pharmacological and mechanistic details for antibacterial agents used in AMR analytics and clinical-isolate annotation."
+  },
+  {
+   "name": "bioset",
+   "purpose": "Represents a contrast or set of statistically significant entities (genes, proteins, metabolites, etc.) derived from an experiment \u2014 typically a differential-expression list or time-point cluster."
+  },
+  {
+   "name": "bioset_result",
+   "purpose": "Stores per-entity quantitative results (counts, log2 FC, p-values, z-scores\u2026) that belong to a bioset so BV-BRC can render volcano plots, heat maps and enrichment tables."
+  },
+  {
+   "name": "enzyme_class_ref",
+   "purpose": "Provides the authoritative mapping between EC numbers, their official textual descriptions, and corresponding GO terms, enabling enzyme look-ups and pathway annotation."
+  },
+  {
+   "name": "epitope",
+   "purpose": "Captures experimentally verified immune epitopes mapped to BV-BRC proteins, including sequence, host context, assay counts and taxonomy."
+  },
+  {
+   "name": "epitope_assay",
+   "purpose": "Holds detailed experimental assay records (B-cell, T-cell, MHC binding, etc.) linked to epitopes, with measurement values, host data and literature citations."
+  },
+  {
+   "name": "experiment",
+   "purpose": "High-level metadata for functional-omics experiments (transcriptomics, proteomics, metabolomics, etc.), linking them to biosets, genomes, treatments and publications."
+  },
+  {
+   "name": "feature_sequence",
+   "purpose": "Canonical raw sequence for every unique gene, RNA or protein encoded in BV-BRC genomes, keyed by MD5 for rapid identity checks and deduplication."
+  },
+  {
+   "name": "gene_ontology_ref",
+   "purpose": "Maps GO identifiers to names, definitions and ontology namespaces so BV-BRC can annotate features and run GO-term enrichment."
+  },
+  {
+   "name": "genome",
+   "purpose": "Rich sample, assembly and annotation metadata for every genome in BV-BRC, powering search, filters and downstream analyses across \u223c1 M assemblies."
+  },
+  {
+   "name": "genome_amr",
+   "purpose": "Antimicrobial-resistance phenotype and/or genotype evidence linked to each genome, including lab methods, computational predictions and literature support."
+  },
+  {
+   "name": "genome_feature",
+   "purpose": "All annotated features\u2014coding genes, RNAs, repeats\u2014across BV-BRC genomes, with coordinates, functional annotation and family membership."
+  },
+  {
+   "name": "genome_sequence",
+   "purpose": "Every nucleotide replicon (chromosome, plasmid, contig, viral segment, etc.) associated with a genome, with sequence, quality metrics and ACL information."
+  },
+  {
+   "name": "id_ref",
+   "purpose": "Cross-walk table linking BV-BRC features to external identifier systems (NCBI GeneID, Ensembl, Pfam, etc.) for inter-database annotation and search."
+  },
+  {
+   "name": "misc_niaid_sgc",
+   "purpose": "Tracks gene/protein targets selected by the NIAID Structural Genomics Centers, indicating clone/protein availability and project status."
+  },
+  {
+   "name": "pathway",
+   "purpose": "Maps enzyme-encoding features in a genome to Pathway Tools / MetaCyc pathways, enabling metabolic reconstructions and presence/absence matrices."
+  },
+  {
+   "name": "pathway_ref",
+   "purpose": "Master lookup linking each EC activity to its position on curated pathway diagrams plus global occurrence counts for enrichment statistics."
+  },
+  {
+   "name": "ppi",
+   "purpose": "Pairwise protein\u2013protein interaction metadata (detection methods, scores, literature) for network visualisation and comparative interactomics."
+  },
+  {
+   "name": "protein_feature",
+   "purpose": "Domain, motif, signal-peptide and other protein-level annotations identified in CDS translations, with coordinates and statistical scores."
+  },
+  {
+   "name": "protein_family_ref",
+   "purpose": "Lookup for every PATRIC protein-family accession (PGFam / PLFam) with descriptive name and namespace."
+  },
+  {
+   "name": "protein_structure",
+   "purpose": "Metadata and file pointers for every PDB entry mapped to BV-BRC genomes, including experimental details and chain-to-gene mappings."
+  },
+  {
+   "name": "sequence_feature",
+   "purpose": "Per-genome sequence features such as SNPs, indels or peptide motifs, linking them to canonical definitions, evidence codes and literature."
+  },
+  {
+   "name": "sequence_feature_vt",
+   "purpose": "Tracks each specific variant form of a canonical sequence feature across genomes, recording prevalence and variant sequences."
+  },
+  {
+   "name": "serology",
+   "purpose": "Laboratory serology results linked to host metadata and matching viral genomes, enabling antibody-prevalence and vaccine-impact studies."
+  },
+  {
+   "name": "sp_gene",
+   "purpose": "Lists antimicrobial-resistance, virulence and other \u201cspecialty\u201d genes detected in genomes, with evidence metrics and curated classifications."
+  },
+  {
+   "name": "sp_gene_ref",
+   "purpose": "Master reference catalogue of specialty-gene alleles (AMR, virulence, toxins) with drug associations and literature support."
+  },
+  {
+   "name": "spike_lineage",
+   "purpose": "Month-by-month statistics for SARS-CoV-2 Pango lineages (growth, prevalence, VOC status) and their defining spike mutations."
+  },
+  {
+   "name": "spike_variant",
+   "purpose": "Monthly global statistics for notable SARS-CoV-2 spike-protein variants (D614G, etc.) including prevalence, growth rate and lineage diversity."
+  },
+  {
+   "name": "strain",
+   "purpose": "Per-strain metadata for segmented viruses (esp. influenza), linking segment accessions, host/geographic info and genome records."
+  },
+  {
+   "name": "structured_assertion",
+   "purpose": "Machine-readable statements about genomic features (e.g. \u201cgene confers ciprofloxacin resistance\u201d) with evidence codes and citations."
+  },
+  {
+   "name": "subsystem",
+   "purpose": "Links individual genes in a genome to SEED subsystems and roles, enabling subsystem heat-maps and completeness metrics."
+  },
+  {
+   "name": "subsystem_ref",
+   "purpose": "Reference hierarchy for SEED subsystems, including descriptions, literature and role lists."
+  },
+  {
+   "name": "surveillance",
+   "purpose": "Rich epidemiological, clinical and environmental metadata linking genomes to patient or wildlife surveillance information."
+  },
+  {
+   "name": "taxonomy",
+   "purpose": "NCBI lineage metadata plus genome-derived statistics (genome count, GC content, etc.) for every taxonomic node represented in BV-BRC."
+  }
+ ],
+ "collections": {
+  "antibiotics": {
+   "primary_key": "pubchem_cid",
+   "purpose": "Chemical, pharmacological and mechanistic details for antibacterial agents used in AMR analytics and clinical isolate annotation.",
+   "fields": [
+    {
+     "name": "antibiotic_name",
+     "type": "string (case-insensitive)",
+     "definition": "Preferred, curated drug name"
+    },
+    {
+     "name": "atc_classification",
+     "type": "string[]",
+     "definition": "WHO ATC code(s)"
+    },
+    {
+     "name": "canonical_smiles",
+     "type": "string",
+     "definition": "Canonical SMILES"
+    },
+    {
+     "name": "cas_id",
+     "type": "string",
+     "definition": "CAS registry number"
+    },
+    {
+     "name": "description",
+     "type": "string[]",
+     "definition": "Concise overview sentences"
+    },
+    {
+     "name": "drugbank_interactions",
+     "type": "string[]",
+     "definition": "Known drug\u2013drug interaction partners"
+    },
+    {
+     "name": "inchi_key",
+     "type": "string",
+     "definition": "27-character InChIKey hash"
+    },
+    {
+     "name": "isomeric_smiles",
+     "type": "string",
+     "definition": "Stereospecific SMILES"
+    },
+    {
+     "name": "mechanism_of_action",
+     "type": "string[]",
+     "definition": "Mode-of-action statements"
+    },
+    {
+     "name": "molecular_formula",
+     "type": "string",
+     "definition": "Hill-system formula"
+    },
+    {
+     "name": "molecular_weight",
+     "type": "string",
+     "definition": "Average molecular mass (Da)"
+    },
+    {
+     "name": "pharmacological_classes",
+     "type": "string[]",
+     "definition": "Broad therapeutic class labels"
+    },
+    {
+     "name": "pharmacology",
+     "type": "string[]",
+     "definition": "Detailed ADME/Tox notes"
+    },
+    {
+     "name": "pubchem_cid ",
+     "type": "string",
+     "definition": "Primary key: PubChem CID"
+    },
+    {
+     "name": "pubchem_cid_i",
+     "type": "integer",
+     "definition": "Numeric copy of CID"
+    },
+    {
+     "name": "synonyms",
+     "type": "string[] (case-insensitive)",
+     "definition": "Alternate & trade names"
+    }
+   ]
+  },
+  "taxonomy": {
+   "primary_key": "taxon_id",
+   "purpose": "Stores NCBI lineage metadata plus genome-derived statistics (CDS counts, genome sizes, pan-genome metrics) for every taxonomic node represented in BV-BRC.",
+   "fields": [
+    {
+     "name": "cds_mean",
+     "type": "number",
+     "definition": "Mean number of CDS per genome"
+    },
+    {
+     "name": "cds_sd",
+     "type": "number",
+     "definition": "Standard deviation of CDS count"
+    },
+    {
+     "name": "core_families",
+     "type": "integer",
+     "definition": "Count of core protein families"
+    },
+    {
+     "name": "core_family_ids",
+     "type": "string[]",
+     "definition": "IDs of those core families"
+    },
+    {
+     "name": "description",
+     "type": "string",
+     "definition": "NCBI Taxonomy description"
+    },
+    {
+     "name": "division",
+     "type": "string",
+     "definition": "NCBI Taxonomy division code"
+    },
+    {
+     "name": "genetic_code",
+     "type": "integer",
+     "definition": "NCBI genetic code"
+    },
+    {
+     "name": "genome_count",
+     "type": "integer",
+     "definition": "Synonym of genomes"
+    },
+    {
+     "name": "genome_length_mean",
+     "type": "number",
+     "definition": "Mean genome length (bp)"
+    },
+    {
+     "name": "genome_length_sd",
+     "type": "number",
+     "definition": "Std. dev. of genome length"
+    },
+    {
+     "name": "genomes",
+     "type": "integer",
+     "definition": "Total genomes in BV-BRC"
+    },
+    {
+     "name": "genomes_f",
+     "type": "string",
+     "definition": "Formatted genome count"
+    },
+    {
+     "name": "hypothetical_cds_ratio_mean",
+     "type": "number",
+     "definition": "Mean % hypothetical CDS"
+    },
+    {
+     "name": "hypothetical_cds_ratio_sd",
+     "type": "number",
+     "definition": "Std. dev. of that ratio"
+    },
+    {
+     "name": "lineage",
+     "type": "string",
+     "definition": "Textual lineage string"
+    },
+    {
+     "name": "lineage_ids",
+     "type": "integer[]",
+     "definition": "Taxon IDs along lineage"
+    },
+    {
+     "name": "lineage_names",
+     "type": "string[]",
+     "definition": "Names along lineage"
+    },
+    {
+     "name": "lineage_ranks",
+     "type": "string[]",
+     "definition": "Rank words along lineage"
+    },
+    {
+     "name": "other_names",
+     "type": "string[] (case-insensitive)",
+     "definition": "Synonyms & common names"
+    },
+    {
+     "name": "parent_id",
+     "type": "integer",
+     "definition": "Immediate parent taxon ID"
+    },
+    {
+     "name": "plfam_cds_ratio_mean",
+     "type": "number",
+     "definition": "Mean % CDS with a PLFam"
+    },
+    {
+     "name": "plfam_cds_ratio_sd",
+     "type": "number",
+     "definition": "Std. dev. of that ratio"
+    },
+    {
+     "name": "taxon_id",
+     "type": "string",
+     "definition": "Primary key (string copy)"
+    },
+    {
+     "name": "taxon_id_i",
+     "type": "integer",
+     "definition": "Numeric copy of taxon ID"
+    },
+    {
+     "name": "taxon_name",
+     "type": "string (case-insensitive)",
+     "definition": "Scientific name"
+    },
+    {
+     "name": "taxon_rank",
+     "type": "string",
+     "definition": "Rank of the taxon"
+    }
+   ]
+  },
+  "genome": {
+   "primary_key": "genome_id",
+   "purpose": "Stores rich sample, assembly and annotation metadata for every genome record in BV-BRC, enabling search, comparative analysis and QC filtering across \u223c1 M bacterial, viral and archaeal assemblies.",
+   "fields": [
+    {
+     "name": "additional_metadata",
+     "type": "string[] (case-insensitive)",
+     "definition": "Miscellaneous key-value notes"
+    },
+    {
+     "name": "altitude",
+     "type": "string",
+     "definition": "Sample altitude"
+    },
+    {
+     "name": "antimicrobial_resistance",
+     "type": "string[] (case-insensitive)",
+     "definition": "Reported AMR phenotypes"
+    },
+    {
+     "name": "antimicrobial_resistance_evidence",
+     "type": "string",
+     "definition": "Source of AMR call"
+    },
+    {
+     "name": "assembly_accession",
+     "type": "string",
+     "definition": "GenBank / RefSeq assembly ID"
+    },
+    {
+     "name": "assembly_method",
+     "type": "string (case-insensitive)",
+     "definition": "Software / pipeline used"
+    },
+    {
+     "name": "authors",
+     "type": "string (case-insensitive)",
+     "definition": "Publication author list"
+    },
+    {
+     "name": "bioproject_accession",
+     "type": "string",
+     "definition": "NCBI BioProject ID"
+    },
+    {
+     "name": "biosample_accession",
+     "type": "string",
+     "definition": "NCBI BioSample ID"
+    },
+    {
+     "name": "biovar",
+     "type": "string (case-insensitive)",
+     "definition": "Biovar designation"
+    },
+    {
+     "name": "body_sample_site",
+     "type": "string (case-insensitive)",
+     "definition": "Anatomical site"
+    },
+    {
+     "name": "body_sample_subsite",
+     "type": "string (case-insensitive)",
+     "definition": "Anatomical sub-site"
+    },
+    {
+     "name": "cds",
+     "type": "integer",
+     "definition": "Number of CDS"
+    },
+    {
+     "name": "cds_ratio",
+     "type": "number",
+     "definition": "CDS per kb ratio"
+    },
+    {
+     "name": "cell_shape",
+     "type": "string (case-insensitive)",
+     "definition": "Cell morphology"
+    },
+    {
+     "name": "checkm_completeness",
+     "type": "number",
+     "definition": "CheckM completeness (%)"
+    },
+    {
+     "name": "checkm_contamination",
+     "type": "number",
+     "definition": "CheckM contamination (%)"
+    },
+    {
+     "name": "chromosomes",
+     "type": "integer",
+     "definition": "Number of chromosomes"
+    },
+    {
+     "name": "city",
+     "type": "string (case-insensitive)",
+     "definition": "City of isolation"
+    },
+    {
+     "name": "clade",
+     "type": "string",
+     "definition": "Sub-species clade label"
+    },
+    {
+     "name": "class",
+     "type": "string (case-insensitive)",
+     "definition": "Taxonomic class"
+    },
+    {
+     "name": "coarse_consistency",
+     "type": "number",
+     "definition": "RAST QA score \u2014 coarse"
+    },
+    {
+     "name": "collection_date",
+     "type": "string",
+     "definition": "Sample collection date"
+    },
+    {
+     "name": "collection_year",
+     "type": "integer",
+     "definition": "Year of collection"
+    },
+    {
+     "name": "comments",
+     "type": "string[] (case-insensitive)",
+     "definition": "Free-text curator notes"
+    },
+    {
+     "name": "common_name",
+     "type": "string",
+     "definition": "Vernacular organism name"
+    },
+    {
+     "name": "completion_date",
+     "type": "date",
+     "definition": "Assembly completion date"
+    },
+    {
+     "name": "contig_l50",
+     "type": "integer",
+     "definition": "L50 contig count"
+    },
+    {
+     "name": "contig_n50",
+     "type": "integer",
+     "definition": "N50 contig length (bp)"
+    },
+    {
+     "name": "contigs",
+     "type": "integer",
+     "definition": "Total contig count"
+    },
+    {
+     "name": "core_families",
+     "type": "integer",
+     "definition": "Core PGFam count"
+    },
+    {
+     "name": "core_family_ratio",
+     "type": "number",
+     "definition": "Core family fraction"
+    },
+    {
+     "name": "county",
+     "type": "string (case-insensitive)",
+     "definition": "County / district"
+    },
+    {
+     "name": "culture_collection",
+     "type": "string (case-insensitive)",
+     "definition": "Culture collection ID(s)"
+    },
+    {
+     "name": "depth",
+     "type": "string (case-insensitive)",
+     "definition": "Sampling depth"
+    },
+    {
+     "name": "disease",
+     "type": "string[] (case-insensitive)",
+     "definition": "Associated disease(s)"
+    },
+    {
+     "name": "family",
+     "type": "string (case-insensitive)",
+     "definition": "Taxonomic family"
+    },
+    {
+     "name": "fine_consistency",
+     "type": "number",
+     "definition": "RAST QA score \u2014 fine"
+    },
+    {
+     "name": "gc_content",
+     "type": "number",
+     "definition": "GC percentage"
+    },
+    {
+     "name": "genbank_accessions",
+     "type": "string (case-insensitive)",
+     "definition": "Sequence accession list"
+    },
+    {
+     "name": "genome_id",
+     "type": "string",
+     "definition": "Primary key"
+    },
+    {
+     "name": "genome_length",
+     "type": "integer",
+     "definition": "Total assembly length (bp)"
+    },
+    {
+     "name": "genome_name",
+     "type": "string (case-insensitive)",
+     "definition": "Scientific name + strain"
+    },
+    {
+     "name": "genome_quality",
+     "type": "string",
+     "definition": "Quality tier"
+    },
+    {
+     "name": "genome_quality_flags",
+     "type": "string[]",
+     "definition": "QC flag list"
+    },
+    {
+     "name": "genome_status",
+     "type": "string (case-insensitive)",
+     "definition": "Assembly status"
+    },
+    {
+     "name": "genus",
+     "type": "string (case-insensitive)",
+     "definition": "Taxonomic genus"
+    },
+    {
+     "name": "geographic_group",
+     "type": "string (case-insensitive)",
+     "definition": "Regional grouping"
+    },
+    {
+     "name": "geographic_location",
+     "type": "string (case-insensitive)",
+     "definition": "Free-text location"
+    },
+    {
+     "name": "gram_stain",
+     "type": "string (case-insensitive)",
+     "definition": "Gram reaction"
+    },
+    {
+     "name": "h1_clade_global",
+     "type": "string[]",
+     "definition": "Global H1 HA clade calls"
+    },
+    {
+     "name": "h1_clade_us",
+     "type": "string[]",
+     "definition": "U.S. swine-flu H1 clades"
+    },
+    {
+     "name": "h3_clade",
+     "type": "string[]",
+     "definition": "H3 HA clade calls"
+    },
+    {
+     "name": "h5_clade",
+     "type": "string[]",
+     "definition": "H5 HA clade calls"
+    },
+    {
+     "name": "h_type",
+     "type": "integer",
+     "definition": "HA subtype number"
+    },
+    {
+     "name": "habitat",
+     "type": "string",
+     "definition": "Environmental habitat"
+    },
+    {
+     "name": "host_age",
+     "type": "string",
+     "definition": "Host age"
+    },
+    {
+     "name": "host_common_name",
+     "type": "string",
+     "definition": "Host common name"
+    },
+    {
+     "name": "host_gender",
+     "type": "string",
+     "definition": "Host sex"
+    },
+    {
+     "name": "host_group",
+     "type": "string",
+     "definition": "Host group category"
+    },
+    {
+     "name": "host_health",
+     "type": "string",
+     "definition": "Host health state"
+    },
+    {
+     "name": "host_name",
+     "type": "string",
+     "definition": "Original host field"
+    },
+    {
+     "name": "host_scientific_name",
+     "type": "string",
+     "definition": "Host Latin name"
+    },
+    {
+     "name": "hypothetical_cds",
+     "type": "integer",
+     "definition": "Count of \u201chypothetical protein\u201d CDS"
+    },
+    {
+     "name": "hypothetical_cds_ratio",
+     "type": "number",
+     "definition": "Fraction of CDS hypothetical"
+    },
+    {
+     "name": "isolation_comments",
+     "type": "string",
+     "definition": "Isolation notes"
+    },
+    {
+     "name": "isolation_country",
+     "type": "string",
+     "definition": "Country of origin"
+    },
+    {
+     "name": "isolation_site",
+     "type": "string",
+     "definition": "Exact isolation site"
+    },
+    {
+     "name": "isolation_source",
+     "type": "string",
+     "definition": "Material or substrate"
+    },
+    {
+     "name": "kingdom",
+     "type": "string",
+     "definition": "Taxonomic kingdom"
+    },
+    {
+     "name": "lab_host",
+     "type": "string",
+     "definition": "Laboratory propagation host"
+    },
+    {
+     "name": "latitude",
+     "type": "string",
+     "definition": "Latitude of collection"
+    },
+    {
+     "name": "lineage",
+     "type": "string",
+     "definition": "Viral or strain lineage"
+    },
+    {
+     "name": "longitude",
+     "type": "string",
+     "definition": "Longitude of collection"
+    },
+    {
+     "name": "mat_peptide",
+     "type": "integer",
+     "definition": "Mature peptide count"
+    },
+    {
+     "name": "missing_core_family_ids",
+     "type": "string[]",
+     "definition": "Absent core PGFam IDs"
+    },
+    {
+     "name": "mlst",
+     "type": "string",
+     "definition": "MLST type"
+    },
+    {
+     "name": "motility",
+     "type": "string",
+     "definition": "Motility phenotype"
+    },
+    {
+     "name": "n_type",
+     "type": "integer",
+     "definition": "NA subtype number"
+    },
+    {
+     "name": "ncbi_project_id",
+     "type": "string",
+     "definition": "NCBI Genome Project ID"
+    },
+    {
+     "name": "nearest_genomes",
+     "type": "string[]",
+     "definition": "Closest genome IDs"
+    },
+    {
+     "name": "optimal_temperature",
+     "type": "string",
+     "definition": "Optimum growth temp"
+    },
+    {
+     "name": "order",
+     "type": "string",
+     "definition": "Taxonomic order"
+    },
+    {
+     "name": "organism_name",
+     "type": "string",
+     "definition": "Alternative organism name"
+    },
+    {
+     "name": "other_clinical",
+     "type": "string[]",
+     "definition": "Additional clinical tags"
+    },
+    {
+     "name": "other_environmental",
+     "type": "string[]",
+     "definition": "Misc. environmental tags"
+    },
+    {
+     "name": "other_names",
+     "type": "string[]",
+     "definition": "Synonyms & historic names"
+    },
+    {
+     "name": "other_typing",
+     "type": "string[]",
+     "definition": "Non-standard typing results"
+    },
+    {
+     "name": "outgroup_genomes",
+     "type": "string[]",
+     "definition": "Outgroup genome IDs"
+    },
+    {
+     "name": "oxygen_requirement",
+     "type": "string",
+     "definition": "Oxygen requirement"
+    },
+    {
+     "name": "p2_genome_id",
+     "type": "integer",
+     "definition": "Legacy PATRIC2 ID"
+    },
+    {
+     "name": "partial_cds",
+     "type": "integer",
+     "definition": "Incomplete CDS count"
+    },
+    {
+     "name": "partial_cds_ratio",
+     "type": "number",
+     "definition": "Fraction CDS partial"
+    },
+    {
+     "name": "passage",
+     "type": "string",
+     "definition": "Passage history"
+    },
+    {
+     "name": "pathovar",
+     "type": "string",
+     "definition": "Pathovar name"
+    },
+    {
+     "name": "patric_cds",
+     "type": "integer",
+     "definition": "CDS count (BV-BRC annotation)"
+    },
+    {
+     "name": "ph1n1_like",
+     "type": "string",
+     "definition": "2009 pH1N1 lineage flag"
+    },
+    {
+     "name": "phenotype",
+     "type": "string[]",
+     "definition": "Recorded phenotypes"
+    },
+    {
+     "name": "phylum",
+     "type": "string",
+     "definition": "Taxonomic phylum"
+    },
+    {
+     "name": "plasmids",
+     "type": "integer",
+     "definition": "Plasmid count"
+    },
+    {
+     "name": "plfam_cds",
+     "type": "integer",
+     "definition": "CDS with PLFam assignment"
+    },
+    {
+     "name": "plfam_cds_ratio",
+     "type": "number",
+     "definition": "Fraction CDS in PLFam"
+    },
+    {
+     "name": "publication",
+     "type": "string",
+     "definition": "Primary citation"
+    },
+    {
+     "name": "reference_genome",
+     "type": "string",
+     "definition": "Reference flag"
+    },
+    {
+     "name": "refseq_accessions",
+     "type": "string",
+     "definition": "RefSeq accession list"
+    },
+    {
+     "name": "refseq_cds",
+     "type": "integer",
+     "definition": "CDS count (RefSeq)"
+    },
+    {
+     "name": "refseq_project_id",
+     "type": "string",
+     "definition": "RefSeq project"
+    },
+    {
+     "name": "rrna",
+     "type": "integer",
+     "definition": "rRNA gene count"
+    },
+    {
+     "name": "salinity",
+     "type": "string",
+     "definition": "Salinity of environment"
+    },
+    {
+     "name": "season",
+     "type": "string",
+     "definition": "Epidemiological season"
+    },
+    {
+     "name": "segment",
+     "type": "string",
+     "definition": "Viral segment ID"
+    },
+    {
+     "name": "segments",
+     "type": "integer",
+     "definition": "Number of segments"
+    },
+    {
+     "name": "sequencing_centers",
+     "type": "string",
+     "definition": "Sequencing center(s)"
+    },
+    {
+     "name": "sequencing_depth",
+     "type": "string",
+     "definition": "Average coverage"
+    },
+    {
+     "name": "sequencing_platform",
+     "type": "string",
+     "definition": "Sequencing platform"
+    },
+    {
+     "name": "sequencing_status",
+     "type": "string",
+     "definition": "Project status"
+    },
+    {
+     "name": "serovar",
+     "type": "string",
+     "definition": "Serovar designation"
+    },
+    {
+     "name": "species",
+     "type": "string",
+     "definition": "Taxonomic species"
+    },
+    {
+     "name": "sporulation",
+     "type": "string",
+     "definition": "Sporulation ability"
+    },
+    {
+     "name": "sra_accession",
+     "type": "string",
+     "definition": "SRA run or experiment ID"
+    },
+    {
+     "name": "state_province",
+     "type": "string",
+     "definition": "State / province"
+    },
+    {
+     "name": "strain",
+     "type": "string",
+     "definition": "Strain name"
+    },
+    {
+     "name": "subclade",
+     "type": "string",
+     "definition": "Sub-clade label"
+    },
+    {
+     "name": "subtype",
+     "type": "string",
+     "definition": "Viral subtype"
+    },
+    {
+     "name": "superkingdom",
+     "type": "string",
+     "definition": "Top taxonomic rank"
+    },
+    {
+     "name": "taxon_id",
+     "type": "integer",
+     "definition": "NCBI Taxonomy ID"
+    },
+    {
+     "name": "taxon_lineage_ids",
+     "type": "string[]",
+     "definition": "Full lineage IDs"
+    },
+    {
+     "name": "taxon_lineage_names",
+     "type": "string[]",
+     "definition": "Full lineage names"
+    },
+    {
+     "name": "temperature_range",
+     "type": "string",
+     "definition": "Growth temperature range"
+    },
+    {
+     "name": "trna",
+     "type": "integer",
+     "definition": "tRNA gene count"
+    },
+    {
+     "name": "type_strain",
+     "type": "string",
+     "definition": "Type-strain flag"
+    }
+   ]
+  },
+  "strain": {
+   "primary_key": "id",
+   "purpose": "Captures per-strain metadata for segmented viruses (esp. influenza), linking segment accessions, host & geographic info, and associated BV-BRC genome records for downstream comparative and surveillance analyses.",
+   "fields": [
+    {
+     "name": "1_pb2",
+     "type": "string[]",
+     "definition": "PB2 segment GenBank accessions"
+    },
+    {
+     "name": "2_pb1",
+     "type": "string[]",
+     "definition": "PB1 segment accessions"
+    },
+    {
+     "name": "3_pa",
+     "type": "string[]",
+     "definition": "PA segment accessions"
+    },
+    {
+     "name": "4_ha",
+     "type": "string[]",
+     "definition": "HA segment accessions"
+    },
+    {
+     "name": "5_np",
+     "type": "string[]",
+     "definition": "NP segment accessions"
+    },
+    {
+     "name": "6_na",
+     "type": "string[]",
+     "definition": "NA segment accessions"
+    },
+    {
+     "name": "7_mp",
+     "type": "string[]",
+     "definition": "MP segment accessions"
+    },
+    {
+     "name": "8_ns",
+     "type": "string[]",
+     "definition": "NS segment accessions"
+    },
+    {
+     "name": "collection_date",
+     "type": "string",
+     "definition": "Sampling date (raw)"
+    },
+    {
+     "name": "collection_year",
+     "type": "integer",
+     "definition": "Sampling year"
+    },
+    {
+     "name": "family",
+     "type": "string (ci)",
+     "definition": "Taxonomic family"
+    },
+    {
+     "name": "genbank_accessions",
+     "type": "string[]",
+     "definition": "All segment accessions"
+    },
+    {
+     "name": "genome_ids",
+     "type": "string[]",
+     "definition": "Linked BV-BRC genome_id(s)"
+    },
+    {
+     "name": "genus",
+     "type": "string (ci)",
+     "definition": "Taxonomic genus"
+    },
+    {
+     "name": "geographic_group",
+     "type": "string (ci)",
+     "definition": "Regional grouping"
+    },
+    {
+     "name": "h_type",
+     "type": "integer",
+     "definition": "HA subtype number"
+    },
+    {
+     "name": "host_common_name",
+     "type": "string (ci)",
+     "definition": "Host common name"
+    },
+    {
+     "name": "host_group",
+     "type": "string (ci)",
+     "definition": "Host class"
+    },
+    {
+     "name": "host_name",
+     "type": "string (ci)",
+     "definition": "Raw host field"
+    },
+    {
+     "name": "id",
+     "type": "string",
+     "definition": "Primary key"
+    },
+    {
+     "name": "isolation_country",
+     "type": "string (ci)",
+     "definition": "Country of origin"
+    },
+    {
+     "name": "l",
+     "type": "string[]",
+     "definition": "Large (L) segment IDs"
+    },
+    {
+     "name": "lab_host",
+     "type": "string (ci)",
+     "definition": "Propagation host"
+    },
+    {
+     "name": "m",
+     "type": "string[]",
+     "definition": "Medium (M) segment IDs"
+    },
+    {
+     "name": "n_type",
+     "type": "integer",
+     "definition": "NA subtype number"
+    },
+    {
+     "name": "other_segments",
+     "type": "string[]",
+     "definition": "Non-canonical segment IDs"
+    },
+    {
+     "name": "passage",
+     "type": "string (ci)",
+     "definition": "Passage history"
+    },
+    {
+     "name": "s",
+     "type": "string[]",
+     "definition": "Small (S) segment IDs"
+    },
+    {
+     "name": "season",
+     "type": "string",
+     "definition": "Epidemiological season"
+    },
+    {
+     "name": "segment_count",
+     "type": "integer",
+     "definition": "Number of segments"
+    },
+    {
+     "name": "species",
+     "type": "string (ci)",
+     "definition": "Taxonomic species"
+    },
+    {
+     "name": "status",
+     "type": "string",
+     "definition": "QC / release status"
+    },
+    {
+     "name": "strain",
+     "type": "string (ci)",
+     "definition": "Strain name"
+    },
+    {
+     "name": "subtype",
+     "type": "string",
+     "definition": "Viral subtype"
+    },
+    {
+     "name": "taxon_id",
+     "type": "integer",
+     "definition": "NCBI Taxonomy ID"
+    },
+    {
+     "name": "taxon_lineage_ids",
+     "type": "string[]",
+     "definition": "Full lineage IDs"
+    },
+    {
+     "name": "taxon_lineage_names",
+     "type": "string[]",
+     "definition": "Full lineage names"
+    }
+   ]
+  },
+  "genome_sequence": {
+   "primary_key": "sequence_id",
+   "purpose": "Stores every nucleotide replicon (chromosome, plasmid, contig, viral segment, etc.) associated with a BV-BRC genome, linking raw sequence, metadata, quality metrics and access-control information.",
+   "fields": [
+    {
+     "name": "accession",
+     "type": "string",
+     "definition": "Primary INSDC accession"
+    },
+    {
+     "name": "chromosome",
+     "type": "string (ci)",
+     "definition": "Chromosome name/ID"
+    },
+    {
+     "name": "description",
+     "type": "string (ci)",
+     "definition": "Replicon definition line"
+    },
+    {
+     "name": "gc_content",
+     "type": "number",
+     "definition": "GC percentage"
+    },
+    {
+     "name": "genome_id",
+     "type": "string",
+     "definition": "Parent genome identifier"
+    },
+    {
+     "name": "genome_name",
+     "type": "string (ci)",
+     "definition": "Parent genome name"
+    },
+    {
+     "name": "gi",
+     "type": "integer",
+     "definition": "Legacy NCBI GI number"
+    },
+    {
+     "name": "length",
+     "type": "integer",
+     "definition": "Sequence length (bp/nt)"
+    },
+    {
+     "name": "mol_type",
+     "type": "string (ci)",
+     "definition": "Molecule type"
+    },
+    {
+     "name": "p2_sequence_id",
+     "type": "integer",
+     "definition": "Legacy PATRIC2 ID"
+    },
+    {
+     "name": "plasmid",
+     "type": "string (ci)",
+     "definition": "Plasmid name"
+    },
+    {
+     "name": "release_date",
+     "type": "date",
+     "definition": "Public release date"
+    },
+    {
+     "name": "segment",
+     "type": "string (ci)",
+     "definition": "Viral segment ID"
+    },
+    {
+     "name": "sequence",
+     "type": "string",
+     "definition": "Raw nucleotide sequence"
+    },
+    {
+     "name": "sequence_id",
+     "type": "string",
+     "definition": "Primary key"
+    },
+    {
+     "name": "sequence_md5",
+     "type": "string",
+     "definition": "MD5 checksum"
+    },
+    {
+     "name": "sequence_status",
+     "type": "string",
+     "definition": "Assembly status"
+    },
+    {
+     "name": "sequence_type",
+     "type": "string (ci)",
+     "definition": "Replicon category"
+    },
+    {
+     "name": "taxon_id",
+     "type": "integer",
+     "definition": "NCBI Taxonomy ID"
+    },
+    {
+     "name": "topology",
+     "type": "string (ci)",
+     "definition": "DNA topology"
+    }
+   ]
+  },
+  "genome_feature": {
+   "primary_key": "feature_id",
+   "purpose": "Holds every annotated feature\u2014coding genes, RNAs, repeats\u2014across all BV-BRC genomes, linking sequence coordinates, functional annotation, protein-family membership and external cross-references.",
+   "fields": [
+    {
+     "name": "aa_length",
+     "type": "integer",
+     "definition": "Protein length (aa)"
+    },
+    {
+     "name": "aa_sequence_md5",
+     "type": "string",
+     "definition": "MD5 of AA sequence"
+    },
+    {
+     "name": "accession",
+     "type": "string",
+     "definition": "External accession"
+    },
+    {
+     "name": "alt_locus_tag",
+     "type": "string",
+     "definition": "Alternate locus tag"
+    },
+    {
+     "name": "annotation",
+     "type": "string",
+     "definition": "Source annotation pipeline"
+    },
+    {
+     "name": "brc_id",
+     "type": "string",
+     "definition": "BV-BRC numeric ID"
+    },
+    {
+     "name": "classifier_round",
+     "type": "integer",
+     "definition": "ML classifier round"
+    },
+    {
+     "name": "classifier_score",
+     "type": "number",
+     "definition": "ML prediction score"
+    },
+    {
+     "name": "codon_start",
+     "type": "integer",
+     "definition": "Translation start frame"
+    },
+    {
+     "name": "end",
+     "type": "integer",
+     "definition": "End coordinate"
+    },
+    {
+     "name": "feature_id",
+     "type": "string",
+     "definition": "Primary key"
+    },
+    {
+     "name": "feature_type",
+     "type": "string",
+     "definition": "Feature class"
+    },
+    {
+     "name": "figfam_id",
+     "type": "string",
+     "definition": "FIGfam identifier"
+    },
+    {
+     "name": "gene",
+     "type": "string (ci)",
+     "definition": "Gene symbol"
+    },
+    {
+     "name": "gene_id",
+     "type": "number",
+     "definition": "RefSeq gene ID"
+    },
+    {
+     "name": "genome_id",
+     "type": "string",
+     "definition": "Parent genome ID"
+    },
+    {
+     "name": "genome_name",
+     "type": "string (ci)",
+     "definition": "Parent genome name"
+    },
+    {
+     "name": "go",
+     "type": "string[] (ci)",
+     "definition": "GO terms"
+    },
+    {
+     "name": "location",
+     "type": "string",
+     "definition": "Contig-based location"
+    },
+    {
+     "name": "na_length",
+     "type": "integer",
+     "definition": "Nucleotide length (bp)"
+    },
+    {
+     "name": "na_sequence_md5",
+     "type": "string",
+     "definition": "MD5 of NA sequence"
+    },
+    {
+     "name": "notes",
+     "type": "string[]",
+     "definition": "Curator notes"
+    },
+    {
+     "name": "og_id",
+     "type": "string",
+     "definition": "Ortholog group ID"
+    },
+    {
+     "name": "p2_feature_id",
+     "type": "number",
+     "definition": "Legacy PATRIC2 ID"
+    },
+    {
+     "name": "patric_id",
+     "type": "string",
+     "definition": "Redundant BV-BRC ID"
+    },
+    {
+     "name": "pdb_accession",
+     "type": "string[]",
+     "definition": "3D structure IDs"
+    },
+    {
+     "name": "pgfam_id",
+     "type": "string",
+     "definition": "PGFam identifier"
+    },
+    {
+     "name": "plfam_id",
+     "type": "string",
+     "definition": "PLFam identifier"
+    },
+    {
+     "name": "product",
+     "type": "string (ci)",
+     "definition": "Functional product name"
+    },
+    {
+     "name": "property",
+     "type": "string[]",
+     "definition": "Feature qualifiers"
+    },
+    {
+     "name": "protein_id",
+     "type": "string",
+     "definition": "Protein accession"
+    },
+    {
+     "name": "refseq_locus_tag",
+     "type": "string",
+     "definition": "RefSeq locus tag"
+    },
+    {
+     "name": "segments",
+     "type": "string[]",
+     "definition": "Multi-segment coords"
+    },
+    {
+     "name": "sequence_id",
+     "type": "string",
+     "definition": "Replicon ID"
+    },
+    {
+     "name": "sog_id",
+     "type": "string",
+     "definition": "Sub-ortholog group ID"
+    },
+    {
+     "name": "start",
+     "type": "integer",
+     "definition": "Start coordinate"
+    },
+    {
+     "name": "strand",
+     "type": "string",
+     "definition": "Strand"
+    },
+    {
+     "name": "taxon_id",
+     "type": "integer",
+     "definition": "NCBI Taxonomy ID"
+    },
+    {
+     "name": "uniprotkb_accession",
+     "type": "string",
+     "definition": "UniProtKB ID"
+    }
+   ]
+  },
+  "feature_sequence": {
+   "primary_key": "md5",
+   "purpose": "Stores the canonical raw sequence for every unique gene, RNA, or protein encoded in BV-BRC genomes, keyed by MD5 for lightning-fast identity checks, duplicate collapse, and cross-genome feature joins.",
+   "fields": [
+    {
+     "name": "md5",
+     "type": "string",
+     "definition": "MD5 hash of the sequence"
+    },
+    {
+     "name": "sequence",
+     "type": "string",
+     "definition": "Raw nucleotide or amino-acid sequence"
+    },
+    {
+     "name": "sequence_type",
+     "type": "string",
+     "definition": "Molecule type"
+    }
+   ]
+  },
+  "genome_amr": {
+   "primary_key": "id",
+   "purpose": "Captures antimicrobial-resistance phenotype and/or genotype evidence linked to each BV-BRC genome, including lab methods, computational predictions, standards and literature references.",
+   "fields": [
+    {
+     "name": "antibiotic",
+     "type": "string",
+     "definition": "Drug name tested"
+    },
+    {
+     "name": "computational_method",
+     "type": "string (case-insensitive)",
+     "definition": "Name of the in-silico prediction tool"
+    },
+    {
+     "name": "computational_method_performance",
+     "type": "string",
+     "definition": "Reported performance metrics"
+    },
+    {
+     "name": "computational_method_version",
+     "type": "string",
+     "definition": "Version of the tool/database"
+    },
+    {
+     "name": "evidence",
+     "type": "string (case-insensitive)",
+     "definition": "Evidence type"
+    },
+    {
+     "name": "genome_id",
+     "type": "string",
+     "definition": "Parent genome identifier"
+    },
+    {
+     "name": "genome_name",
+     "type": "string (case-insensitive)",
+     "definition": "Parent genome name"
+    },
+    {
+     "name": "id",
+     "type": "string",
+     "definition": "Primary key"
+    },
+    {
+     "name": "laboratory_typing_method",
+     "type": "string (case-insensitive)",
+     "definition": "Wet-lab test name"
+    },
+    {
+     "name": "laboratory_typing_method_version",
+     "type": "string",
+     "definition": "Kit / panel version"
+    },
+    {
+     "name": "laboratory_typing_platform",
+     "type": "string (case-insensitive)",
+     "definition": "Instrument platform"
+    },
+    {
+     "name": "measurement",
+     "type": "string",
+     "definition": "Reported test value"
+    },
+    {
+     "name": "measurement_sign",
+     "type": "string",
+     "definition": "Comparator"
+    },
+    {
+     "name": "measurement_unit",
+     "type": "string",
+     "definition": "Unit for measurement"
+    },
+    {
+     "name": "measurement_value",
+     "type": "string",
+     "definition": "Numeric value (as string)"
+    },
+    {
+     "name": "pmid",
+     "type": "integer[]",
+     "definition": "PubMed IDs"
+    },
+    {
+     "name": "resistant_phenotype",
+     "type": "string",
+     "definition": "Categorical result"
+    },
+    {
+     "name": "source",
+     "type": "string (case-insensitive)",
+     "definition": "Data source"
+    },
+    {
+     "name": "taxon_id",
+     "type": "integer",
+     "definition": "NCBI Taxonomy ID"
+    },
+    {
+     "name": "testing_standard",
+     "type": "string (case-insensitive)",
+     "definition": "Standard/guideline"
+    },
+    {
+     "name": "testing_standard_year",
+     "type": "integer",
+     "definition": "Year/version of standard"
+    },
+    {
+     "name": "vendor",
+     "type": "string (case-insensitive)",
+     "definition": "Test-kit vendor"
+    }
+   ]
+  },
+  "pathway": {
+   "primary_key": "id",
+   "purpose": "Maps every enzyme-encoding feature in a BV-BRC genome to its KEGG pathway step, enabling genome-scale metabolic reconstructions, comparative pathway presence/absence matrices, and interactive pathway diagrams.",
+   "fields": [
+    {
+     "name": "accession",
+     "type": "string (ci)",
+     "definition": "Replicon or contig accession"
+    },
+    {
+     "name": "alt_locus_tag",
+     "type": "string",
+     "definition": "Alternate locus tag"
+    },
+    {
+     "name": "annotation",
+     "type": "string (ci)",
+     "definition": "Annotation source"
+    },
+    {
+     "name": "ec_description",
+     "type": "string (ci)",
+     "definition": "Enzyme name"
+    },
+    {
+     "name": "ec_number",
+     "type": "string",
+     "definition": "EC number"
+    },
+    {
+     "name": "feature_id",
+     "type": "string",
+     "definition": "Gene/feature identifier"
+    },
+    {
+     "name": "gene",
+     "type": "string (ci)",
+     "definition": "Gene symbol"
+    },
+    {
+     "name": "genome_ec",
+     "type": "string",
+     "definition": "\u201cGenome-EC\u201d composite"
+    },
+    {
+     "name": "genome_id",
+     "type": "string",
+     "definition": "Parent genome identifier"
+    },
+    {
+     "name": "genome_name",
+     "type": "string (ci)",
+     "definition": "Parent genome name"
+    },
+    {
+     "name": "id",
+     "type": "string",
+     "definition": "Primary key"
+    },
+    {
+     "name": "pathway_class",
+     "type": "string (ci)",
+     "definition": "Broad pathway class"
+    },
+    {
+     "name": "pathway_ec",
+     "type": "string",
+     "definition": "\u201cPathway-EC\u201d composite"
+    },
+    {
+     "name": "pathway_id",
+     "type": "string",
+     "definition": "MetaCyc/Pathway Tools ID"
+    },
+    {
+     "name": "pathway_name",
+     "type": "string (ci)",
+     "definition": "Pathway display name"
+    },
+    {
+     "name": "patric_id",
+     "type": "string",
+     "definition": "Redundant feature alias"
+    },
+    {
+     "name": "product",
+     "type": "string (ci)",
+     "definition": "Protein product name"
+    },
+    {
+     "name": "refseq_locus_tag",
+     "type": "string",
+     "definition": "RefSeq locus tag"
+    },
+    {
+     "name": "sequence_id",
+     "type": "string",
+     "definition": "Replicon ID"
+    },
+    {
+     "name": "taxon_id",
+     "type": "integer",
+     "definition": "NCBI Taxonomy ID"
+    }
+   ]
+  },
+  "pathway_ref": {
+   "primary_key": "id",
+   "purpose": "Acts as the master lookup table that links each Enzyme Commission activity (ec_number) to its position(s) on curated pathway diagrams (pathway_id, map_location) and records how frequently that EC\u2013pathway pair occurs across BV-BRC genomes, supporting interactive metabolic viewers and pathway-enrichment statistics.",
+   "fields": [
+    {
+     "name": "ec_description",
+     "type": "string",
+     "definition": "Enzyme display name"
+    },
+    {
+     "name": "ec_number",
+     "type": "string",
+     "definition": "EC four-level code"
+    },
+    {
+     "name": "id",
+     "type": "string",
+     "definition": "Primary key"
+    },
+    {
+     "name": "map_location",
+     "type": "string[]",
+     "definition": "Pathway-map co-ordinates"
+    },
+    {
+     "name": "map_name",
+     "type": "string",
+     "definition": "Graphic map filename"
+    },
+    {
+     "name": "map_type",
+     "type": "string",
+     "definition": "Map provenance"
+    },
+    {
+     "name": "occurrence",
+     "type": "integer",
+     "definition": "Genome occurrence count"
+    },
+    {
+     "name": "pathway_class",
+     "type": "string",
+     "definition": "High-level pathway class"
+    },
+    {
+     "name": "pathway_id",
+     "type": "string",
+     "definition": "Pathway identifier"
+    },
+    {
+     "name": "pathway_name",
+     "type": "string",
+     "definition": "Human-readable pathway name"
+    }
+   ]
+  },
+  "subsystem": {
+   "primary_key": "id",
+   "purpose": "Links individual genes in a BV-BRC genome to SEED subsystems and their roles, enabling subsystem heat-maps, completeness metrics, and metabolic context for comparative genomics.",
+   "fields": [
+    {
+     "name": "active",
+     "type": "string",
+     "definition": "Subsystem presence flag"
+    },
+    {
+     "name": "class",
+     "type": "string",
+     "definition": "Subsystem class"
+    },
+    {
+     "name": "feature_id",
+     "type": "string",
+     "definition": "Gene/feature identifier"
+    },
+    {
+     "name": "gene",
+     "type": "string",
+     "definition": "Gene symbol"
+    },
+    {
+     "name": "genome_id",
+     "type": "string",
+     "definition": "Parent genome identifier"
+    },
+    {
+     "name": "genome_name",
+     "type": "string (case-insensitive)",
+     "definition": "Parent genome name"
+    },
+    {
+     "name": "id",
+     "type": "string",
+     "definition": "Primary key"
+    },
+    {
+     "name": "patric_id",
+     "type": "string",
+     "definition": "Alias of feature_id"
+    },
+    {
+     "name": "product",
+     "type": "string",
+     "definition": "Protein product name"
+    },
+    {
+     "name": "refseq_locus_tag",
+     "type": "string",
+     "definition": "NCBI locus tag"
+    },
+    {
+     "name": "role_id",
+     "type": "string",
+     "definition": "Subsystem role identifier"
+    },
+    {
+     "name": "role_name",
+     "type": "string",
+     "definition": "Functional role name"
+    },
+    {
+     "name": "subclass",
+     "type": "string",
+     "definition": "Subsystem subclass"
+    },
+    {
+     "name": "subsystem_id",
+     "type": "string",
+     "definition": "Subsystem identifier"
+    },
+    {
+     "name": "subsystem_name",
+     "type": "string",
+     "definition": "Subsystem name"
+    },
+    {
+     "name": "superclass",
+     "type": "string",
+     "definition": "Super-class"
+    },
+    {
+     "name": "taxon_id",
+     "type": "integer",
+     "definition": "NCBI Taxonomy ID"
+    }
+   ]
+  },
+  "subsystem_ref": {
+   "primary_key": "id",
+   "purpose": "Master reference for SEED/BV-BRC subsystems, recording each subsystem\u2019s hierarchical category, descriptive text, supporting literature, and the list of functional roles that comprise it. Drives subsystem heat-maps, completeness metrics, and role-based comparative analyses.",
+   "fields": [
+    {
+     "name": "class",
+     "type": "string",
+     "definition": "First-tier subsystem class"
+    },
+    {
+     "name": "description",
+     "type": "string",
+     "definition": "Subsystem description"
+    },
+    {
+     "name": "id",
+     "type": "string",
+     "definition": "Primary key"
+    },
+    {
+     "name": "notes",
+     "type": "string[]",
+     "definition": "Curator notes"
+    },
+    {
+     "name": "pmid",
+     "type": "string[]",
+     "definition": "PubMed IDs"
+    },
+    {
+     "name": "role_id",
+     "type": "string[]",
+     "definition": "Role identifier list"
+    },
+    {
+     "name": "role_name",
+     "type": "string[]",
+     "definition": "Functional role names"
+    },
+    {
+     "name": "subclass",
+     "type": "string",
+     "definition": "Second-tier category"
+    },
+    {
+     "name": "subsystem_id",
+     "type": "string",
+     "definition": "SEED subsystem ID"
+    },
+    {
+     "name": "subsystem_name",
+     "type": "string",
+     "definition": "Display name"
+    },
+    {
+     "name": "superclass",
+     "type": "string",
+     "definition": "Top-level grouping"
+    }
+   ]
+  },
+  "sp_gene": {
+   "primary_key": "id",
+   "purpose": "Lists antimicrobial-resistance, virulence, and other \u201cspecialty\u201d genes detected in BV-BRC genomes, linking each locus to external curated databases, literature support, and in-silico evidence metrics.",
+   "fields": [
+    {
+     "name": "alt_locus_tag",
+     "type": "string",
+     "definition": "Alternate locus tag"
+    },
+    {
+     "name": "antibiotics",
+     "type": "string[]",
+     "definition": "Affected antibiotics"
+    },
+    {
+     "name": "antibiotics_class",
+     "type": "string",
+     "definition": "Drug class"
+    },
+    {
+     "name": "classification",
+     "type": "string[]",
+     "definition": "Gene family / category"
+    },
+    {
+     "name": "e_value",
+     "type": "string",
+     "definition": "BLAST/DIAMOND E-value"
+    },
+    {
+     "name": "evidence",
+     "type": "string",
+     "definition": "Evidence statement"
+    },
+    {
+     "name": "feature_id",
+     "type": "string",
+     "definition": "Gene/feature identifier"
+    },
+    {
+     "name": "function",
+     "type": "string",
+     "definition": "Functional annotation"
+    },
+    {
+     "name": "gene",
+     "type": "string",
+     "definition": "Gene symbol"
+    },
+    {
+     "name": "genome_id",
+     "type": "string",
+     "definition": "Parent genome ID"
+    },
+    {
+     "name": "genome_name",
+     "type": "string",
+     "definition": "Parent genome name"
+    },
+    {
+     "name": "id",
+     "type": "string",
+     "definition": "Primary key"
+    },
+    {
+     "name": "identity",
+     "type": "integer",
+     "definition": "% identity"
+    },
+    {
+     "name": "organism",
+     "type": "string",
+     "definition": "Source organism of ref allele"
+    },
+    {
+     "name": "patric_id",
+     "type": "string",
+     "definition": "Alias of feature_id"
+    },
+    {
+     "name": "pmid",
+     "type": "string[]",
+     "definition": "PubMed IDs"
+    },
+    {
+     "name": "product",
+     "type": "string",
+     "definition": "Protein product name"
+    },
+    {
+     "name": "property",
+     "type": "string",
+     "definition": "Specialty-gene property"
+    },
+    {
+     "name": "property_source",
+     "type": "string",
+     "definition": "Source database"
+    },
+    {
+     "name": "query_coverage",
+     "type": "integer",
+     "definition": "% query coverage"
+    },
+    {
+     "name": "refseq_locus_tag",
+     "type": "string",
+     "definition": "RefSeq locus tag"
+    },
+    {
+     "name": "same_genome",
+     "type": "integer",
+     "definition": "Intra-genome hits"
+    },
+    {
+     "name": "same_genus",
+     "type": "integer",
+     "definition": "Hit count in genus"
+    },
+    {
+     "name": "same_species",
+     "type": "integer",
+     "definition": "Hit count in species"
+    },
+    {
+     "name": "source",
+     "type": "string",
+     "definition": "Curation source"
+    },
+    {
+     "name": "source_id",
+     "type": "string",
+     "definition": "Source database ID"
+    },
+    {
+     "name": "subject_coverage",
+     "type": "integer",
+     "definition": "% subject coverage"
+    },
+    {
+     "name": "taxon_id",
+     "type": "integer",
+     "definition": "NCBI Taxonomy ID"
+    }
+   ]
+  },
+  "sp_gene_ref": {
+   "primary_key": "id",
+   "purpose": "Serves as the master reference catalog of \u201cspecialty\u201d genes (AMR, virulence, toxins, etc.) used to annotate BV-BRC genomes. Each row defines a canonical allele, its function, drug associations, literature support, and provenance.",
+   "fields": [
+    {
+     "name": "antibiotics",
+     "type": "string[]",
+     "definition": "Antibiotics affected"
+    },
+    {
+     "name": "antibiotics_class",
+     "type": "string",
+     "definition": "Drug class"
+    },
+    {
+     "name": "assertion",
+     "type": "string",
+     "definition": "Curatorial assertion"
+    },
+    {
+     "name": "classification",
+     "type": "string[]",
+     "definition": "Functional categories"
+    },
+    {
+     "name": "function",
+     "type": "string",
+     "definition": "Functional description"
+    },
+    {
+     "name": "gene_id",
+     "type": "string",
+     "definition": "Reference-sequence ID"
+    },
+    {
+     "name": "gene_name",
+     "type": "string",
+     "definition": "Gene symbol"
+    },
+    {
+     "name": "genus",
+     "type": "string",
+     "definition": "Typical genus host"
+    },
+    {
+     "name": "gi",
+     "type": "string",
+     "definition": "Legacy NCBI GI number"
+    },
+    {
+     "name": "id",
+     "type": "string",
+     "definition": "Primary key"
+    },
+    {
+     "name": "locus_tag",
+     "type": "string",
+     "definition": "Locus tag"
+    },
+    {
+     "name": "organism",
+     "type": "string",
+     "definition": "Source organism"
+    },
+    {
+     "name": "pmid",
+     "type": "string[]",
+     "definition": "PubMed IDs"
+    },
+    {
+     "name": "product",
+     "type": "string",
+     "definition": "Protein product"
+    },
+    {
+     "name": "property",
+     "type": "string",
+     "definition": "Specialty-gene property"
+    },
+    {
+     "name": "source",
+     "type": "string",
+     "definition": "External database"
+    },
+    {
+     "name": "source_id",
+     "type": "string",
+     "definition": "Source database ID"
+    },
+    {
+     "name": "species",
+     "type": "string",
+     "definition": "Typical species host"
+    }
+   ]
+  },
+  "protein_feature": {
+   "primary_key": "id",
+   "purpose": "Stores every domain, motif, signal peptide, or other protein-level annotation identified in BV-BRC CDS translations, with coordinates, statistical scores, and links to external domain databases.",
+   "fields": [
+    {
+     "name": "aa_sequence_md5",
+     "type": "string",
+     "definition": "MD5 hash of the full protein sequence"
+    },
+    {
+     "name": "classification",
+     "type": "string[]",
+     "definition": "Category tags for the feature"
+    },
+    {
+     "name": "comments",
+     "type": "string[] (ci)",
+     "definition": "Curator or tool comments"
+    },
+    {
+     "name": "description",
+     "type": "string (ci)",
+     "definition": "Hit description from source DB"
+    },
+    {
+     "name": "e_value",
+     "type": "string",
+     "definition": "Expect value of the match"
+    },
+    {
+     "name": "end",
+     "type": "integer",
+     "definition": "End position (aa)"
+    },
+    {
+     "name": "evidence",
+     "type": "string",
+     "definition": "Evidence phrase"
+    },
+    {
+     "name": "feature_id",
+     "type": "string",
+     "definition": "Parent gene/feature ID"
+    },
+    {
+     "name": "feature_type",
+     "type": "string",
+     "definition": "Type of parent feature"
+    },
+    {
+     "name": "gene",
+     "type": "string",
+     "definition": "Gene symbol"
+    },
+    {
+     "name": "genome_id",
+     "type": "string",
+     "definition": "Parent genome identifier"
+    },
+    {
+     "name": "genome_name",
+     "type": "string (ci)",
+     "definition": "Parent genome name"
+    },
+    {
+     "name": "id",
+     "type": "string",
+     "definition": "Primary key"
+    },
+    {
+     "name": "interpro_description",
+     "type": "string (ci)",
+     "definition": "InterPro family description"
+    },
+    {
+     "name": "interpro_id",
+     "type": "string",
+     "definition": "InterPro accession"
+    },
+    {
+     "name": "length",
+     "type": "integer",
+     "definition": "Feature length (aa)"
+    },
+    {
+     "name": "patric_id",
+     "type": "string",
+     "definition": "Alias of feature_id"
+    },
+    {
+     "name": "product",
+     "type": "string (ci)",
+     "definition": "Protein product name"
+    },
+    {
+     "name": "publication",
+     "type": "string[]",
+     "definition": "Supporting literature"
+    },
+    {
+     "name": "refseq_locus_tag",
+     "type": "string",
+     "definition": "RefSeq locus tag"
+    },
+    {
+     "name": "score",
+     "type": "number",
+     "definition": "Raw alignment score"
+    },
+    {
+     "name": "segments",
+     "type": "string[]",
+     "definition": "Multi-segment coordinates"
+    },
+    {
+     "name": "sequence",
+     "type": "string",
+     "definition": "Domain peptide sequence"
+    },
+    {
+     "name": "source",
+     "type": "string",
+     "definition": "Source database"
+    },
+    {
+     "name": "source_id",
+     "type": "string",
+     "definition": "Accession in source DB"
+    },
+    {
+     "name": "start",
+     "type": "integer",
+     "definition": "Start position (aa)"
+    },
+    {
+     "name": "taxon_id",
+     "type": "integer",
+     "definition": "NCBI Taxonomy ID"
+    }
+   ]
+  },
+  "protein_structure": {
+   "primary_key": "pdb_id",
+   "purpose": "Stores metadata and file pointers for every Protein Data Bank entry mapped to BV-BRC genomes, including experimental details, chain-to-gene mappings, lineage, literature, and alignment artefacts. Enables 3-D structure viewers, comparative modelling, and structure-guided analyses.",
+   "fields": [
+    {
+     "name": "alignments",
+     "type": "string[]",
+     "definition": "Alignment identifiers or paths"
+    },
+    {
+     "name": "authors",
+     "type": "string[]",
+     "definition": "Publication authors"
+    },
+    {
+     "name": "feature_id",
+     "type": "string",
+     "definition": "BV-BRC gene/feature ID"
+    },
+    {
+     "name": "file_path",
+     "type": "string",
+     "definition": "Object-store path"
+    },
+    {
+     "name": "gene",
+     "type": "string[]",
+     "definition": "Gene symbol(s)"
+    },
+    {
+     "name": "genome_id",
+     "type": "string",
+     "definition": "Parent genome ID"
+    },
+    {
+     "name": "institution",
+     "type": "string",
+     "definition": "Depositing institution"
+    },
+    {
+     "name": "method",
+     "type": "string[]",
+     "definition": "Experimental method(s)"
+    },
+    {
+     "name": "organism_name",
+     "type": "string[] (ci)",
+     "definition": "Organism(s)"
+    },
+    {
+     "name": "patric_id",
+     "type": "string",
+     "definition": "Alias of feature_id"
+    },
+    {
+     "name": "pdb_id",
+     "type": "string",
+     "definition": "Primary key (PDB accession)"
+    },
+    {
+     "name": "pmid",
+     "type": "string[]",
+     "definition": "PubMed IDs"
+    },
+    {
+     "name": "product",
+     "type": "string[]",
+     "definition": "Protein product names"
+    },
+    {
+     "name": "release_date",
+     "type": "date",
+     "definition": "PDB release date"
+    },
+    {
+     "name": "resolution",
+     "type": "string",
+     "definition": "Experimental resolution"
+    },
+    {
+     "name": "sequence",
+     "type": "string[]",
+     "definition": "Protein sequence(s)"
+    },
+    {
+     "name": "sequence_md5",
+     "type": "string[]",
+     "definition": "MD5 of each sequence"
+    },
+    {
+     "name": "taxon_id",
+     "type": "integer[]",
+     "definition": "Taxon IDs per chain"
+    },
+    {
+     "name": "taxon_lineage_ids",
+     "type": "string[]",
+     "definition": "Lineage IDs"
+    },
+    {
+     "name": "taxon_lineage_names",
+     "type": "string[]",
+     "definition": "Lineage names"
+    },
+    {
+     "name": "title",
+     "type": "string (ci)",
+     "definition": "Structure title"
+    },
+    {
+     "name": "uniprotkb_accession",
+     "type": "string[]",
+     "definition": "UniProtKB IDs"
+    }
+   ]
+  },
+  "epitope": {
+   "primary_key": "epitope_id",
+   "purpose": "Captures experimentally verified immune epitopes (primarily imported from IEDB) mapped to BV-BRC proteins, including sequence, host context, coordinate mapping, assay counts, and taxonomy \u2014 enabling vaccine-design dashboards and immunogenicity searches.",
+   "fields": [
+    {
+     "name": "assay_results",
+     "type": "string[]",
+     "definition": "Composite assay outcome strings"
+    },
+    {
+     "name": "bcell_assays",
+     "type": "string",
+     "definition": "Count of B-cell assays"
+    },
+    {
+     "name": "comments",
+     "type": "string[] (ci)",
+     "definition": "Curator comments"
+    },
+    {
+     "name": "end",
+     "type": "integer",
+     "definition": "Epitope end position"
+    },
+    {
+     "name": "epitope_id",
+     "type": "string",
+     "definition": "Primary key"
+    },
+    {
+     "name": "epitope_sequence",
+     "type": "string",
+     "definition": "Sequence string"
+    },
+    {
+     "name": "epitope_type",
+     "type": "string",
+     "definition": "Molecular type"
+    },
+    {
+     "name": "host_name",
+     "type": "string[] (ci)",
+     "definition": "Host species tested"
+    },
+    {
+     "name": "mhc_assays",
+     "type": "string",
+     "definition": "Count of MHC-binding assays"
+    },
+    {
+     "name": "organism",
+     "type": "string (ci)",
+     "definition": "Source organism"
+    },
+    {
+     "name": "protein_accession",
+     "type": "string",
+     "definition": "INSDC protein accession"
+    },
+    {
+     "name": "protein_id",
+     "type": "string",
+     "definition": "BV-BRC feature ID"
+    },
+    {
+     "name": "protein_name",
+     "type": "string (ci)",
+     "definition": "Protein product name"
+    },
+    {
+     "name": "start",
+     "type": "integer",
+     "definition": "Epitope start position"
+    },
+    {
+     "name": "taxon_id",
+     "type": "integer",
+     "definition": "NCBI Taxonomy ID"
+    },
+    {
+     "name": "taxon_lineage_ids",
+     "type": "string[]",
+     "definition": "Lineage IDs"
+    },
+    {
+     "name": "taxon_lineage_names",
+     "type": "string[]",
+     "definition": "Lineage names"
+    },
+    {
+     "name": "tcell_assays",
+     "type": "string",
+     "definition": "Count of T-cell assays"
+    },
+    {
+     "name": "total_assays",
+     "type": "integer",
+     "definition": "Total assay count"
+    }
+   ]
+  },
+  "epitope_assay": {
+   "primary_key": "assay_id",
+   "purpose": "Captures detailed experimental assay records (B-cell, T-cell, MHC binding, etc.) linked to immune epitopes in BV-BRC, including measurement values, host context, MHC alleles, structural mapping, and literature citations \u2014 powering immunogenicity dashboards and vaccine design tools.",
+   "fields": [
+    {
+     "name": "assay_group",
+     "type": "string",
+     "definition": "Logical assay grouping key"
+    },
+    {
+     "name": "assay_id",
+     "type": "string",
+     "definition": "Primary key"
+    },
+    {
+     "name": "assay_measurement",
+     "type": "string",
+     "definition": "Reported numeric value"
+    },
+    {
+     "name": "assay_measurement_unit",
+     "type": "string",
+     "definition": "Unit of measurement"
+    },
+    {
+     "name": "assay_method",
+     "type": "string",
+     "definition": "Experimental method"
+    },
+    {
+     "name": "assay_result",
+     "type": "string",
+     "definition": "Qualitative outcome"
+    },
+    {
+     "name": "assay_type",
+     "type": "string",
+     "definition": "Immunological assay class"
+    },
+    {
+     "name": "authors",
+     "type": "string",
+     "definition": "First author + \u201cet al.\u201d"
+    },
+    {
+     "name": "end",
+     "type": "integer",
+     "definition": "Epitope end position"
+    },
+    {
+     "name": "epitope_id",
+     "type": "string",
+     "definition": "Linked epitope identifier"
+    },
+    {
+     "name": "epitope_sequence",
+     "type": "string",
+     "definition": "Epitope sequence string"
+    },
+    {
+     "name": "epitope_type",
+     "type": "string",
+     "definition": "Molecular type of epitope"
+    },
+    {
+     "name": "host_name",
+     "type": "string (ci)",
+     "definition": "Experimental host species"
+    },
+    {
+     "name": "host_taxon_id",
+     "type": "string",
+     "definition": "NCBI taxon ID for host"
+    },
+    {
+     "name": "mhc_allele",
+     "type": "string",
+     "definition": "MHC allele tested"
+    },
+    {
+     "name": "mhc_allele_class",
+     "type": "string",
+     "definition": "MHC class"
+    },
+    {
+     "name": "organism",
+     "type": "string (ci)",
+     "definition": "Pathogen name"
+    },
+    {
+     "name": "pdb_id",
+     "type": "string",
+     "definition": "PDB structure accession"
+    },
+    {
+     "name": "pmid",
+     "type": "string",
+     "definition": "PubMed ID"
+    },
+    {
+     "name": "protein_accession",
+     "type": "string",
+     "definition": "INSDC/RefSeq protein accession"
+    },
+    {
+     "name": "protein_id",
+     "type": "string",
+     "definition": "BV-BRC feature ID"
+    },
+    {
+     "name": "protein_name",
+     "type": "string (ci)",
+     "definition": "Protein product name"
+    },
+    {
+     "name": "start",
+     "type": "integer",
+     "definition": "Epitope start position"
+    },
+    {
+     "name": "taxon_id",
+     "type": "integer",
+     "definition": "Pathogen NCBI taxon ID"
+    },
+    {
+     "name": "taxon_lineage_ids",
+     "type": "string[]",
+     "definition": "Lineage ID chain"
+    },
+    {
+     "name": "taxon_lineage_names",
+     "type": "string[]",
+     "definition": "Lineage name chain"
+    },
+    {
+     "name": "title",
+     "type": "string (ci)",
+     "definition": "Article or assay title"
+    }
+   ]
+  },
+  "experiment": {
+   "primary_key": "exp_id",
+   "purpose": "Captures high-level metadata for functional-omics experiments (transcriptomics, proteomics, metabolomics, etc.) imported from GEO, PRIDE, SRA or supplied by users, linking them to biosets, genomes, treatments and publications in BV-BRC.",
+   "fields": [
+    {
+     "name": "additional_data",
+     "type": "string[]",
+     "definition": "Supplementary data links"
+    },
+    {
+     "name": "additional_metadata",
+     "type": "string[] (ci)",
+     "definition": "Extra free-text metadata"
+    },
+    {
+     "name": "biosets",
+     "type": "integer",
+     "definition": "Number of biosets"
+    },
+    {
+     "name": "detection_instrument",
+     "type": "string (ci)",
+     "definition": "Instrument model"
+    },
+    {
+     "name": "doi",
+     "type": "string",
+     "definition": "Digital Object Identifier"
+    },
+    {
+     "name": "exp_description",
+     "type": "string (ci)",
+     "definition": "Concise experiment summary"
+    },
+    {
+     "name": "exp_id",
+     "type": "string",
+     "definition": "Primary key"
+    },
+    {
+     "name": "exp_name",
+     "type": "string (ci)",
+     "definition": "Short label"
+    },
+    {
+     "name": "exp_poc",
+     "type": "string (ci)",
+     "definition": "Point-of-contact"
+    },
+    {
+     "name": "exp_protocol",
+     "type": "string[] (ci)",
+     "definition": "Protocol steps"
+    },
+    {
+     "name": "exp_title",
+     "type": "string (ci)",
+     "definition": "Full experiment title"
+    },
+    {
+     "name": "exp_type",
+     "type": "string (ci)",
+     "definition": "Assay technology"
+    },
+    {
+     "name": "experimenters",
+     "type": "string (ci)",
+     "definition": "Researcher list"
+    },
+    {
+     "name": "genome_id",
+     "type": "string[]",
+     "definition": "BV-BRC genome IDs"
+    },
+    {
+     "name": "measurement_technique",
+     "type": "string (ci)",
+     "definition": "Measurement platform"
+    },
+    {
+     "name": "organism",
+     "type": "string[] (ci)",
+     "definition": "Organism names"
+    },
+    {
+     "name": "pmid",
+     "type": "string",
+     "definition": "PubMed ID"
+    },
+    {
+     "name": "public_identifier",
+     "type": "string",
+     "definition": "External ID"
+    },
+    {
+     "name": "public_repository",
+     "type": "string",
+     "definition": "Repository name"
+    },
+    {
+     "name": "samples",
+     "type": "integer",
+     "definition": "Number of biological samples"
+    },
+    {
+     "name": "strain",
+     "type": "string[] (ci)",
+     "definition": "Strain names"
+    },
+    {
+     "name": "study_description",
+     "type": "string (ci)",
+     "definition": "Study-level summary"
+    },
+    {
+     "name": "study_institution",
+     "type": "string (ci)",
+     "definition": "Performing institution"
+    },
+    {
+     "name": "study_name",
+     "type": "string (ci)",
+     "definition": "Study short name"
+    },
+    {
+     "name": "study_pi",
+     "type": "string (ci)",
+     "definition": "Principal investigator"
+    },
+    {
+     "name": "study_title",
+     "type": "string (ci)",
+     "definition": "Full study title"
+    },
+    {
+     "name": "taxon_id",
+     "type": "integer[]",
+     "definition": "Taxonomy IDs"
+    },
+    {
+     "name": "taxon_lineage_ids",
+     "type": "string[]",
+     "definition": "Lineage IDs"
+    },
+    {
+     "name": "treatment_amount",
+     "type": "string[] (ci)",
+     "definition": "Dose/concentration"
+    },
+    {
+     "name": "treatment_duration",
+     "type": "string[] (ci)",
+     "definition": "Exposure time"
+    },
+    {
+     "name": "treatment_name",
+     "type": "string[] (ci)",
+     "definition": "Treatment label"
+    },
+    {
+     "name": "treatment_type",
+     "type": "string[] (ci)",
+     "definition": "Treatment category"
+    }
+   ]
+  },
+  "bioset": {
+   "primary_key": "bioset_id",
+   "purpose": "Represents a contrast or set of statistically significant entities (genes, proteins, metabolites, etc.) derived from an experiment \u2014 typically a differential-expression list or time-point cluster \u2014 linking analysis parameters, groups, thresholds, and downstream result rows.",
+   "fields": [
+    {
+     "name": "additional_data",
+     "type": "string[]",
+     "definition": "Supplementary file links"
+    },
+    {
+     "name": "additional_metadata",
+     "type": "string[] (ci)",
+     "definition": "Extra free-text metadata"
+    },
+    {
+     "name": "analysis_group_1",
+     "type": "string (ci)",
+     "definition": "Label for group 1 in comparison"
+    },
+    {
+     "name": "analysis_group_2",
+     "type": "string (ci)",
+     "definition": "Label for group 2 in comparison"
+    },
+    {
+     "name": "analysis_method",
+     "type": "string (ci)",
+     "definition": "Computational method"
+    },
+    {
+     "name": "bioset_criteria",
+     "type": "string (ci)",
+     "definition": "Threshold rule"
+    },
+    {
+     "name": "bioset_description",
+     "type": "string (ci)",
+     "definition": "Concise description"
+    },
+    {
+     "name": "bioset_id",
+     "type": "string",
+     "definition": "Primary key"
+    },
+    {
+     "name": "bioset_name",
+     "type": "string (ci)",
+     "definition": "Short display name"
+    },
+    {
+     "name": "bioset_result",
+     "type": "string[]",
+     "definition": "Linked result row IDs"
+    },
+    {
+     "name": "bioset_type",
+     "type": "string (ci)",
+     "definition": "Category of bioset"
+    },
+    {
+     "name": "entity_count",
+     "type": "string (ci)",
+     "definition": "Number of entities"
+    },
+    {
+     "name": "entity_type",
+     "type": "string (ci)",
+     "definition": "Kind of entity"
+    },
+    {
+     "name": "exp_id",
+     "type": "string",
+     "definition": "Parent experiment ID"
+    },
+    {
+     "name": "exp_name",
+     "type": "string (ci)",
+     "definition": "Experiment name"
+    },
+    {
+     "name": "exp_title",
+     "type": "string (ci)",
+     "definition": "Experiment title"
+    },
+    {
+     "name": "exp_type",
+     "type": "string (ci)",
+     "definition": "Assay technology"
+    },
+    {
+     "name": "genome_id",
+     "type": "string[]",
+     "definition": "Genome IDs analysed"
+    },
+    {
+     "name": "organism",
+     "type": "string (ci)",
+     "definition": "Organism name"
+    },
+    {
+     "name": "protocol",
+     "type": "string[]",
+     "definition": "Analysis/proc. steps"
+    },
+    {
+     "name": "result_type",
+     "type": "string (ci)",
+     "definition": "Nature of metric"
+    },
+    {
+     "name": "strain",
+     "type": "string (ci)",
+     "definition": "Strain designation"
+    },
+    {
+     "name": "study_description",
+     "type": "string (ci)",
+     "definition": "Study abstract"
+    },
+    {
+     "name": "study_institution",
+     "type": "string (ci)",
+     "definition": "Performing institution"
+    },
+    {
+     "name": "study_name",
+     "type": "string (ci)",
+     "definition": "Study project label"
+    },
+    {
+     "name": "study_pi",
+     "type": "string (ci)",
+     "definition": "Principal investigator"
+    },
+    {
+     "name": "study_title",
+     "type": "string (ci)",
+     "definition": "Full study title"
+    },
+    {
+     "name": "taxon_id",
+     "type": "integer",
+     "definition": "NCBI Taxonomy ID"
+    },
+    {
+     "name": "taxon_lineage_ids",
+     "type": "string[]",
+     "definition": "Lineage ID chain"
+    },
+    {
+     "name": "treatment_amount",
+     "type": "string (ci)",
+     "definition": "Dose or concentration"
+    },
+    {
+     "name": "treatment_duration",
+     "type": "string (ci)",
+     "definition": "Exposure time"
+    },
+    {
+     "name": "treatment_name",
+     "type": "string (ci)",
+     "definition": "Treatment label"
+    },
+    {
+     "name": "treatment_type",
+     "type": "string (ci)",
+     "definition": "Treatment category"
+    }
+   ]
+  },
+  "bioset_results": {
+   "primary_key": "id",
+   "purpose": "Stores per-entity quantitative results (counts, fold-changes, statistics) for each bioset / experiment in BV-BRC\u2019s Functional Genomics section.",
+   "fields": [
+    {
+     "name": "bioset_description",
+     "type": "string (case-insensitive)",
+     "definition": "Human-readable description of the bioset"
+    },
+    {
+     "name": "bioset_id",
+     "type": "string",
+     "definition": "Stable BV-BRC identifier for the bioset"
+    },
+    {
+     "name": "bioset_name",
+     "type": "string (case-insensitive)",
+     "definition": "Short label for the bioset"
+    },
+    {
+     "name": "bioset_type",
+     "type": "string (case-insensitive)",
+     "definition": "Category of bioset"
+    },
+    {
+     "name": "counts",
+     "type": "number",
+     "definition": "Raw read or spectral count"
+    },
+    {
+     "name": "entity_id",
+     "type": "string",
+     "definition": "BV-BRC ID of the measured entity"
+    },
+    {
+     "name": "entity_name",
+     "type": "string",
+     "definition": "Name or symbol of the entity"
+    },
+    {
+     "name": "entity_type",
+     "type": "string (case-insensitive)",
+     "definition": "Nature of the entity"
+    },
+    {
+     "name": "exp_id",
+     "type": "string",
+     "definition": "Experiment identifier"
+    },
+    {
+     "name": "exp_name",
+     "type": "string (case-insensitive)",
+     "definition": "Short experiment name"
+    },
+    {
+     "name": "exp_title",
+     "type": "string (case-insensitive)",
+     "definition": "Full experiment title"
+    },
+    {
+     "name": "exp_type",
+     "type": "string (case-insensitive)",
+     "definition": "Technology / assay type"
+    },
+    {
+     "name": "feature_id",
+     "type": "string",
+     "definition": "Alternate feature identifier"
+    },
+    {
+     "name": "fpkm",
+     "type": "number",
+     "definition": "FPKM expression value"
+    },
+    {
+     "name": "gene",
+     "type": "string (case-insensitive)",
+     "definition": "Gene symbol"
+    },
+    {
+     "name": "gene_id",
+     "type": "string",
+     "definition": "External gene ID"
+    },
+    {
+     "name": "genome_id",
+     "type": "string[]",
+     "definition": "One or more genome IDs"
+    },
+    {
+     "name": "id",
+     "type": "string",
+     "definition": "Primary key for the result row"
+    },
+    {
+     "name": "locus_tag",
+     "type": "string",
+     "definition": "Genomic locus tag"
+    },
+    {
+     "name": "log2_fc",
+     "type": "number",
+     "definition": "Log\u2082 fold-change"
+    },
+    {
+     "name": "organism",
+     "type": "string (case-insensitive)",
+     "definition": "Organism name"
+    },
+    {
+     "name": "other_ids",
+     "type": "string[]",
+     "definition": "Additional cross-references"
+    },
+    {
+     "name": "other_value",
+     "type": "number",
+     "definition": "Auxiliary numeric metric"
+    },
+    {
+     "name": "p_value",
+     "type": "number",
+     "definition": "Statistical p-value"
+    },
+    {
+     "name": "patric_id",
+     "type": "string",
+     "definition": "PATRIC-style locus ID"
+    },
+    {
+     "name": "product",
+     "type": "string (case-insensitive)",
+     "definition": "Functional description"
+    },
+    {
+     "name": "protein_id",
+     "type": "string",
+     "definition": "RefSeq/UniProt protein accession"
+    },
+    {
+     "name": "result_type",
+     "type": "string (case-insensitive)",
+     "definition": "Nature of the numeric measure"
+    },
+    {
+     "name": "strain",
+     "type": "string (case-insensitive)",
+     "definition": "Strain designation"
+    },
+    {
+     "name": "taxon_id",
+     "type": "integer",
+     "definition": "NCBI Taxonomy ID"
+    },
+    {
+     "name": "tpm",
+     "type": "number",
+     "definition": "TPM expression value"
+    },
+    {
+     "name": "treatment_amount",
+     "type": "string (case-insensitive)",
+     "definition": "Dose or concentration"
+    },
+    {
+     "name": "treatment_duration",
+     "type": "string (case-insensitive)",
+     "definition": "Exposure time"
+    },
+    {
+     "name": "treatment_name",
+     "type": "string (case-insensitive)",
+     "definition": "Treatment label"
+    },
+    {
+     "name": "treatment_type",
+     "type": "string (case-insensitive)",
+     "definition": "Treatment category"
+    },
+    {
+     "name": "uniprot_id",
+     "type": "string",
+     "definition": "UniProt accession"
+    },
+    {
+     "name": "z_score",
+     "type": "number",
+     "definition": "Z-score"
+    }
+   ]
+  },
+  "ppi": {
+   "primary_key": "id",
+   "purpose": "Stores pairwise protein\u2013protein (or molecule) interaction metadata culled from curated databases and in-house predictions, including detection methods, confidence scores, supporting literature, domains, and genome context, enabling network visualisation and comparative interactomics within BV-BRC.",
+   "fields": [
+    {
+     "name": "category",
+     "type": "string",
+     "definition": "Interaction category"
+    },
+    {
+     "name": "detection_method",
+     "type": "string[] (ci)",
+     "definition": "Interaction-detection methods"
+    },
+    {
+     "name": "domain_a",
+     "type": "string",
+     "definition": "Interacting domain A"
+    },
+    {
+     "name": "domain_b",
+     "type": "string",
+     "definition": "Interacting domain B"
+    },
+    {
+     "name": "evidence",
+     "type": "string[]",
+     "definition": "Evidence statements"
+    },
+    {
+     "name": "feature_id_a",
+     "type": "string",
+     "definition": "BV-BRC feature ID A"
+    },
+    {
+     "name": "feature_id_b",
+     "type": "string",
+     "definition": "BV-BRC feature ID B"
+    },
+    {
+     "name": "gene_a",
+     "type": "string",
+     "definition": "Gene symbol A"
+    },
+    {
+     "name": "gene_b",
+     "type": "string",
+     "definition": "Gene symbol B"
+    },
+    {
+     "name": "genome_id_a",
+     "type": "string",
+     "definition": "Genome ID A"
+    },
+    {
+     "name": "genome_id_b",
+     "type": "string",
+     "definition": "Genome ID B"
+    },
+    {
+     "name": "genome_name_a",
+     "type": "string (ci)",
+     "definition": "Genome name A"
+    },
+    {
+     "name": "genome_name_b",
+     "type": "string (ci)",
+     "definition": "Genome name B"
+    },
+    {
+     "name": "id",
+     "type": "string",
+     "definition": "Primary key"
+    },
+    {
+     "name": "interaction_type",
+     "type": "string[] (ci)",
+     "definition": "Nature of interaction"
+    },
+    {
+     "name": "interactor_a",
+     "type": "string",
+     "definition": "Primary accession A"
+    },
+    {
+     "name": "interactor_b",
+     "type": "string",
+     "definition": "Primary accession B"
+    },
+    {
+     "name": "interactor_desc_a",
+     "type": "string (ci)",
+     "definition": "Product name A"
+    },
+    {
+     "name": "interactor_desc_b",
+     "type": "string (ci)",
+     "definition": "Product name B"
+    },
+    {
+     "name": "interactor_type_a",
+     "type": "string",
+     "definition": "Entity type A"
+    },
+    {
+     "name": "interactor_type_b",
+     "type": "string",
+     "definition": "Entity type B"
+    },
+    {
+     "name": "pmid",
+     "type": "string[]",
+     "definition": "PubMed IDs"
+    },
+    {
+     "name": "refseq_locus_tag_a",
+     "type": "string",
+     "definition": "RefSeq tag A"
+    },
+    {
+     "name": "refseq_locus_tag_b",
+     "type": "string",
+     "definition": "RefSeq tag B"
+    },
+    {
+     "name": "score",
+     "type": "string[]",
+     "definition": "Confidence / weight"
+    },
+    {
+     "name": "source_db",
+     "type": "string[]",
+     "definition": "Source database(s)"
+    },
+    {
+     "name": "source_id",
+     "type": "string[]",
+     "definition": "Source-specific IDs"
+    },
+    {
+     "name": "taxon_id_a",
+     "type": "integer",
+     "definition": "Taxon ID A"
+    },
+    {
+     "name": "taxon_id_b",
+     "type": "integer",
+     "definition": "Taxon ID B"
+    }
+   ]
+  },
+  "sequence_feature": {
+   "primary_key": "id",
+   "purpose": "Captures per-genome sequence features such as SNPs, indels, peptide motifs, or lineage-defining mutations, linking them to standardized feature definitions (sf_id), parent genes, evidence codes, and literature. Drives mutation browsers, lineage calling, and comparative variant analysis inside BV-BRC.",
+   "fields": [
+    {
+     "name": "aa_sequence_md5",
+     "type": "string",
+     "definition": "MD5 hash of the AA sequence after variation"
+    },
+    {
+     "name": "aa_variant",
+     "type": "string",
+     "definition": "HGVS-style AA change"
+    },
+    {
+     "name": "additional_metadata",
+     "type": "string[] (ci)",
+     "definition": "Extra free-text tags"
+    },
+    {
+     "name": "comments",
+     "type": "string[] (ci)",
+     "definition": "Curator / caller notes"
+    },
+    {
+     "name": "end",
+     "type": "integer",
+     "definition": "End coordinate"
+    },
+    {
+     "name": "evidence_code",
+     "type": "string",
+     "definition": "Variant evidence code"
+    },
+    {
+     "name": "feature_id",
+     "type": "string",
+     "definition": "Parent gene/feature ID"
+    },
+    {
+     "name": "genbank_accession",
+     "type": "string",
+     "definition": "INSDC accession of source contig"
+    },
+    {
+     "name": "gene",
+     "type": "string",
+     "definition": "Gene symbol"
+    },
+    {
+     "name": "genome_id",
+     "type": "string",
+     "definition": "BV-BRC genome identifier"
+    },
+    {
+     "name": "genome_name",
+     "type": "string (ci)",
+     "definition": "Genome display name"
+    },
+    {
+     "name": "id",
+     "type": "string",
+     "definition": "Primary key"
+    },
+    {
+     "name": "length",
+     "type": "integer",
+     "definition": "Length of the observed SF"
+    },
+    {
+     "name": "patric_id",
+     "type": "string",
+     "definition": "Alias of feature_id"
+    },
+    {
+     "name": "product",
+     "type": "string (ci)",
+     "definition": "Protein product"
+    },
+    {
+     "name": "publication",
+     "type": "string[]",
+     "definition": "Supporting literature"
+    },
+    {
+     "name": "refseq_locus_tag",
+     "type": "string",
+     "definition": "RefSeq locus tag"
+    },
+    {
+     "name": "segment",
+     "type": "string",
+     "definition": "Viral segment"
+    },
+    {
+     "name": "segments",
+     "type": "string[]",
+     "definition": "Multi-segment coords"
+    },
+    {
+     "name": "sf_category",
+     "type": "string",
+     "definition": "Sequence-feature category"
+    },
+    {
+     "name": "sf_id",
+     "type": "string",
+     "definition": "Sequence-feature ID"
+    },
+    {
+     "name": "sf_name",
+     "type": "string (ci)",
+     "definition": "Human-readable name"
+    },
+    {
+     "name": "sf_sequence",
+     "type": "string",
+     "definition": "Observed variant sequence"
+    },
+    {
+     "name": "sf_sequence_md5",
+     "type": "string",
+     "definition": "MD5 of sf_sequence"
+    },
+    {
+     "name": "source",
+     "type": "string",
+     "definition": "Calling pipeline / DB"
+    },
+    {
+     "name": "source_aa_sequence",
+     "type": "string",
+     "definition": "Peptide context"
+    },
+    {
+     "name": "source_id",
+     "type": "string",
+     "definition": "External source key"
+    },
+    {
+     "name": "source_sf_location",
+     "type": "string",
+     "definition": "Location in source coords"
+    },
+    {
+     "name": "source_strain",
+     "type": "string",
+     "definition": "Strain name from source"
+    },
+    {
+     "name": "start",
+     "type": "integer",
+     "definition": "Start coordinate"
+    },
+    {
+     "name": "subtype",
+     "type": "string",
+     "definition": "Viral subtype"
+    },
+    {
+     "name": "taxon_id",
+     "type": "integer",
+     "definition": "NCBI Taxonomy ID"
+    },
+    {
+     "name": "variant_types",
+     "type": "string",
+     "definition": "HGVS variant codes"
+    }
+   ]
+  },
+  "sequence_feature_vt": {
+   "primary_key": "id",
+   "purpose": "Tracks each specific variant form of a canonical sequence feature across all BV-BRC genomes, recording its altered sequence, prevalence (genome count/list), and metadata. This fuels variant-frequency dashboards, lineage assignment, and mutation co-occurrence analyses.",
+   "fields": [
+    {
+     "name": "additional_metadata",
+     "type": "string[] (case-insensitive)",
+     "definition": "Extra free-text key-value pairs"
+    },
+    {
+     "name": "comments",
+     "type": "string[] (case-insensitive)",
+     "definition": "Curator notes"
+    },
+    {
+     "name": "id",
+     "type": "string",
+     "definition": "Primary key"
+    },
+    {
+     "name": "sf_category",
+     "type": "string",
+     "definition": "Category of sequence feature"
+    },
+    {
+     "name": "sf_id",
+     "type": "string",
+     "definition": "Canonical sequence-feature ID"
+    },
+    {
+     "name": "sf_name",
+     "type": "string (case-insensitive)",
+     "definition": "Canonical feature name"
+    },
+    {
+     "name": "sf_sequence",
+     "type": "string",
+     "definition": "Canonical feature sequence"
+    },
+    {
+     "name": "sf_sequence_md5",
+     "type": "string",
+     "definition": "MD5 of sf_sequence"
+    },
+    {
+     "name": "sfvt_genome_count",
+     "type": "string",
+     "definition": "Number of genomes with this variant"
+    },
+    {
+     "name": "sfvt_genome_ids",
+     "type": "string[]",
+     "definition": "Genomes carrying this variant"
+    },
+    {
+     "name": "sfvt_id",
+     "type": "string",
+     "definition": "Variant-tracking ID"
+    },
+    {
+     "name": "sfvt_sequence",
+     "type": "string",
+     "definition": "Variant sequence"
+    },
+    {
+     "name": "sfvt_sequence_md5",
+     "type": "string",
+     "definition": "MD5 of variant sequence"
+    },
+    {
+     "name": "sfvt_variations",
+     "type": "string",
+     "definition": "HGVS or descriptive change"
+    }
+   ]
+  },
+  "surveillance": {
+   "primary_key": "id",
+   "purpose": "Records rich case-level epidemiological, clinical and environmental metadata that link one or more BV-BRC genomes to patient or wildlife surveillance information. Enables geospatial outbreak dashboards, risk-factor analyses, and integration with public-health reporting.",
+   "fields": [
+    {
+     "name": "additional_metadata",
+     "type": "string[] (case-insensitive)",
+     "definition": "Arbitrary key\u2013value notes"
+    },
+    {
+     "name": "alcohol_or_other_drug_dependence",
+     "type": "string (ci)",
+     "definition": "Substance-dependence status of human host"
+    },
+    {
+     "name": "breastfeeding",
+     "type": "string (ci)",
+     "definition": "Breast-feeding status"
+    },
+    {
+     "name": "chest_imaging_interpretation",
+     "type": "string (ci)",
+     "definition": "Radiology result"
+    },
+    {
+     "name": "chronic_conditions",
+     "type": "string[] (ci)",
+     "definition": "Pre-existing conditions"
+    },
+    {
+     "name": "collection_city",
+     "type": "string (ci)",
+     "definition": "City/town where sample collected"
+    },
+    {
+     "name": "collection_country",
+     "type": "string (ci)",
+     "definition": "ISO-name of country"
+    },
+    {
+     "name": "collection_date",
+     "type": "date",
+     "definition": "Date of sample collection"
+    },
+    {
+     "name": "collection_latitude",
+     "type": "number",
+     "definition": "GPS latitude"
+    },
+    {
+     "name": "collection_longitude",
+     "type": "number",
+     "definition": "GPS longitude"
+    },
+    {
+     "name": "collection_poi",
+     "type": "string (ci)",
+     "definition": "Point-of-interest descriptor"
+    },
+    {
+     "name": "collection_season",
+     "type": "string (ci)",
+     "definition": "Epidemiological season"
+    },
+    {
+     "name": "collection_state_province",
+     "type": "string (ci)",
+     "definition": "State / province"
+    },
+    {
+     "name": "collection_year",
+     "type": "string (ci)",
+     "definition": "Four-digit year text"
+    },
+    {
+     "name": "collector_institution",
+     "type": "string (ci)",
+     "definition": "Institution that took the sample"
+    },
+    {
+     "name": "collector_name",
+     "type": "string[] (ci)",
+     "definition": "Names of collectors"
+    },
+    {
+     "name": "comments",
+     "type": "string[] (ci)",
+     "definition": "Free-text remarks"
+    },
+    {
+     "name": "contact_email_address",
+     "type": "string (ci)",
+     "definition": "Data contact email"
+    },
+    {
+     "name": "contributing_institution",
+     "type": "string (ci)",
+     "definition": "Data-submitting organisation"
+    },
+    {
+     "name": "daycare_attendance",
+     "type": "string (ci)",
+     "definition": "Child daycare attendance"
+    },
+    {
+     "name": "days_elapsed_to_disease_status",
+     "type": "string (ci)",
+     "definition": "Days from exposure to symptom onset"
+    },
+    {
+     "name": "days_elapsed_to_sample_collection",
+     "type": "string (ci)",
+     "definition": "Days from symptom onset to sampling"
+    },
+    {
+     "name": "days_elapsed_to_vaccination",
+     "type": "string[] (ci)",
+     "definition": "Days between vaccination and sample"
+    },
+    {
+     "name": "diagnosis",
+     "type": "string[] (ci)",
+     "definition": "Clinical diagnoses"
+    },
+    {
+     "name": "dialysis",
+     "type": "string (ci)",
+     "definition": "Dialysis patient flag"
+    },
+    {
+     "name": "disease_severity",
+     "type": "string (ci)",
+     "definition": "Severity classification"
+    },
+    {
+     "name": "disease_status",
+     "type": "string (ci)",
+     "definition": "Case, contact, carrier, etc."
+    },
+    {
+     "name": "duration_of_exposure",
+     "type": "string[] (ci)",
+     "definition": "Exposure duration"
+    },
+    {
+     "name": "duration_of_treatment",
+     "type": "string[] (ci)",
+     "definition": "Treatment course length"
+    },
+    {
+     "name": "ecmo",
+     "type": "string (ci)",
+     "definition": "ECMO support flag"
+    },
+    {
+     "name": "education",
+     "type": "string (ci)",
+     "definition": "Highest education level"
+    },
+    {
+     "name": "embargo_end_date",
+     "type": "date",
+     "definition": "Data-release date"
+    },
+    {
+     "name": "exposure",
+     "type": "string[] (ci)",
+     "definition": "Exposure descriptors"
+    },
+    {
+     "name": "exposure_type",
+     "type": "string[] (ci)",
+     "definition": "Exposure category"
+    },
+    {
+     "name": "genome_id",
+     "type": "string[]",
+     "definition": "Linked BV-BRC genome IDs"
+    },
+    {
+     "name": "geographic_group",
+     "type": "string (ci)",
+     "definition": "Regional bucket"
+    },
+    {
+     "name": "hospitalization_duration",
+     "type": "string (ci)",
+     "definition": "Length of hospital stay"
+    },
+    {
+     "name": "hospitalized",
+     "type": "string (ci)",
+     "definition": "Hospital admission status"
+    },
+    {
+     "name": "host_age",
+     "type": "string (ci)",
+     "definition": "Age or age-range"
+    },
+    {
+     "name": "host_capture_status",
+     "type": "string (ci)",
+     "definition": "Capture outcome for wildlife"
+    },
+    {
+     "name": "host_common_name",
+     "type": "string (ci)",
+     "definition": "Common name of host"
+    },
+    {
+     "name": "host_ethnicity",
+     "type": "string[] (ci)",
+     "definition": "Ethnicity descriptors"
+    },
+    {
+     "name": "host_group",
+     "type": "string (ci)",
+     "definition": "Broad host group"
+    },
+    {
+     "name": "host_habitat",
+     "type": "string (ci)",
+     "definition": "Habitat type"
+    },
+    {
+     "name": "host_health",
+     "type": "string (ci)",
+     "definition": "Health status at sampling"
+    },
+    {
+     "name": "host_height",
+     "type": "string (ci)",
+     "definition": "Height of human host"
+    },
+    {
+     "name": "host_id_type",
+     "type": "string (ci)",
+     "definition": "Identifier system"
+    },
+    {
+     "name": "host_identifier",
+     "type": "string",
+     "definition": "Unique host ID"
+    },
+    {
+     "name": "host_natural_state",
+     "type": "string (ci)",
+     "definition": "Captive or wild status"
+    },
+    {
+     "name": "host_race",
+     "type": "string[] (ci)",
+     "definition": "Race classification"
+    },
+    {
+     "name": "host_sex",
+     "type": "string (ci)",
+     "definition": "Sex of host"
+    },
+    {
+     "name": "host_species",
+     "type": "string (ci)",
+     "definition": "Scientific species name"
+    },
+    {
+     "name": "host_weight",
+     "type": "string (ci)",
+     "definition": "Weight with units"
+    },
+    {
+     "name": "human_leukocyte_antigens",
+     "type": "string (ci)",
+     "definition": "HLA genotype summary"
+    },
+    {
+     "name": "id",
+     "type": "string",
+     "definition": "Primary key"
+    },
+    {
+     "name": "infections_within_five_years",
+     "type": "string[] (ci)",
+     "definition": "Prior infections (5-y look-back)"
+    },
+    {
+     "name": "influenza_like_illness_over_the_past_year",
+     "type": "string (ci)",
+     "definition": "ILI flag"
+    },
+    {
+     "name": "initiation_of_treatment",
+     "type": "string[] (ci)",
+     "definition": "Start date / time of therapy"
+    },
+    {
+     "name": "intensive_care_unit",
+     "type": "string (ci)",
+     "definition": "ICU admission status"
+    },
+    {
+     "name": "last_update_date",
+     "type": "date",
+     "definition": "Most recent record update"
+    },
+    {
+     "name": "longitudinal_study",
+     "type": "string (ci)",
+     "definition": "Longitudinal flag"
+    },
+    {
+     "name": "maintenance_medication",
+     "type": "string[] (ci)",
+     "definition": "Chronic medications"
+    },
+    {
+     "name": "nursing_home_residence",
+     "type": "string (ci)",
+     "definition": "Nursing-home status"
+    },
+    {
+     "name": "onset_hours",
+     "type": "string (ci)",
+     "definition": "Hours since symptom onset"
+    },
+    {
+     "name": "other_vaccinations",
+     "type": "string (ci)",
+     "definition": "Non-targeted vaccines"
+    },
+    {
+     "name": "oxygen_saturation",
+     "type": "string (ci)",
+     "definition": "SpO\u2082 at presentation"
+    },
+    {
+     "name": "packs_per_day_for_how_many_years",
+     "type": "string (ci)",
+     "definition": "Smoking intensity"
+    },
+    {
+     "name": "pathogen_test_interpretation",
+     "type": "string[] (ci)",
+     "definition": "Test interpretation"
+    },
+    {
+     "name": "pathogen_test_result",
+     "type": "string[]",
+     "definition": "Raw test value"
+    },
+    {
+     "name": "pathogen_test_type",
+     "type": "string[] (ci)",
+     "definition": "Diagnostic tests performed"
+    },
+    {
+     "name": "pathogen_type",
+     "type": "string (ci)",
+     "definition": "Target pathogen class"
+    },
+    {
+     "name": "post_visit_medications",
+     "type": "string[] (ci)",
+     "definition": "Drugs started after visit"
+    },
+    {
+     "name": "pre_visit_medications",
+     "type": "string[] (ci)",
+     "definition": "Drugs taken before visit"
+    },
+    {
+     "name": "pregnancy",
+     "type": "string (ci)",
+     "definition": "Pregnancy status"
+    },
+    {
+     "name": "primary_living_situation",
+     "type": "string (ci)",
+     "definition": "Living arrangement"
+    },
+    {
+     "name": "profession",
+     "type": "string (ci)",
+     "definition": "Occupation"
+    },
+    {
+     "name": "project_identifier",
+     "type": "string",
+     "definition": "Study/project code"
+    },
+    {
+     "name": "sample_accession",
+     "type": "string",
+     "definition": "Public repository accession"
+    },
+    {
+     "name": "sample_identifier",
+     "type": "string",
+     "definition": "Local sample ID"
+    },
+    {
+     "name": "sample_material",
+     "type": "string (ci)",
+     "definition": "Sample type"
+    },
+    {
+     "name": "sample_receipt_date",
+     "type": "string (ci)",
+     "definition": "Date lab received sample"
+    },
+    {
+     "name": "sample_transport_medium",
+     "type": "string (ci)",
+     "definition": "Medium used"
+    },
+    {
+     "name": "sequence_accession",
+     "type": "string[]",
+     "definition": "Public sequence IDs"
+    },
+    {
+     "name": "source_of_vaccine_information",
+     "type": "string[] (ci)",
+     "definition": "Vaccine data provenance"
+    },
+    {
+     "name": "species",
+     "type": "string (ci)",
+     "definition": "Host species binomial"
+    },
+    {
+     "name": "strain",
+     "type": "string (ci)",
+     "definition": "Pathogen strain name"
+    },
+    {
+     "name": "submission_date",
+     "type": "date",
+     "definition": "Date row was submitted to BV-BRC"
+    },
+    {
+     "name": "subtype",
+     "type": "string (ci)",
+     "definition": "Viral subtype"
+    },
+    {
+     "name": "sudden_onset",
+     "type": "string (ci)",
+     "definition": "Sudden-onset symptom flag"
+    },
+    {
+     "name": "symptoms",
+     "type": "string[] (ci)",
+     "definition": "Reported symptoms"
+    },
+    {
+     "name": "taxon_lineage_ids",
+     "type": "string[]",
+     "definition": "NCBI lineage IDs"
+    },
+    {
+     "name": "tobacco_use",
+     "type": "string (ci)",
+     "definition": "Smoking status"
+    },
+    {
+     "name": "travel_history",
+     "type": "string[] (ci)",
+     "definition": "Recent travel descriptors"
+    },
+    {
+     "name": "treatment",
+     "type": "string[] (ci)",
+     "definition": "Therapies applied"
+    },
+    {
+     "name": "treatment_dosage",
+     "type": "string[] (ci)",
+     "definition": "Dose information"
+    },
+    {
+     "name": "treatment_type",
+     "type": "string[] (ci)",
+     "definition": "Treatment modality"
+    },
+    {
+     "name": "trimester_of_pregnancy",
+     "type": "string (ci)",
+     "definition": "Gestational stage"
+    },
+    {
+     "name": "types_of_allergies",
+     "type": "string[] (ci)",
+     "definition": "Reported allergies"
+    },
+    {
+     "name": "use_of_personal_protective_equipment",
+     "type": "string[] (ci)",
+     "definition": "PPE usage"
+    },
+    {
+     "name": "vaccination_type",
+     "type": "string (ci)",
+     "definition": "Vaccine product"
+    },
+    {
+     "name": "vaccine_dosage",
+     "type": "string[] (ci)",
+     "definition": "Dose amounts"
+    },
+    {
+     "name": "vaccine_lot_number",
+     "type": "string[] (ci)",
+     "definition": "Batch numbers"
+    },
+    {
+     "name": "vaccine_manufacturer",
+     "type": "string[] (ci)",
+     "definition": "Producer names"
+    },
+    {
+     "name": "ventilation",
+     "type": "string (ci)",
+     "definition": "Mechanical ventilation"
+    }
+   ]
+  },
+  "serology": {
+   "primary_key": "id",
+   "purpose": "Holds detailed laboratory serology results linked to host metadata and, when available, matching viral genomes\u2014enabling BV-BRC users to study antibody prevalence, vaccine impact, and cross-reactivity in both humans and animals.",
+   "fields": [
+    {
+     "name": "additional_metadata",
+     "type": "string[] (ci)",
+     "definition": "Free-text key-value notes"
+    },
+    {
+     "name": "collection_city",
+     "type": "string (ci)",
+     "definition": "City / town of collection"
+    },
+    {
+     "name": "collection_country",
+     "type": "string (ci)",
+     "definition": "Country name (ISO)"
+    },
+    {
+     "name": "collection_date",
+     "type": "date",
+     "definition": "Date sample taken"
+    },
+    {
+     "name": "collection_state",
+     "type": "string (ci)",
+     "definition": "State / province"
+    },
+    {
+     "name": "collection_year",
+     "type": "string (ci)",
+     "definition": "Four-digit year (text)"
+    },
+    {
+     "name": "comments",
+     "type": "string[] (ci)",
+     "definition": "Curator comments"
+    },
+    {
+     "name": "contributing_institution",
+     "type": "string (ci)",
+     "definition": "Data provider"
+    },
+    {
+     "name": "genbank_accession",
+     "type": "string[] (ci)",
+     "definition": "Related GenBank accessions"
+    },
+    {
+     "name": "geographic_group",
+     "type": "string (ci)",
+     "definition": "Regional bucket"
+    },
+    {
+     "name": "host_age",
+     "type": "string (ci)",
+     "definition": "Exact age / range"
+    },
+    {
+     "name": "host_age_group",
+     "type": "string (ci)",
+     "definition": "Age-group bin"
+    },
+    {
+     "name": "host_common_name",
+     "type": "string (ci)",
+     "definition": "Common host name"
+    },
+    {
+     "name": "host_health",
+     "type": "string (ci)",
+     "definition": "Health status"
+    },
+    {
+     "name": "host_identifier",
+     "type": "string",
+     "definition": "De-identified host ID"
+    },
+    {
+     "name": "host_sex",
+     "type": "string (ci)",
+     "definition": "Sex of host"
+    },
+    {
+     "name": "host_species",
+     "type": "string (ci)",
+     "definition": "Scientific name"
+    },
+    {
+     "name": "host_type",
+     "type": "string[] (ci)",
+     "definition": "Host class/category"
+    },
+    {
+     "name": "id",
+     "type": "string",
+     "definition": "Primary key"
+    },
+    {
+     "name": "positive_definition",
+     "type": "string (ci)",
+     "definition": "Positivity cut-off rule"
+    },
+    {
+     "name": "project_identifier",
+     "type": "string",
+     "definition": "Study / project code"
+    },
+    {
+     "name": "sample_accession",
+     "type": "string",
+     "definition": "Public repository accession"
+    },
+    {
+     "name": "sample_identifier",
+     "type": "string",
+     "definition": "Local sample ID"
+    },
+    {
+     "name": "sample_material",
+     "type": "string (ci)",
+     "definition": "Matrix tested"
+    },
+    {
+     "name": "sample_receipt_date",
+     "type": "string (ci)",
+     "definition": "Date lab received sample"
+    },
+    {
+     "name": "sample_transport_medium",
+     "type": "string (ci)",
+     "definition": "Medium used"
+    },
+    {
+     "name": "sequence_accession",
+     "type": "string[]",
+     "definition": "Linked sequence IDs"
+    },
+    {
+     "name": "source_of_vaccine_information",
+     "type": "string[] (ci)",
+     "definition": "Provenance of vax data"
+    },
+    {
+     "name": "species",
+     "type": "string (ci)",
+     "definition": "Virus species"
+    },
+    {
+     "name": "strain",
+     "type": "string (ci)",
+     "definition": "Viral strain antigen"
+    },
+    {
+     "name": "taxon_lineage_ids",
+     "type": "string[]",
+     "definition": "Viral lineage IDs"
+    },
+    {
+     "name": "test_antigen",
+     "type": "string (ci)",
+     "definition": "Antigen target"
+    },
+    {
+     "name": "test_interpretation",
+     "type": "string (ci)",
+     "definition": "Overall result"
+    },
+    {
+     "name": "test_pathogen",
+     "type": "string (ci)",
+     "definition": "Pathogen tested"
+    },
+    {
+     "name": "test_result",
+     "type": "string (ci)",
+     "definition": "Numeric / categorical result"
+    },
+    {
+     "name": "test_type",
+     "type": "string (ci)",
+     "definition": "Assay method"
+    },
+    {
+     "name": "virus_identifier",
+     "type": "string (ci)",
+     "definition": "Virus identifier used in lab"
+    }
+   ]
+  },
+  "structured_assertion": {
+   "primary_key": "id",
+   "purpose": "Stores machine-readable statements about genomic features (e.g., \u201cthis gene confers resistance to ciprofloxacin\u201d) together with evidence codes, literature links, scores and access control. These assertions feed AMR dashboards, virulence searches, and downstream analytics in BV-BRC.",
+   "fields": [
+    {
+     "name": "comment",
+     "type": "string",
+     "definition": "Curator comment"
+    },
+    {
+     "name": "evidence_code",
+     "type": "string",
+     "definition": "Evidence code"
+    },
+    {
+     "name": "feature_id",
+     "type": "string",
+     "definition": "BV-BRC feature ID"
+    },
+    {
+     "name": "id",
+     "type": "string",
+     "definition": "Primary key"
+    },
+    {
+     "name": "patric_id",
+     "type": "string",
+     "definition": "Alias of feature_id"
+    },
+    {
+     "name": "pmid",
+     "type": "string",
+     "definition": "PubMed ID"
+    },
+    {
+     "name": "property",
+     "type": "string",
+     "definition": "Assertion property"
+    },
+    {
+     "name": "refseq_locus_tag",
+     "type": "string",
+     "definition": "RefSeq locus tag"
+    },
+    {
+     "name": "score",
+     "type": "string",
+     "definition": "Confidence / weight"
+    },
+    {
+     "name": "source",
+     "type": "string",
+     "definition": "Origin of assertion"
+    },
+    {
+     "name": "value",
+     "type": "string",
+     "definition": "Assertion value"
+    }
+   ]
+  },
+  "enzyme_class_ref": {
+   "primary_key": "ec_number",
+   "purpose": "Provides the authoritative mapping between EC numbers, their official textual descriptions, and corresponding Gene Ontology molecular-function terms, enabling BV-BRC to link genomic features to enzyme activities, metabolic pathways, and GO-based enrichment tools.",
+   "fields": [
+    {
+     "name": "ec_description",
+     "type": "string",
+     "definition": "Recommended enzyme name"
+    },
+    {
+     "name": "ec_number",
+     "type": "string",
+     "definition": "EC four-level code"
+    },
+    {
+     "name": "go",
+     "type": "string[] (ci)",
+     "definition": "Gene Ontology terms"
+    }
+   ]
+  },
+  "gene_ontology_ref": {
+   "primary_key": "go_id",
+   "purpose": "Provides the authoritative mapping between GO identifiers, their names, textual definitions, and ontology namespaces, enabling BV-BRC to annotate genome features, perform GO enrichment analyses, and supply accurate tool-tips in user interfaces.",
+   "fields": [
+    {
+     "name": "definition",
+     "type": "string",
+     "definition": "Official GO definition sentence"
+    },
+    {
+     "name": "go_id",
+     "type": "string",
+     "definition": "Gene Ontology accession"
+    },
+    {
+     "name": "go_name",
+     "type": "string",
+     "definition": "Term name"
+    },
+    {
+     "name": "ontology",
+     "type": "string",
+     "definition": "GO namespace"
+    }
+   ]
+  },
+  "id_ref": {
+   "primary_key": "id",
+   "purpose": "Serves as a central \u201ccross-walk\u201d table that links BV-BRC features to a variety of external identifier systems (NCBI GeneID, Ensembl, Pfam, etc.), facilitating cross-database annotation, search, and data export.",
+   "fields": [
+    {
+     "name": "id",
+     "type": "string",
+     "definition": "Primary key"
+    },
+    {
+     "name": "id_type",
+     "type": "string",
+     "definition": "Type of external identifier"
+    },
+    {
+     "name": "id_value",
+     "type": "string",
+     "definition": "External identifier value"
+    },
+    {
+     "name": "uniprotkb_accession",
+     "type": "string",
+     "definition": "UniProtKB accession"
+    }
+   ]
+  },
+  "protein_family_ref": {
+   "primary_key": "family_id",
+   "purpose": "Provides the authoritative lookup table for every PATRIC protein-family accession, recording its descriptive name and the namespace (global PGFam vs. local PLFam). This enables BV-BRC to map genome features to families, power pan-genome tools, and generate family-based annotations.",
+   "fields": [
+    {
+     "name": "family_id",
+     "type": "string",
+     "definition": "Protein-family identifier"
+    },
+    {
+     "name": "family_product",
+     "type": "string",
+     "definition": "Canonical family product name"
+    },
+    {
+     "name": "family_type",
+     "type": "string",
+     "definition": "Family namespace"
+    }
+   ]
+  },
+  "misc_niaid_sgc": {
+   "primary_key": "target_id",
+   "purpose": "Tracks gene/protein targets selected by the NIAID Structural Genomics Centers (SGC) for clone production, expression trials and structure determination. Provides BV-BRC users with quick insight into clone/protein availability and project status for potential reagent requests or drug-target prioritisation.",
+   "fields": [
+    {
+     "name": "gene_symbol_collection",
+     "type": "string[]",
+     "definition": "Gene symbols associated with the target"
+    },
+    {
+     "name": "genus",
+     "type": "string",
+     "definition": "Genus name of source organism"
+    },
+    {
+     "name": "has_clones",
+     "type": "string",
+     "definition": "Clone availability flag"
+    },
+    {
+     "name": "has_proteins",
+     "type": "string",
+     "definition": "Purified-protein availability flag"
+    },
+    {
+     "name": "selection_criteria",
+     "type": "string",
+     "definition": "Target-selection rationale"
+    },
+    {
+     "name": "species",
+     "type": "string",
+     "definition": "Full species name"
+    },
+    {
+     "name": "strain",
+     "type": "string",
+     "definition": "Strain / isolate designation"
+    },
+    {
+     "name": "target_id",
+     "type": "string",
+     "definition": "Primary key (SGC target accession)"
+    },
+    {
+     "name": "target_status",
+     "type": "string",
+     "definition": "Pipeline status"
+    }
+   ]
+  },
+  "spike_variant": {
+   "primary_key": "id",
+   "purpose": "Tracks month-by-month global and regional statistics for notable SARS-CoV-2 spike-protein variants\u2014capturing their defining amino-acid changes, prevalence, growth rates, and lineage diversity\u2014so BV-BRC users can monitor emerging variants of concern.",
+   "fields": [
+    {
+     "name": "aa_variant",
+     "type": "string",
+     "definition": "Amino-acid change(s) that define the spike variant"
+    },
+    {
+     "name": "country",
+     "type": "string (ci)",
+     "definition": "Country with highest prevalence during the reporting month"
+    },
+    {
+     "name": "growth_rate",
+     "type": "number",
+     "definition": "Estimated week-over-week growth rate"
+    },
+    {
+     "name": "id",
+     "type": "string",
+     "definition": "Primary key"
+    },
+    {
+     "name": "lineage_count",
+     "type": "integer",
+     "definition": "Number of distinct Pango lineages carrying this variant in the given month"
+    },
+    {
+     "name": "month",
+     "type": "string",
+     "definition": "Reporting month"
+    },
+    {
+     "name": "prevalence",
+     "type": "number",
+     "definition": "Percentage of worldwide isolates in month that carry aa_variant"
+    },
+    {
+     "name": "region",
+     "type": "string (ci)",
+     "definition": "WHO/CDC broad region"
+    },
+    {
+     "name": "sequence_features",
+     "type": "string[]",
+     "definition": "Associated sequence-feature IDs"
+    },
+    {
+     "name": "total_isolates",
+     "type": "integer",
+     "definition": "Total number of genomes analysed for the month"
+    }
+   ]
+  },
+  "spike_lineage": {
+   "primary_key": "id",
+   "purpose": "Tracks month-by-month global and regional statistics for SARS-CoV-2 Pango lineages, including growth rates, prevalence, VOC status and defining spike-mutation sets \u2014 enabling BV-BRC users to monitor emerging or declining lineages of concern.",
+   "fields": [
+    {
+     "name": "country",
+     "type": "string (ci)",
+     "definition": "Country with highest prevalence for this lineage in the reporting month"
+    },
+    {
+     "name": "growth_rate",
+     "type": "number",
+     "definition": "Week-over-week growth factor"
+    },
+    {
+     "name": "id",
+     "type": "string",
+     "definition": "Primary key"
+    },
+    {
+     "name": "lineage",
+     "type": "string",
+     "definition": "Pango/WHO lineage designation"
+    },
+    {
+     "name": "lineage_count",
+     "type": "integer",
+     "definition": "Number of sub-lineages collapsed into this record for month"
+    },
+    {
+     "name": "lineage_of_concern",
+     "type": "string",
+     "definition": "VOC/VBM status"
+    },
+    {
+     "name": "month",
+     "type": "string",
+     "definition": "Reporting month"
+    },
+    {
+     "name": "prevalence",
+     "type": "number",
+     "definition": "Percentage of worldwide isolates in month that belong to this lineage"
+    },
+    {
+     "name": "region",
+     "type": "string (ci)",
+     "definition": "WHO/CDC broad region"
+    },
+    {
+     "name": "sequence_features",
+     "type": "string[]",
+     "definition": "Defining mutations\u2019 sf_id list"
+    },
+    {
+     "name": "total_isolates",
+     "type": "integer",
+     "definition": "Total genomes analysed for the month"
+    }
+   ]
+  }
+ }
+}
