@@ -44,11 +44,15 @@ _BUILT_PATTERNS = [
     re.compile(r"^https://www\.bv-brc\.org/workspace/"),
     re.compile(r"^https://www\.bv-brc\.org/app/[A-Za-z0-9_]+/?$"),
 ]
-# Hosts that no longer resolve but still appear in retrieved documents
-# (BV-BRC-Docs capabilities_and_functionality.rst links docs.bv-brc.org 58
-# times; see current_plans/bvbrc_docs_issues.md).  Removed even when a tool
-# returned them.
-_DEAD_HOST_RE = re.compile(r"^https?://docs\.bv-brc\.org(/|$)", re.IGNORECASE)
+# Dead links that still appear in retrieved documents, removed even when a
+# tool returned them (current_plans/bvbrc_docs_issues.md): docs.bv-brc.org
+# has no DNS (capabilities_and_functionality.rst links it 58 times), and
+# www.bv-brc.org/contact is a 404 (privacy_policy.md; Contact Us is a form
+# in the site's About menu).
+_DEAD_HOST_RE = re.compile(
+    r"^https?://(docs\.bv-brc\.org(/|$)|www\.bv-brc\.org/contact/?$)",
+    re.IGNORECASE,
+)
 _DOI_URL_RE = re.compile(r"^https?://(dx\.)?doi\.org/(10\..+)$", re.IGNORECASE)
 
 

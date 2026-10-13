@@ -175,3 +175,9 @@ def test_dead_docs_host_is_removed_even_when_a_tool_returned_it():
     assert removed == [url]
     assert "docs.bv-brc.org" not in text
     assert "(link removed)" in text
+
+
+def test_contact_404_is_removed_even_when_a_tool_returned_it():
+    url = "https://www.bv-brc.org/contact"
+    text, removed = filter_answer(f"[Contact Us page](<{url}>)", collect_known_links([{"content": url}]))
+    assert removed == [url] and text == "Contact Us page"
