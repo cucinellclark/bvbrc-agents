@@ -123,7 +123,7 @@ async def plan_only(
             if k not in (
                 "page_context", "images",
                 "conversation_summary", "recent_messages",
-                "parsed_documents", "attached_files", "handoff",
+                "parsed_documents", "attached_files", "handoff", "llm_override", "llm_options",
             )
         }
         if ctx_for_prompt:

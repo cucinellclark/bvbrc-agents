@@ -212,7 +212,7 @@ async def run_agent(
             if k not in (
                 "workflow_context", "page_context", "images",
                 "conversation_summary", "recent_messages",
-                "parsed_documents", "attached_files", "handoff",
+                "parsed_documents", "attached_files", "handoff", "llm_override", "llm_options",
             )
         }
         if ctx_for_prompt:
@@ -246,7 +246,7 @@ async def run_agent(
         result_message_fn=_analysis_result_message,
         trim_messages=True,
         max_tool_result_chars=cfg.max_tool_result_chars,
-        excluded_context_keys={"workflow_context", "page_context", "images", "conversation_summary", "recent_messages", "parsed_documents", "attached_files", "handoff"},
+        excluded_context_keys={"workflow_context", "page_context", "images", "conversation_summary", "recent_messages", "parsed_documents", "attached_files", "handoff", "llm_override", "llm_options"},
         start_message="Analyzing job outputs...",
         done_message="Analysis complete.",
     )

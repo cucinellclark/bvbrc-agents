@@ -12,6 +12,7 @@ from openai import AsyncOpenAI
 from data_agent.models import AgentConfig
 from llm_config import get_excluded_params, get_temperature_override, uses_max_completion_tokens
 from agent_utils import llm_call_with_retry, llm_stream_with_retry
+from shared.agent_utils import thinking_extra_body
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,10 @@ def _build_kwargs(
     if tools:
         kwargs["tools"] = tools
         kwargs["tool_choice"] = tool_choice or "auto"
+
+    extra_body = thinking_extra_body(config.llm_model, getattr(config, "disable_thinking", False))
+    if extra_body:
+        kwargs["extra_body"] = extra_body
 
     return kwargs
 

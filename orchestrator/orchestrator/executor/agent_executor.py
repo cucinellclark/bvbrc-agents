@@ -171,6 +171,15 @@ async def execute_agent_step(
     if handoff:
         context_data["handoff"] = handoff
 
+    # D1: per-agent thinking switch from agents.yaml.
+    llm_options = {
+        key: True
+        for key in ("disable_thinking", "disable_thinking_classifier")
+        if getattr(agent.config, key, False)
+    }
+    if llm_options:
+        context_data["llm_options"] = llm_options
+
     if context_data:
         arguments["context"] = context_data
 

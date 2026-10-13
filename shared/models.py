@@ -151,6 +151,10 @@ class BaseAgentConfig(BaseModel):
     # The agent that handed this turn to us (F1), or None.  A recipient
     # cannot hand off again: execute_tool gives it the plain refusal.
     handoff_from: str | None = None
+    # D1: send chat_template_kwargs.enable_thinking=false on this agent's
+    # LLM calls (Qwen models only; see shared.agent_utils.thinking_extra_body).
+    disable_thinking: bool = False
+    disable_thinking_classifier: bool = False
 
 
 # ---------------------------------------------------------------------------

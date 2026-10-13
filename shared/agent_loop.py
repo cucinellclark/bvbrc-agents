@@ -152,7 +152,7 @@ async def run_agent_loop(
         excluded_context_keys = {
             "page_context", "images",
             "conversation_summary", "recent_messages",
-            "parsed_documents", "attached_files", "handoff",
+            "parsed_documents", "attached_files", "handoff", "llm_override", "llm_options",
         }
 
     # Build initial messages if the caller hasn't already set them up.

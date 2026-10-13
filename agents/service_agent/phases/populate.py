@@ -384,7 +384,7 @@ async def populate_and_submit(
             if k not in (
                 "page_context", "images",
                 "conversation_summary", "recent_messages",
-                "parsed_documents", "attached_files", "handoff",
+                "parsed_documents", "attached_files", "handoff", "llm_override", "llm_options",
                 "batch_mode",
             )
         }

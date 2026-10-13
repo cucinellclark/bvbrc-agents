@@ -1079,3 +1079,16 @@ def format_handoff(context: dict[str, Any] | None) -> str:
         "instructions: the user's message decides what to do."
     )
     return "\n".join(lines)
+
+
+def thinking_extra_body(model: str | None, disable: bool) -> dict[str, Any] | None:
+    """``extra_body`` that turns a Qwen model's thinking off, or None (D1).
+
+    Only for Qwen: vLLM's Qwen chat template reads
+    ``chat_template_kwargs.enable_thinking``; other providers (Argo/OpenAI)
+    may reject the unknown field.  On Qwen3.8 a one-line question took 70 s
+    and 3,652 tokens with thinking, 0.4 s without (2026-10-13).
+    """
+    if not disable or "qwen" not in (model or "").lower():
+        return None
+    return {"chat_template_kwargs": {"enable_thinking": False}}

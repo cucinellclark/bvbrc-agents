@@ -32,6 +32,9 @@ agents:
     auth_token_env: "BV_BRC_AUTH_TOKEN"
     chat_tool_params:
       agent_type: "data"
+    # D1 (2026-10-13): thinking off (Qwen only). Measured: 16/16 graded questions
+    # still pass, slowest 114 s -> 24 s. current_plans/user_testing_solutions.md D1.
+    disable_thinking: true
 
   service:
     name: "Service Agent"
@@ -53,6 +56,8 @@ agents:
     auth_token_env: "BV_BRC_AUTH_TOKEN"
     chat_tool_params:
       agent_type: "service"
+    # D1 (2026-10-13): thinking off for the intent classifier only; the populate loop keeps it.
+    disable_thinking_classifier: true
 
   workspace:
     name: "Workspace Agent"
@@ -74,6 +79,9 @@ agents:
     auth_token_env: "BV_BRC_AUTH_TOKEN"
     chat_tool_params:
       agent_type: "workspace"
+    # D1 (2026-10-13): thinking stays on; with it off this agent regressed
+    # (helpdesk skipped query_helpdesk; workspace lost the task). Analysis not measured.
+    disable_thinking: false
 
   helpdesk:
     name: "Helpdesk Agent"
@@ -96,6 +104,9 @@ agents:
     auth_token_env: "BV_BRC_AUTH_TOKEN"
     chat_tool_params:
       agent_type: "helpdesk"
+    # D1 (2026-10-13): thinking stays on; with it off this agent regressed
+    # (helpdesk skipped query_helpdesk; workspace lost the task). Analysis not measured.
+    disable_thinking: false
 
   analysis:
     name: "Analysis Agent"
@@ -117,6 +128,9 @@ agents:
     auth_token_env: "BV_BRC_AUTH_TOKEN"
     chat_tool_params:
       agent_type: "analysis"
+    # D1 (2026-10-13): thinking stays on; with it off this agent regressed
+    # (helpdesk skipped query_helpdesk; workspace lost the task). Analysis not measured.
+    disable_thinking: false
 
   planning:
     name: "Planning Agent"

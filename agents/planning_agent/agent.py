@@ -185,7 +185,7 @@ async def _analyze_and_plan(
             if k not in {
                 "page_context", "images",
                 "conversation_summary", "recent_messages",
-                "parsed_documents", "attached_files", "handoff",
+                "parsed_documents", "attached_files", "handoff", "llm_override", "llm_options",
             }
         }
         if ctx_for_prompt:
@@ -265,7 +265,7 @@ async def _plan_with_answers(
             if k not in {
                 "page_context", "images",
                 "conversation_summary", "recent_messages",
-                "parsed_documents", "attached_files", "handoff",
+                "parsed_documents", "attached_files", "handoff", "llm_override", "llm_options",
             }
         }
         if ctx_for_prompt:

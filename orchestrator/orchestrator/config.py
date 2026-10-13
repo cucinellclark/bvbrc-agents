@@ -47,6 +47,11 @@ class AgentConfig(BaseModel):
     chat_tool: str = "agent_chat"  # MCP tool name; kept for MCP rollback
     mcp_server_name: str | None = None  # MCP server prefix; kept for MCP rollback
     chat_tool_params: dict[str, Any] = Field(default_factory=dict)  # Extra params merged into agent_chat calls
+    # D1: turn the model's thinking off for this agent's calls (Qwen only;
+    # chat_template_kwargs.enable_thinking=false).  classifier_* applies to
+    # the service agent's intent classifier.
+    disable_thinking: bool = False
+    disable_thinking_classifier: bool = False
 
     @model_validator(mode="after")
     def _require_endpoint_for_mcp(self) -> "AgentConfig":

@@ -147,6 +147,13 @@ def _build_config_kwargs(
     if workspace_path:
         config_kwargs["workspace_path"] = workspace_path
 
+    # D1: thinking switch (agents.yaml -> executor -> context["llm_options"]).
+    llm_options = ctx.get("llm_options")
+    if isinstance(llm_options, dict):
+        for key in ("disable_thinking", "disable_thinking_classifier"):
+            if llm_options.get(key):
+                config_kwargs[key] = True
+
     # F1: an agent that received a handoff cannot hand off again.
     handoff = ctx.get("handoff")
     if isinstance(handoff, dict) and handoff.get("from"):

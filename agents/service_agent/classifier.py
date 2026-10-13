@@ -27,6 +27,7 @@ from llm_config import (
     uses_max_completion_tokens,
 )
 from agent_utils import llm_call_with_retry
+from shared.agent_utils import thinking_extra_body
 
 logger = logging.getLogger(__name__)
 
@@ -203,6 +204,12 @@ def _build_classifier_kwargs(
         kwargs["max_completion_tokens"] = 256
     elif "max_tokens" not in excluded:
         kwargs["max_tokens"] = 256
+
+    # D1: with thinking on, a 256-token budget is often spent before any JSON
+    # (about 47% of calls fell back to action=plan).
+    extra_body = thinking_extra_body(model, getattr(config, "disable_thinking_classifier", False))
+    if extra_body:
+        kwargs["extra_body"] = extra_body
 
     return kwargs
 
