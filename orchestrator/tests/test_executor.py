@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 from mcp.types import Tool as McpTool, CallToolResult, TextContent
 
 from orchestrator.config import AgentConfig, OrchestratorConfig
+from tests.conftest import make_test_config
 from orchestrator.events.events import EventType
 from orchestrator.events.stream import collect_events
 from orchestrator.executor.agent_executor import execute_agent_step
@@ -265,7 +266,7 @@ class TestExecutePlan:
     @pytest.mark.asyncio
     async def test_single_step_plan(self):
         """Test executing a single-step plan."""
-        config = OrchestratorConfig(
+        config = make_test_config(
             agents={
                 "data": AgentConfig(
                     name="Data",
@@ -299,7 +300,7 @@ class TestExecutePlan:
     @pytest.mark.asyncio
     async def test_unknown_agent_in_plan(self):
         """Test plan with unknown agent key."""
-        config = OrchestratorConfig(agents={}, health_check_interval=0)
+        config = make_test_config(agents={}, health_check_interval=0)
         registry = AgentRegistry(config)
 
         plan = Plan(
@@ -316,7 +317,7 @@ class TestExecutePlan:
     @pytest.mark.asyncio
     async def test_unhealthy_agent_warning(self):
         """Test that unhealthy agents get a warning but still execute."""
-        config = OrchestratorConfig(
+        config = make_test_config(
             agents={
                 "data": AgentConfig(
                     name="Data",

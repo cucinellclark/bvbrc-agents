@@ -23,6 +23,9 @@ agents:
 orchestrator:
   mcp_connect_timeout: 5
   health_check_interval: 30
+  routing_model: "test-routing-model"
+  routing_base_url: "http://routing.test/v1"
+  routing_api_key: "test-key"
 """
     config_file = tmp_path / "agents.yaml"
     config_file.write_text(yaml_content)
@@ -47,12 +50,23 @@ def test_missing_config_file():
 
 
 def test_empty_config(tmp_path):
-    """Test loading an empty config file."""
+    """A config with no agents loads; the routing model is still required."""
     config_file = tmp_path / "empty.yaml"
-    config_file.write_text("agents: {}\n")
+    config_file.write_text("agents: {}\norchestrator:\n" + """  routing_model: "test-routing-model"
+  routing_base_url: "http://routing.test/v1"
+  routing_api_key: "test-key"
+""")
 
     config = OrchestratorConfig.from_yaml(config_file)
     assert config.agents == {}
+
+
+def test_config_without_routing_model_is_rejected(tmp_path):
+    """Routing runs on its own model since dec38b6; there is no default."""
+    config_file = tmp_path / "no_routing.yaml"
+    config_file.write_text("agents: {}\n")
+    with pytest.raises(Exception, match="routing_model"):
+        OrchestratorConfig.from_yaml(config_file)
 
 
 def test_agent_config_defaults():
@@ -103,6 +117,11 @@ agents:
     protocol: "inprocess"
     chat_tool_params:
       agent_type: "helpdesk"
+
+orchestrator:
+  routing_model: "test-routing-model"
+  routing_base_url: "http://routing.test/v1"
+  routing_api_key: "test-key"
 """
     config_file = tmp_path / "agents.yaml"
     config_file.write_text(yaml_content)

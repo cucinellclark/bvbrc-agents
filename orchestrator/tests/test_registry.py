@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from mcp.types import Tool as McpTool
 
 from orchestrator.config import AgentConfig, OrchestratorConfig
+from tests.conftest import make_test_config
 from orchestrator.registry.agent_handle import AgentHandle, InProcessAgentHandle
 from orchestrator.registry.agent_registry import AgentRegistry
 from orchestrator.events.events import EventType
@@ -22,7 +23,7 @@ def _make_config(agents: dict | None = None) -> OrchestratorConfig:
                 capabilities=["testing"],
             )
         }
-    return OrchestratorConfig(agents=agents, health_check_interval=0)
+    return make_test_config(agents=agents, health_check_interval=0)
 
 
 def _make_mcp_tool(name: str, description: str = "") -> McpTool:

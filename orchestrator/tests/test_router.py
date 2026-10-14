@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from mcp.types import Tool as McpTool
 
 from orchestrator.config import AgentConfig, OrchestratorConfig
+from tests.conftest import make_test_config
 from orchestrator.llm.client import LLMClient
 from orchestrator.models import OrchestratorRequest
 from orchestrator.registry.agent_handle import AgentHandle
@@ -22,7 +23,7 @@ from orchestrator.router.router import route, _parse_routing_response
 
 def _make_registry_with_agents() -> AgentRegistry:
     """Create a registry with mock healthy agents."""
-    config = OrchestratorConfig(
+    config = make_test_config(
         agents={
             "data": AgentConfig(
                 name="Data Agent",
@@ -245,7 +246,7 @@ class TestRoute:
     @pytest.mark.asyncio
     async def test_no_healthy_agents(self):
         """Test routing with no healthy agents."""
-        config = OrchestratorConfig(agents={}, health_check_interval=0)
+        config = make_test_config(agents={}, health_check_interval=0)
         registry = AgentRegistry(config)
         llm = _make_llm_client()
         request = OrchestratorRequest(query="hello")

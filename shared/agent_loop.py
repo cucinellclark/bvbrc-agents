@@ -46,6 +46,8 @@ from shared.agent_messages import (
     EMPTY_ANSWER_NUDGE,
     MAX_ITERATIONS_SYNTHESIS,
     MAX_ITERATIONS_FALLBACK,
+    STUCK_ANSWER_NOW,
+    STUCK_FALLBACK,
 )
 from shared.models import BaseAgentState, BaseAgentConfig, ToolCall
 from shared.tools import execute_tool, is_handoff_result, truncate_result, result_char_limit
@@ -89,6 +91,41 @@ def _default_result_message(tc: ToolCall, result: Any) -> str:
         if result.get("error"):
             msg = "Query returned an error, adjusting approach..."
     return msg
+
+
+async def force_answer(
+    state: BaseAgentState,
+    client: Any,
+    config: BaseAgentConfig,
+    chat_completion_fn: Callable,
+    tool_schemas: list[dict] | None = None,
+    trim_messages: bool = False,
+) -> None:
+    """End a stuck loop: one nudge, one call with tools off, then stop.
+
+    Sets ``state.final_answer`` and ``state.status = "completed"``; an empty
+    or failed answer falls back to a fixed text naming the tools that ran.
+    """
+    state.add_user_message(STUCK_ANSWER_NOW)
+    messages = state.messages
+    if trim_messages:
+        messages = trim_messages_to_fit(state.messages, tool_schemas, config.max_context_tokens)
+    content = ""
+    try:
+        response = await chat_completion_fn(
+            client=client, messages=messages, tools=tool_schemas, config=config, tool_choice="none",
+        )
+        content = (get_response_content(response) or "").strip()
+    except Exception as exc:  # the fallback below still answers
+        logger.warning("Forced answer after a stuck loop failed: %s", exc)
+    if not content:
+        steps = "\n".join(
+            f"- `{te.tool_call.name}`" + (f": failed — {str(te.error)[:120]}" if te.error else "")
+            for te in state.tool_executions[-10:]
+        ) or "- (no tool ran)"
+        content = STUCK_FALLBACK.format(steps=steps)
+    state.final_answer = content
+    state.status = "completed"
 
 
 async def run_agent_loop(
@@ -294,7 +331,8 @@ async def run_agent_loop(
 
         # 3. EXECUTE -- Run each tool call and feed results back
         should_exit = False
-        for tc in tool_calls:
+        stuck = False
+        for i, tc in enumerate(tool_calls):
             fp = call_fingerprint(tc)
 
             # --- Duplicate detection ---
@@ -307,6 +345,13 @@ async def run_agent_loop(
                     ),
                 )
                 if duplicate_count >= stuck_threshold:
+                    # Every call in the response needs a result before the
+                    # next LLM call.
+                    for rest in tool_calls[i + 1:]:
+                        state.add_tool_result(
+                            rest.id, json.dumps({"_skipped": True, "_message": STUCK_ANSWER_NOW})
+                        )
+                    stuck = True
                     break
                 continue
 
@@ -394,6 +439,19 @@ async def run_agent_loop(
             state.add_tool_result(tc.id, result_str)
 
         if should_exit:
+            break
+
+        if stuck:
+            # Before 2026-10-14 the break above only left this response's
+            # tool calls: the next LLM call repeated the same call, ~90
+            # times in one benchmark task (2.4 M prompt tokens, 300 s cap).
+            logger.warning(
+                "Agent repeated a tool call %d time(s); forcing an answer", duplicate_count
+            )
+            await force_answer(
+                state, client, config, chat_completion_fn, tool_schemas,
+                trim_messages=trim_messages,
+            )
             break
 
     else:

@@ -274,7 +274,8 @@ class TestWorkspacePrompt:
     def test_strategy_section_content(self):
         from workspace_agent.prompts.system import _STRATEGY
 
-        assert "START BROAD" in _STRATEGY
+        # "START BROAD" became "SESSION OR HOME" (session-first discovery).
+        assert "SESSION OR HOME" in _STRATEGY
         assert "NARROW DOWN" in _STRATEGY
         assert "USE THE RIGHT FILTER" in _STRATEGY
 
@@ -304,9 +305,12 @@ class TestWorkspacePrompt:
 
 
 class TestServicePrompt:
-    def test_phase1_prompt_callable(self):
-        from service_agent.prompts.phase1 import build_phase1_prompt
+    def test_populate_prompt_callable(self):
+        # The legacy phase1 prompt was archived (old_service_documentation/);
+        # the populate loop's prompt is the service agent's only prompt.
+        from service_agent.prompts.populate import build_populate_prompt
 
-        prompt = build_phase1_prompt()
-        assert isinstance(prompt, str)
-        assert "workflow" in prompt.lower() or "service" in prompt.lower()
+        for mode in ("plan", "execute"):
+            prompt = build_populate_prompt(execution_mode=mode)
+            assert isinstance(prompt, str) and "== WORKFLOW ==" in prompt
+            assert "== EXECUTION MODE ==" in prompt

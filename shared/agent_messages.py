@@ -69,6 +69,24 @@ STUCK_IN_LOOP_DECOMPOSE = (
     "information from the user, ask a clear question."
 )
 
+# Shared loop (data / workspace / helpdesk / analysis) and the planning loop:
+# the model kept repeating a call it had already made.  Sent as a user
+# message (vLLM/Qwen reject mid-conversation system messages), then one
+# final call with tool_choice="none".
+STUCK_ANSWER_NOW = (
+    "[SYSTEM CHECK — not from the user. Do not acknowledge or quote this note.] "
+    "You have repeated a tool call you already made, and repeating it will not "
+    "give a different result. Do not call any more tools. Answer the user now "
+    "with what the tool results above show; if something is still missing, say "
+    "exactly what and suggest the next request."
+)
+
+# Shown when even the forced answer comes back empty.
+STUCK_FALLBACK = (
+    "I kept repeating the same lookup and stopped. Here is what I ran:\n\n{steps}\n\n"
+    "Please ask again more narrowly, for example with a count first or a smaller set."
+)
+
 STUCK_IN_LOOP_BUILD = (
     "You are stuck in a loop. STOP calling tools. If you need "
     "information from the user to complete this step, ask a "

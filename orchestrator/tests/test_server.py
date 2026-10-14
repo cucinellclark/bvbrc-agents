@@ -17,6 +17,7 @@ from httpx import ASGITransport, AsyncClient
 from mcp.types import Tool as McpTool
 
 from orchestrator.config import AgentConfig, OrchestratorConfig
+from tests.conftest import make_test_config, mock_llm_client
 from orchestrator.events.events import Event, EventType
 from orchestrator.llm.client import LLMClient
 from orchestrator.models import OrchestratorRequest, OrchestratorResponse
@@ -29,6 +30,25 @@ from orchestrator.server import AppState, _state, create_app, _resolve_auth_toke
 
 TEST_INTERNAL_KEY = "test-internal-key"
 
+# Since 2026-10-08 every /orchestrate request needs a BV-BRC token and a
+# complete llm_override on an allowed host (the gateway always sends both).
+TEST_TOKEN = "un=tester@patricbrc.org|tokenid=t|sig=s"
+TEST_LLM_OVERRIDE = {"base_url": "http://llm.test/v1", "api_key": "k", "model": "m", "max_tokens": 1024}
+
+
+def _req(body: dict, token: bool = True) -> dict:
+    """A request body the server accepts: the test's fields plus token and model."""
+    base = {"llm_override": TEST_LLM_OVERRIDE}
+    if token:
+        base["auth_token"] = TEST_TOKEN
+    return {**base, **body}
+
+
+@pytest.fixture(autouse=True)
+def _no_admission_proxy(monkeypatch):
+    # LLM_ADMISSION_URL rewrites base_url and would miss the cached mock.
+    monkeypatch.delenv("LLM_ADMISSION_URL", raising=False)
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -37,7 +57,7 @@ TEST_INTERNAL_KEY = "test-internal-key"
 
 def _make_mock_registry() -> AgentRegistry:
     """Create a registry with mock healthy agents (no real MCP connections)."""
-    config = OrchestratorConfig(
+    config = make_test_config(
         agents={
             "data": AgentConfig(
                 name="Data Agent",
@@ -71,7 +91,7 @@ def _make_mock_registry() -> AgentRegistry:
 
 def _make_mock_llm(routing_response: str | None = None) -> LLMClient:
     """Create a mock LLM client."""
-    client = MagicMock(spec=LLMClient)
+    client = mock_llm_client()
     if routing_response:
         client.complete = AsyncMock(return_value=routing_response)
     else:
@@ -102,7 +122,15 @@ def _setup_ready_state(
     """Set up _state as if the server has started and is ready."""
     _state.registry = registry or _make_mock_registry()
     _state.llm = llm or _make_mock_llm()
-    _state.config = OrchestratorConfig(
+    # Routing runs on its own client since dec38b6; the server is not ready
+    # without one.  The tests route with the same mock, and the per-request
+    # model (TEST_LLM_OVERRIDE) resolves to it through the client cache.
+    _state.routing_llm = _state.llm
+    _state.llm_cache = {
+        (TEST_LLM_OVERRIDE["base_url"], TEST_LLM_OVERRIDE["api_key"],
+         TEST_LLM_OVERRIDE["model"], TEST_LLM_OVERRIDE["max_tokens"]): _state.llm,
+    }
+    _state.config = make_test_config(
         agents={
             "data": AgentConfig(
                 name="Data Agent",
@@ -118,6 +146,7 @@ def _setup_ready_state(
             ),
         },
         health_check_interval=0,
+        llm_allowed_hosts=["llm.test"],
     )
     _state.ready = True
     _state.startup_time = 1000000.0
@@ -128,6 +157,8 @@ def _teardown_state() -> None:
     """Reset _state to uninitialized."""
     _state.registry = None
     _state.llm = None
+    _state.routing_llm = None
+    _state.llm_cache = None
     _state.config = None
     _state.ready = False
     _state.startup_time = 0.0
@@ -242,8 +273,9 @@ class TestHealthEndpoint:
     def test_health_includes_llm_info(self, ready_client):
         resp = ready_client.get("/health")
         body = resp.json()
-        assert "llm" in body
-        assert body["llm"]["model"] is not None
+        # No default chat model (models arrive per request); routing has its own.
+        assert body["llm"]["mode"] == "per_request_override"
+        assert body["routing_llm"]["model"] is not None and body["routing_llm"]["active"]
 
 
 # ---------------------------------------------------------------------------
@@ -287,7 +319,7 @@ class TestOrchestrateEndpoint:
         """Route that produces a direct response (no agent invoked)."""
         resp = ready_client.post(
             "/orchestrate",
-            json={"query": "Hello!"},
+            json=_req({"query": "Hello!"}),
         )
         assert resp.status_code == 200
         body = resp.json()
@@ -320,7 +352,7 @@ class TestOrchestrateEndpoint:
 
         resp = client.post(
             "/orchestrate",
-            json={"query": "Find genomes"},
+            json=_req({"query": "Find genomes"}),
         )
         assert resp.status_code == 200
         body = resp.json()
@@ -355,7 +387,7 @@ class TestOrchestrateEndpoint:
 
         resp = client.post(
             "/orchestrate",
-            json={"query": "Find genomes", "auth_token": "my-token"},
+            json=_req({"query": "Find genomes", "auth_token": "my-token"}),
         )
         assert resp.status_code == 200
 
@@ -380,7 +412,7 @@ class TestOrchestrateEndpoint:
         with patch("orchestrator.server._resolve_auth_token", wraps=_resolve_auth_token) as mock_resolve:
             resp = client.post(
                 "/orchestrate",
-                json={"query": "Hello"},
+                json=_req({"query": "Hello"}, token=False),
                 headers={"Authorization": "Bearer header-token"},
             )
             assert resp.status_code == 200
@@ -396,7 +428,7 @@ class TestOrchestrateEndpoint:
     def test_orchestrate_when_not_ready(self, unready_client):
         resp = unready_client.post(
             "/orchestrate",
-            json={"query": "Hello"},
+            json=_req({"query": "Hello"}),
         )
         assert resp.status_code == 503
 
@@ -404,7 +436,7 @@ class TestOrchestrateEndpoint:
         """Request with full conversation context."""
         resp = ready_client.post(
             "/orchestrate",
-            json={
+            json=_req({
                 "query": "Hello",
                 "session_id": "sess-123",
                 "user_id": "user-456",
@@ -413,7 +445,7 @@ class TestOrchestrateEndpoint:
                     {"role": "user", "content": "Hi"},
                     {"role": "assistant", "content": "Hello!"},
                 ],
-            },
+            }),
         )
         assert resp.status_code == 200
 
@@ -426,7 +458,7 @@ class TestOrchestrateEndpoint:
         )
 
         # LLM should not be called for routing (forced), but complete still needs mock
-        llm = MagicMock(spec=LLMClient)
+        llm = mock_llm_client()
         llm.complete = AsyncMock(return_value="unused")
         llm.close = AsyncMock()
 
@@ -439,7 +471,7 @@ class TestOrchestrateEndpoint:
 
         resp = client.post(
             "/orchestrate",
-            json={"query": "Assemble genome", "target_agent": "service"},
+            json=_req({"query": "Assemble genome", "target_agent": "service"}),
         )
         assert resp.status_code == 200
         body = resp.json()
@@ -467,7 +499,7 @@ class TestOrchestrateStreamEndpoint:
         """Stream events for a direct response."""
         resp = ready_client.post(
             "/orchestrate/stream",
-            json={"query": "Hello!"},
+            json=_req({"query": "Hello!"}),
         )
         assert resp.status_code == 200
         assert "text/event-stream" in resp.headers.get("content-type", "")
@@ -507,7 +539,7 @@ class TestOrchestrateStreamEndpoint:
 
         resp = client.post(
             "/orchestrate/stream",
-            json={"query": "Find genomes"},
+            json=_req({"query": "Find genomes"}),
         )
         assert resp.status_code == 200
 
@@ -528,7 +560,7 @@ class TestOrchestrateStreamEndpoint:
     def test_stream_when_not_ready(self, unready_client):
         resp = unready_client.post(
             "/orchestrate/stream",
-            json={"query": "Hello"},
+            json=_req({"query": "Hello"}),
         )
         assert resp.status_code == 503
 
@@ -536,7 +568,7 @@ class TestOrchestrateStreamEndpoint:
         """Each SSE message should have an `event:` field with the EventType value."""
         resp = ready_client.post(
             "/orchestrate/stream",
-            json={"query": "Hello"},
+            json=_req({"query": "Hello"}),
         )
         events = _parse_sse_events(resp.text)
         for event in events:
@@ -573,7 +605,7 @@ class TestOrchestrateStreamEndpoint:
 
         resp = client.post(
             "/orchestrate/stream",
-            json={"query": "Find genomes", "auth_token": "stream-token"},
+            json=_req({"query": "Find genomes", "auth_token": "stream-token"}),
         )
         assert resp.status_code == 200
 
@@ -594,7 +626,7 @@ class TestErrorHandling:
     def test_orchestration_exception_returns_500(self, app):
         """Internal exception during orchestration returns 500."""
         registry = _make_mock_registry()
-        llm = MagicMock(spec=LLMClient)
+        llm = mock_llm_client()
         llm.complete = AsyncMock(side_effect=RuntimeError("LLM exploded"))
         llm.close = AsyncMock()
 
@@ -607,7 +639,7 @@ class TestErrorHandling:
 
         resp = client.post(
             "/orchestrate",
-            json={"query": "test"},
+            json=_req({"query": "test"}),
         )
         # The orchestrate_to_response catches internal errors and returns
         # an error status in the response, not a 500 HTTP error.
@@ -627,7 +659,7 @@ class TestErrorHandling:
     def test_stream_error_emits_error_event(self, app):
         """SSE stream emits error events on failure."""
         registry = _make_mock_registry()
-        llm = MagicMock(spec=LLMClient)
+        llm = mock_llm_client()
         llm.complete = AsyncMock(side_effect=RuntimeError("LLM down"))
         llm.close = AsyncMock()
 
@@ -640,7 +672,7 @@ class TestErrorHandling:
 
         resp = client.post(
             "/orchestrate/stream",
-            json={"query": "test"},
+            json=_req({"query": "test"}),
         )
         assert resp.status_code == 200
 
@@ -680,7 +712,7 @@ class TestResponseModel:
             headers={INTERNAL_KEY_HEADER: TEST_INTERNAL_KEY},
         )
 
-        resp = client.post("/orchestrate", json={"query": "test"})
+        resp = client.post("/orchestrate", json=_req({"query": "test"}))
         body = resp.json()
 
         # All OrchestratorResponse fields should be present

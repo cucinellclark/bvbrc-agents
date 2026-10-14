@@ -42,6 +42,7 @@ from agent_messages import (  # noqa: E402
     DUPLICATE_CALL_WARNING,
     MAX_ITERATIONS_SYNTHESIS,
     MAX_ITERATIONS_FALLBACK,
+    STUCK_ANSWER_NOW,
 )
 
 from planning_agent.llm_client import (  # noqa: E402
@@ -637,7 +638,8 @@ async def _run_planning_loop(
         )
 
         # Execute each tool call
-        for tc in tool_calls:
+        stuck = False
+        for i, tc in enumerate(tool_calls):
             fp = call_fingerprint(tc)
 
             # Duplicate detection
@@ -653,6 +655,11 @@ async def _run_planning_loop(
                     ),
                 )
                 if duplicate_count >= 2:
+                    for rest in tool_calls[i + 1:]:
+                        state.add_tool_result(
+                            rest.id, json.dumps({"_skipped": True, "_message": STUCK_ANSWER_NOW})
+                        )
+                    stuck = True
                     break
                 continue
 
@@ -752,6 +759,15 @@ async def _run_planning_loop(
                 else json.dumps(result, default=str)
             )
             state.add_tool_result(tc.id, result_str)
+
+        if stuck:
+            # The break above used to leave only this response's tool calls;
+            # the next LLM call repeated the same call (see shared/agent_loop.py).
+            from shared.agent_loop import force_answer
+
+            logger.warning("Planning agent repeated a tool call; forcing an answer")
+            await force_answer(state, client, config, chat_completion, TOOL_SCHEMAS)
+            break
 
     else:
         # Max iterations reached

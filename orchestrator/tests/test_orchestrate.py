@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from mcp.types import Tool as McpTool
 
 from orchestrator.config import AgentConfig, OrchestratorConfig
+from tests.conftest import make_test_config, mock_llm_client
 from orchestrator.events.events import EventType
 from orchestrator.events.stream import collect_events
 from orchestrator.llm.client import LLMClient
@@ -22,7 +23,7 @@ from orchestrator.registry.agent_registry import AgentRegistry
 
 def _make_registry() -> AgentRegistry:
     """Create a registry with mock healthy agents."""
-    config = OrchestratorConfig(
+    config = make_test_config(
         agents={
             "data": AgentConfig(
                 name="Data Agent",
@@ -70,7 +71,7 @@ def _make_agent_result(
 
 def _make_llm_client(routing_response: str, synthesis_response: str = "") -> LLMClient:
     """Create a mock LLM client that returns different responses for routing vs synthesis."""
-    client = MagicMock(spec=LLMClient)
+    client = mock_llm_client()
     # The first call is for routing, subsequent calls are for synthesis
     client.complete = AsyncMock(side_effect=[routing_response, synthesis_response])
     return client
@@ -89,7 +90,7 @@ class TestOrchestrate:
             "reasoning": "greeting",
             "direct_response": "Hello! I can help you with BV-BRC data and services.",
         })
-        llm = MagicMock(spec=LLMClient)
+        llm = mock_llm_client()
         llm.complete = AsyncMock(return_value=llm_response)
 
         request = OrchestratorRequest(query="Hello!")
@@ -127,7 +128,7 @@ class TestOrchestrate:
             "agent_key": "data",
             "task": "Find E. coli genomes",
         })
-        llm = MagicMock(spec=LLMClient)
+        llm = mock_llm_client()
         llm.complete = AsyncMock(return_value=routing_response)
 
         request = OrchestratorRequest(query="Find E. coli genomes")
@@ -166,7 +167,7 @@ class TestOrchestrate:
         })
         # Need synthesis response too since error triggers LLM synthesis
         synthesis_response = "I encountered an error while searching."
-        llm = MagicMock(spec=LLMClient)
+        llm = mock_llm_client()
         llm.complete = AsyncMock(
             side_effect=[routing_response, synthesis_response]
         )
@@ -189,7 +190,7 @@ class TestOrchestrate:
             return_value=_make_agent_result("Workflow planned.", "completed")
         )
 
-        llm = MagicMock(spec=LLMClient)
+        llm = mock_llm_client()
         llm.complete = AsyncMock(return_value="unused")
 
         request = OrchestratorRequest(
@@ -227,7 +228,7 @@ class TestOrchestrateToResponse:
             "agent_key": "data",
             "task": "find genomes",
         })
-        llm = MagicMock(spec=LLMClient)
+        llm = mock_llm_client()
         llm.complete = AsyncMock(return_value=routing_response)
 
         request = OrchestratorRequest(query="Find genomes")
@@ -251,7 +252,7 @@ class TestOrchestrateToResponse:
             "reasoning": "greeting",
             "direct_response": "Hello!",
         })
-        llm = MagicMock(spec=LLMClient)
+        llm = mock_llm_client()
         llm.complete = AsyncMock(return_value=llm_response)
 
         request = OrchestratorRequest(query="Hi")

@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from mcp.types import Tool as McpTool
 
 from orchestrator.config import AgentConfig, OrchestratorConfig
+from tests.conftest import make_test_config
 from orchestrator.events.events import EventType
 from orchestrator.events.stream import collect_events
 from orchestrator.executor.agent_executor import execute_agent_step
@@ -22,7 +23,7 @@ from orchestrator.registry.agent_handle import AgentHandle
 from orchestrator.registry.agent_registry import AgentRegistry
 from orchestrator.router.models import Plan, Step
 from orchestrator.router.prompts import build_routing_prompt
-from orchestrator.router.router import _fallback_routing, _parse_routing_response
+from orchestrator.router.router import _parse_routing_response
 
 
 # --- Fixtures ---
@@ -30,7 +31,7 @@ from orchestrator.router.router import _fallback_routing, _parse_routing_respons
 
 def _make_registry_with_all_agents() -> AgentRegistry:
     """Create a registry with mock healthy agents including analysis."""
-    config = OrchestratorConfig(
+    config = make_test_config(
         agents={
             "data": AgentConfig(
                 name="Data Agent",
@@ -153,35 +154,11 @@ def _make_analysis_mcp_result(
 
 
 class TestAnalysisRouting:
-    """Test that analysis-related queries route to the analysis agent."""
+    """Test that analysis-related queries route to the analysis agent.
 
-    def test_fallback_routing_analyze_results(self):
-        """'analyze my assembly results' routes to analysis agent."""
-        registry = _make_registry_with_all_agents()
-        result = _fallback_routing("analyze my assembly results", registry)
-        assert result.decision == "agent"
-        assert result.plan.steps[0].agent_key == "analysis"
-
-    def test_fallback_routing_summarize_outputs(self):
-        """'summarize the output files' routes to analysis agent."""
-        registry = _make_registry_with_all_agents()
-        result = _fallback_routing("summarize the output from my job", registry)
-        assert result.decision == "agent"
-        assert result.plan.steps[0].agent_key == "analysis"
-
-    def test_fallback_routing_what_did_job_find(self):
-        """'what did my BLAST job find' routes to analysis agent."""
-        registry = _make_registry_with_all_agents()
-        result = _fallback_routing("what did my BLAST job results show", registry)
-        assert result.decision == "agent"
-        assert result.plan.steps[0].agent_key == "analysis"
-
-    def test_fallback_routing_job_output(self):
-        """'look at the job output' routes to analysis agent."""
-        registry = _make_registry_with_all_agents()
-        result = _fallback_routing("look at the job output from my analysis", registry)
-        assert result.decision == "agent"
-        assert result.plan.steps[0].agent_key == "analysis"
+    The keyword fallback router (_fallback_routing) was removed; routing is
+    the LLM router's, so only its response parsing is tested here.
+    """
 
     def test_llm_routing_analysis_query(self):
         """Test LLM JSON response routes to analysis agent."""
@@ -196,13 +173,6 @@ class TestAnalysisRouting:
         assert result.decision == "agent"
         assert result.plan is not None
         assert result.plan.steps[0].agent_key == "analysis"
-
-    def test_service_routing_not_confused_with_analysis(self):
-        """Action-oriented queries should route to service, not analysis."""
-        registry = _make_registry_with_all_agents()
-        result = _fallback_routing("run blast alignment and build a phylogenetic tree", registry)
-        assert result.decision == "agent"
-        assert result.plan.steps[0].agent_key == "service"
 
 
 # --- Tests: Routing prompt includes analysis agent ---

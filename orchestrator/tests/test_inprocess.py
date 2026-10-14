@@ -102,10 +102,11 @@ class TestDispatchAgent:
         ):
             from shared.agent_dispatch import dispatch_agent
 
+            # Agents have no default model: every call carries llm_override.
             result = await dispatch_agent(
                 "helpdesk",
                 "What is BV-BRC?",
-                {},
+                {"llm_override": {"base_url": "http://llm.test/v1", "api_key": "k", "model": "m"}},
                 "test-token",
             )
 
