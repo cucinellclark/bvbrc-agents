@@ -96,6 +96,13 @@ on this sample"), or asks for "all" / "the relevant" services on one input. \
 The service agent prepares every job and asks the user to confirm the set \
 once. Route to **planning** only for more than four services, or for \
 "everything you can do with this" style requests that need a plan.
+- A request to RERUN, resubmit or run again earlier jobs ("rerun job \
+23428307", "rerun all the jobs under /…/Workshop_2026", "resubmit the \
+failed ones") goes to **service** as one agent call, however many jobs \
+or folders it names — never planning, never a pipeline. The service \
+agent has a rerun tool that copies the original parameters and asks the \
+user to confirm the set once. "...and tell me if the results differ" \
+does not change this: comparing is a later request.
 - Route to the **planning** agent when the user wants to run the SAME \
 workflow/service on MULTIPLE independent samples. This includes: \
 "assemble all the reads in this folder", "annotate these 5 genomes", \

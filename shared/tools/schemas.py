@@ -3,10 +3,10 @@
 This is the SINGLE SOURCE OF TRUTH for tool schemas. Every agent uses these
 definitions. No per-agent schema variants.
 
-28 tools total:
+29 tools total:
   Data:      search_data, facet_query, probe_data, list_collections, get_collection_fields
   Workspace: workspace_browse, get_file_metadata, read_file_preview, search_file, summarize_file
-  GoWe:      list_gowe_workflows, get_workflow_inputs, submit_gowe_job
+  GoWe:      list_gowe_workflows, get_workflow_inputs, submit_gowe_job, rerun_jobs
   Groups:    create_group, list_groups, get_group_ids
   SRA:       get_sra_metadata
   Genome:    find_similar_genomes
@@ -596,6 +596,55 @@ SUBMIT_GOWE_JOB = {
 # ===================================================================
 # GROUP TOOLS
 # ===================================================================
+
+RERUN_JOBS = {
+    "type": "function",
+    "function": {
+        "name": "rerun_jobs",
+        "description": (
+            "Prepare a rerun of earlier BV-BRC jobs with their original "
+            "parameters. Give a workspace folder (every job result under it, "
+            "up to 4 levels deep) and/or task ids. The tool reads each job's "
+            "original app and parameters, finds the matching workflow, and "
+            "returns prepared_actions: one job per original, outputs in this "
+            "chat's folder named <original>_rerun. It submits NOTHING; the "
+            "user confirms the whole set with one question. Call it ONCE for a "
+            "rerun / resubmit / run-again request instead of browsing the "
+            "folder, calling get_job_details or building submit_gowe_job "
+            "calls yourself. Then list each prepared job, each skipped job "
+            "with its reason, and any collapsed duplicates. errorType "
+            "TOO_MANY (more than 10 jobs) prepares nothing: ask the user which "
+            "subfolder or task ids to rerun."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "folder": {
+                    "type": "string",
+                    "description": (
+                        "Workspace folder holding the job results, as the "
+                        "user gave it or as a tool returned it."
+                    ),
+                },
+                "task_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "BV-BRC job (task) ids, e.g. ['23428307'].",
+                },
+                "include_failed": {
+                    "type": "boolean",
+                    "description": (
+                        "Also rerun jobs whose original failed (default true; "
+                        "they are marked in the list). False when the user "
+                        "asks for the successful ones only."
+                    ),
+                },
+            },
+            "required": [],
+        },
+    },
+}
+
 
 CREATE_GROUP = {
     "type": "function",
@@ -1415,7 +1464,7 @@ SUMMARIZE_FILE = {
 # MASTER LISTS
 # ===================================================================
 
-# All 28 tools in a single list
+# All 29 tools in a single list
 ALL_TOOL_SCHEMAS: list[dict] = [
     # Data
     SEARCH_DATA,
@@ -1433,6 +1482,7 @@ ALL_TOOL_SCHEMAS: list[dict] = [
     LIST_GOWE_WORKFLOWS,
     GET_WORKFLOW_INPUTS,
     SUBMIT_GOWE_JOB,
+    RERUN_JOBS,
     # Groups
     CREATE_GROUP,
     LIST_GROUPS,

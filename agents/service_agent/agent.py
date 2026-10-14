@@ -198,7 +198,8 @@ async def _run_job_request(
     rules for single jobs: if the classifier over-counted and only one job
     was prepared while the session is in Execute mode, that job is submitted
     right away through the replay path (Execute mode means one job needs no
-    click); a revision turn (``prepared_actions``) always asks again.
+    click); a revision turn (``prepared_actions``) and a rerun
+    (``rerun_jobs``) always ask.
     """
     if not multi_job:
         return await _run_gowe_flow(query, config, state, progress_callback)
@@ -209,9 +210,13 @@ async def _run_job_request(
     result = await _run_gowe_flow(query, gated, state, progress_callback)
 
     revising = bool(state.context.get("prepared_actions"))
+    # A rerun copies parameters from an old job the user has not seen in
+    # this turn, so even one rerun job is confirmed (D4 Phase 2).
+    rerun = any(a.get("origin") == "rerun_jobs" for a in state.blocked_actions)
     if (
         session_mode == "execute"
         and not revising
+        and not rerun
         and state.status == "completed"
         and state.current_phase == "ready"
         and len(state.blocked_actions) == 1

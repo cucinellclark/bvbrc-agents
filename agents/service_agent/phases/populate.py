@@ -52,6 +52,7 @@ from shared.tools import (
     execute_tool,
     is_already_submitted_result,
     is_blocked_result,
+    prepared_actions_of,
     is_handoff_result,
     is_invalid_arguments_result,
     is_needs_user_input_result,
@@ -74,6 +75,27 @@ SUCCESS_PHRASES = (
     "have been submitted", "jobs were submitted", "were submitted",
     "are now running", "jobs are running", "is now queued", "are now queued",
 )
+
+# A phrase preceded by one of these within the same clause is a denial
+# ("nothing has been submitted yet"), not a claim.  The rerun reply on
+# 2026-10-14 said exactly that and was overwritten with the fixed summary,
+# losing its list of skipped jobs.
+_NEGATION_RE = re.compile(
+    r"(\b(nothing|not|never|no|none|neither)\b|n't)[^.!?;:,\n]{0,40}$"
+)
+
+
+def _claims_success(content: str) -> bool:
+    """True when *content* says a job was submitted (a negated mention is not)."""
+    text = (content or "").lower().replace("\u2019", "'")
+    for phrase in SUCCESS_PHRASES:
+        start = text.find(phrase)
+        while start != -1:
+            if not _NEGATION_RE.search(text[max(0, start - 60):start]):
+                return True
+            start = text.find(phrase, start + 1)
+    return False
+
 
 PLAN_MODE_NUDGE = (
     "This session is in PLAN mode. Nothing was submitted — "
@@ -576,9 +598,10 @@ async def populate_and_submit(
                 )
                 # A submit refused by the execution-mode gate never ran:
                 # it is neither an attempt nor a failure.
+                # rerun_jobs prepares a set the same way (D4 Phase 2).
                 ever_blocked_submit = any(
-                    te.tool_call.name == "submit_gowe_job"
-                    and _is_blocked_execution(te)
+                    (te.tool_call.name == "submit_gowe_job" and _is_blocked_execution(te))
+                    or bool(prepared_actions_of(te.result))
                     for te in state.tool_executions
                 )
                 ever_attempted_submit = any(
@@ -590,9 +613,7 @@ async def populate_and_submit(
                 if not state.submission_ids and ever_blocked_submit:
                     # PLAN mode: the job is prepared but was not
                     # submitted.  Make sure the text says so.
-                    claims_success = any(
-                        p in content.lower() for p in SUCCESS_PHRASES
-                    )
+                    claims_success = _claims_success(content)
                     if claims_success:
                         plan_nudges = getattr(state, "_plan_nudge_count", 0)
                         if plan_nudges < 1:
@@ -619,9 +640,7 @@ async def populate_and_submit(
                 # A reply that asks the user something is a legitimate end of
                 # turn -- unless it also claims a submission that never
                 # happened, which is what this guard exists to catch.
-                asks_user = _asks_user(content) and not any(
-                    p in content.lower() for p in SUCCESS_PHRASES
-                )
+                asks_user = _asks_user(content) and not _claims_success(content)
                 # submit_gowe_job itself asked for user input (the organism
                 # for CGA / annotation): asking is the right next step.
                 needs_user = any(
@@ -665,9 +684,7 @@ async def populate_and_submit(
                          if te.tool_call.name == "submit_gowe_job"),
                         "the submission failed",
                     )
-                    claims_success = any(
-                        p in content.lower() for p in SUCCESS_PHRASES
-                    )
+                    claims_success = _claims_success(content)
                     if claims_success:
                         correction_count = getattr(
                             state, "_correction_count", 0
@@ -838,6 +855,23 @@ async def populate_and_submit(
                 state.status = "completed"
                 state.current_phase = "handoff"
                 return state
+
+            # rerun_jobs prepared a set of jobs (it never submits).  The set
+            # is complete: it is confirmed with the same one question as any
+            # job set, whatever the session mode, so end tool use and let the
+            # model list it.  A set past the per-message cap (only possible
+            # if jobs were prepared before the call) keeps the first ten.
+            if tc.name == "rerun_jobs" and prepared_actions_of(result):
+                state.multi_job = True
+                job_set = True
+                if len(state.blocked_actions) > MAX_PREPARED_JOBS:
+                    for extra in state.blocked_actions[MAX_PREPARED_JOBS:]:
+                        state.capped_submits.append(extra.get("summary") or extra.get("tool"))
+                    del state.blocked_actions[MAX_PREPARED_JOBS:]
+                result_str = truncate_result(result, max_chars=result_char_limit(tc.name))
+                state.add_tool_result(tc.id, result_str)
+                force_no_tools = True
+                continue
 
             # Execution-mode gate refused the call (plan mode).  The
             # tool never ran, so this is not a failed submission: feed

@@ -23,6 +23,7 @@ TOOL_TIMEOUT_OVERRIDES: dict[str, float] = {
     "find_similar_genomes": 120.0,
     "search_file": 90.0,  # streams up to 25 MB from the workspace
     "summarize_file": 90.0,  # same scan
+    "rerun_jobs": 90.0,  # recursive listing + query_tasks + workflow catalog
 }
 
 # Per-tool result character limits.  Tools that return bulk text (file
@@ -35,6 +36,7 @@ TOOL_RESULT_CHAR_LIMITS: dict[str, int] = {
     "summarize_file":    12_000,   # self-bounded to ~11 000 by file_summary.py
     "search_literature": 24_000,   # self-bounded to ~20 000 by literature.py
     "workspace_browse":  16_000,   # ~45 compact items; job_result entries carry a job block
+    "rerun_jobs":        24_000,   # up to 10 prepared jobs with their full inputs
 }
 
 
@@ -73,6 +75,9 @@ EXECUTION_MODES: frozenset[str] = frozenset({"plan", "execute"})
 TOOL_AGENT_ALLOWLIST: Dict[str, frozenset[str]] = {
     "submit_gowe_job": frozenset({"service"}),
     "create_group": frozenset({"service", "data"}),
+    # Prepares jobs (never submits), but the set it prepares is replayed by
+    # the service agent, which owns the confirmation question and watches.
+    "rerun_jobs": frozenset({"service"}),
 }
 
 PLAN_MODE_BLOCKED_MESSAGE = (
@@ -159,6 +164,35 @@ def _add_output_location(result: Dict[str, Any], arguments: Dict[str, Any], conf
     result["error"] += " " + tell
 
 
+def prepared_actions_of(result: Any) -> list[Dict[str, Any]]:
+    """Jobs a tool prepared without running them (D4), as blocked actions.
+
+    ``rerun_jobs`` returns ``prepared_actions`` in the same ``{tool, summary,
+    arguments}`` shape as a plan-mode refusal, so they reach the same
+    confirmation question and the same verbatim replay.  ``origin``,
+    ``original`` and ``dropped_inputs`` are kept (the gateway matches a replay on tool + arguments
+    only, so extra keys do not change what may run).
+    """
+    if not isinstance(result, dict) or not isinstance(result.get("prepared_actions"), list):
+        return []
+    actions = []
+    for action in result["prepared_actions"]:
+        if not isinstance(action, dict) or action.get("tool") not in EXECUTE_ONLY_TOOLS:
+            continue
+        if not isinstance(action.get("arguments"), dict):
+            continue
+        entry = {
+            "tool": action["tool"],
+            "summary": action.get("summary") or action["tool"],
+            "arguments": action["arguments"],
+        }
+        for key in ("origin", "original", "dropped_inputs"):
+            if key in action:
+                entry[key] = action[key]
+        actions.append(entry)
+    return actions
+
+
 def is_invalid_arguments_result(result: Any) -> bool:
     """True when the call was refused because its arguments were not JSON.
 
@@ -177,6 +211,11 @@ def wrong_agent_result(tool_name: str, agent_key: str) -> Dict[str, Any]:
             "Tell the user which workflow and inputs you would use and that "
             "they can ask for it to be run as a job (for example \"run "
             "<workflow> on <input>\")."
+        )
+    elif tool_name == "rerun_jobs":
+        next_step = (
+            "Tell the user they can ask for the rerun directly (for example "
+            "\"rerun the jobs in <folder>\")."
         )
     else:
         next_step = (
@@ -204,6 +243,7 @@ HANDOFF_TARGETS: Dict[str, str] = {
     "submit_gowe_job": "service",
     "create_group": "data",
     "create_plan": "planning",
+    "rerun_jobs": "service",
 }
 
 

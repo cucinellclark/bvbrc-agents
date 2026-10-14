@@ -50,6 +50,7 @@ if Path(_solr_api_path).is_dir() and _solr_api_path not in sys.path:
     sys.path.insert(0, _solr_api_path)
 
 from shared.answer_filter import collect_known_links, filter_answer  # noqa: E402
+from shared.tools import prepared_actions_of  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -259,6 +260,8 @@ def timeout_partial_result(
         for step in progress
         if isinstance(step.get("result"), dict) and step["result"].get("blocked_by_mode")
     ]
+    for step in progress:
+        blocked_actions.extend(prepared_actions_of(step.get("result")))
     n_prepared = len(blocked_actions)
     answer = (
         f"I ran out of time (the {minutes}-minute limit) before I could finish. "

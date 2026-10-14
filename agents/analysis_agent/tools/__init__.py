@@ -24,7 +24,7 @@ from shared.tools.workspace import (
 from shared.tools.data import search_data
 from shared.tools.similar_genome import find_similar_genomes
 from shared.tools.literature import search_literature
-from shared.tools._mcp_imports import get_json_rpc
+from shared.tools.app_service import get_app_service_api, query_tasks_raw
 from analysis_agent.output_knowledge import (
     get_expected_outputs as _get_expected_outputs,
 )
@@ -51,20 +51,8 @@ async def _get_expected_outputs_async(
 # get_job_details: resolve task IDs to job metadata (status, output path, etc.)
 # ---------------------------------------------------------------------------
 
-_service_api_instance = None
-_APP_SERVICE_URL = "https://p3.theseed.org/services/app_service"
-
-
-def _get_service_api() -> Any:
-    """Create or reuse a JsonRpcCaller instance for the BV-BRC app service."""
-    global _service_api_instance
-    if _service_api_instance is None:
-        json_rpc_mod = get_json_rpc()
-        _service_api_instance = json_rpc_mod.JsonRpcCaller(
-            service_url=_APP_SERVICE_URL,
-            timeout=30,
-        )
-    return _service_api_instance
+# The AppService client is shared with rerun_jobs (shared/tools/app_service.py).
+_get_service_api = get_app_service_api
 
 
 async def get_job_details(
@@ -101,15 +89,10 @@ async def get_job_details(
 
     task_ids_str = [str(tid) for tid in task_ids]
 
-    from shared.tools._mcp_imports import get_service_functions
-
-    service_fn = get_service_functions()
-
-    api = _get_service_api()
-    result = await service_fn.query_tasks(
-        api=api,
-        token=token,
-        params={"task_ids": task_ids_str},
+    result = await query_tasks_raw(
+        task_ids_str,
+        token,
+        api=_get_service_api(),
         fetch_stdout=stdout,
         fetch_stderr=stderr,
     )

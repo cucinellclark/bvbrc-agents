@@ -285,6 +285,11 @@ class BaseAgentState(BaseModel):
                     "arguments": result.get("arguments") or {},
                 }
             )
+        # A tool that prepares jobs without running them (rerun_jobs): each
+        # one joins the set the user confirms, exactly like a refused submit.
+        from shared.tools import prepared_actions_of
+
+        self.blocked_actions.extend(prepared_actions_of(result))
 
 
 # ---------------------------------------------------------------------------

@@ -11,6 +11,7 @@ Each function accepts a generic *config* object (needs ``gowe_url``,
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -324,6 +325,62 @@ async def _resolve_workflow_ref(ref: str, config: Any = None) -> tuple[str | Non
 
 
 # ---------------------------------------------------------------------------
+# BV-BRC app id -> GoWe workflow
+# ---------------------------------------------------------------------------
+# Each bvbrc-executor workflow names the BV-BRC app it runs in
+# steps[].hints.bvbrc_app_id (GET /workflows/{id}, GoWe StepHints); the list
+# endpoint does not carry it.  rerun_jobs maps a job's app to a workflow with this, and
+# list_gowe_workflows shows it.  Workflows on the local or worker executor
+# (GenomeAnnotation, Sequence Similarity Clustering) have none.
+
+APP_WORKFLOW_TTL_S = 600.0
+
+# gowe_url -> (fetched_at, {workflow_id: {"id", "name", "bvbrc_app_id"?}})
+_app_workflow_cache: Dict[str, tuple[float, Dict[str, Dict[str, Any]]]] = {}
+
+
+async def workflow_catalog(config: Any = None) -> Dict[str, Dict[str, Any]]:
+    """``{workflow_id: {"id", "name", "bvbrc_app_id"?}}``, cached 10 minutes.
+
+    One list call plus one detail call per workflow (in parallel).  A detail
+    call that fails leaves that workflow without an app id.  Raises when the
+    list call fails, so a caller can tell "unreachable" from "not mapped".
+    """
+    key = getattr(config, "gowe_url", None) or ""
+    hit = _app_workflow_cache.get(key)
+    if hit and time.monotonic() - hit[0] < APP_WORKFLOW_TTL_S:
+        return hit[1]
+
+    client = _get_client(config)
+    auth = _get_auth(config)
+    workflows, _ = await client.list_workflows(auth_token=auth, limit=200)
+
+    async def app_id(wf_id: str) -> Optional[str]:
+        try:
+            detail = await client.get_workflow(wf_id, auth_token=auth)
+        except Exception as e:
+            logger.warning("Workflow detail for %s failed: %s", wf_id, e)
+            return None
+        for step in (detail or {}).get("steps") or []:
+            hints = step.get("hints") if isinstance(step, dict) else None
+            if isinstance(hints, dict) and hints.get("bvbrc_app_id"):
+                return str(hints["bvbrc_app_id"])
+        return None
+
+    entries = [w for w in workflows or [] if w.get("id")]
+    app_ids = await asyncio.gather(*(app_id(w["id"]) for w in entries))
+    catalog: Dict[str, Dict[str, Any]] = {}
+    for w, app in zip(entries, app_ids):
+        entry = {"id": w["id"], "name": w.get("name") or w["id"]}
+        if app:
+            entry["bvbrc_app_id"] = app
+        catalog[w["id"]] = entry
+    _workflow_names.update({i: e["name"] for i, e in catalog.items()})
+    _app_workflow_cache[key] = (time.monotonic(), catalog)
+    return catalog
+
+
+# ---------------------------------------------------------------------------
 # Identifier validation
 # ---------------------------------------------------------------------------
 
@@ -421,6 +478,12 @@ async def list_gowe_workflows(
             limit=100,
         )
 
+        try:
+            catalog = await workflow_catalog(config)
+        except Exception as e:
+            logger.warning("Workflow app ids unavailable: %s", e)
+            catalog = {}
+
         result = []
         experimental = 0
         for wf in workflows or []:
@@ -431,6 +494,9 @@ async def list_gowe_workflows(
                 "description": wf.get("description", ""),
                 "status": status,
             }
+            app_id = (catalog.get(wf.get("id")) or {}).get("bvbrc_app_id")
+            if app_id:
+                entry["bvbrc_app_id"] = app_id
             if reason:
                 entry["status_reason"] = reason
                 experimental += 1
