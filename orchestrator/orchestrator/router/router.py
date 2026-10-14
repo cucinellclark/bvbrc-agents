@@ -317,43 +317,17 @@ def _parse_routing_response(
         )
 
     elif decision_type == "pipeline":
-        raw_steps = data.get("steps", [])
-        if not raw_steps:
-            logger.error("Router returned pipeline with no steps")
-            raise ValueError("Router returned pipeline with no steps")
-
-        steps: list[Step] = []
-        for raw_step in raw_steps:
-            agent_key = raw_step.get("agent_key", "")
-            task = raw_step.get("task", query)
-            depends_on = raw_step.get("depends_on", [])
-
-            # Validate agent exists (with fuzzy match)
-            if agent_key not in registry.agents:
-                for key in registry.agent_keys:
-                    if key in agent_key or agent_key in key:
-                        agent_key = key
-                        break
-                else:
-                    logger.error(
-                        f"Pipeline step references unknown agent '{agent_key}', "
-                        f"available agents: {list(registry.agent_keys)}"
-                    )
-                    raise ValueError(
-                        f"Pipeline step references unknown agent '{agent_key}'"
-                    )
-
-            steps.append(Step(agent_key=agent_key, task=task, depends_on=depends_on))
-
-        # Validate depends_on indices are in range
-        for i, step in enumerate(steps):
-            step.depends_on = [d for d in step.depends_on if 0 <= d < i]
-
-        return RoutingDecision(
-            decision="pipeline",
-            plan=Plan(reasoning=reasoning, steps=steps),
-            confidence=0.85,
-        )
+        # Retired (D4 Phase 3).  A model still answering in the old format
+        # wanted several agents in a row: that is the planning agent's job.
+        logger.info("Router returned the retired 'pipeline' decision; routing to planning")
+        if "planning" in registry.agents:
+            return RoutingDecision(
+                decision="agent",
+                plan=Plan(reasoning=reasoning, steps=[Step(agent_key="planning", task=query)]),
+                confidence=0.8,
+                routing_override="pipeline_to_planning",
+            )
+        raise ValueError("Router returned 'pipeline' and no planning agent is registered")
 
     else:
         # Unknown decision type — treat as direct

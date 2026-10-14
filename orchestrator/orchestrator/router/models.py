@@ -1,7 +1,8 @@
 """Routing models — Plan, Step, and RoutingDecision.
 
 These define what the router produces: a decision about how to handle
-the user's request (direct response, single agent, or future pipeline).
+the user's request (direct response or one agent; multi-agent work is the
+planning agent's).
 """
 
 from __future__ import annotations
@@ -14,8 +15,8 @@ from pydantic import BaseModel, Field
 class Step(BaseModel):
     """A single step in an execution plan.
 
-    For Phase 2 (single-agent routing), plans have exactly one step.
-    The pipeline placeholder is here for Phase 4.
+    Router plans have exactly one step.  ``depends_on`` is kept for the
+    executor, which also runs planning-delegated steps.
     """
 
     agent_key: str  # Registry key, e.g. "data", "service"
@@ -37,10 +38,13 @@ class RoutingDecision(BaseModel):
     decision types:
       - "direct": Respond directly without invoking any agent.
       - "agent": Route to a single agent (plan has exactly one step).
-      - "pipeline": Multi-agent pipeline (Phase 4 — not yet implemented).
+
+    The router's "pipeline" decision was retired (D4 Phase 3): chains across
+    domains go to the planning agent, whose steps each run in their own
+    turn with review and stored outputs.
     """
 
-    decision: Literal["direct", "agent", "pipeline"]
+    decision: Literal["direct", "agent"]
     plan: Plan | None = None
     direct_response: str | None = None  # Only set when decision == "direct"
     confidence: float = 1.0  # Router's confidence in this decision
@@ -58,33 +62,20 @@ class RoutingDecision(BaseModel):
 # is guaranteed to carry the field names _parse_routing_response expects.
 #
 # Deliberately permissive: `decision` is an enum and every shape-specific field
-# is optional, because the three decision shapes (direct / agent / pipeline)
+# is optional, because the decision shapes (direct / agent)
 # use different subsets and a oneOf is poorly supported by guided-decoding
 # backends. This still eliminates the real failure mode, which is the model
 # inventing key names.
 ROUTING_JSON_SCHEMA: dict = {
     "type": "object",
     "properties": {
-        "decision": {"type": "string", "enum": ["direct", "agent", "pipeline"]},
+        "decision": {"type": "string", "enum": ["direct", "agent"]},
         "reasoning": {"type": "string"},
         # decision == "agent"
         "agent_key": {"type": "string"},
         "task": {"type": "string"},
         # decision == "direct"
         "direct_response": {"type": "string"},
-        # decision == "pipeline"
-        "steps": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "agent_key": {"type": "string"},
-                    "task": {"type": "string"},
-                    "depends_on": {"type": "array", "items": {"type": "integer"}},
-                },
-                "required": ["agent_key", "task"],
-            },
-        },
     },
     "required": ["decision", "reasoning"],
 }

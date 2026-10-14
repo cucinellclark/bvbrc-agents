@@ -112,7 +112,10 @@ async def run_agent(
     )
     # D4: several jobs are prepared under the plan gate and confirmed once,
     # whatever the session mode.  The gate is set here, by code.
-    multi_job = prepared is not None or intent.job_count == "many"
+    # A planning-delegated batch step (batch_mode) is a job set too: since
+    # D4 Phase 3 a plan pauses on the step's question, so its N jobs are
+    # confirmed once instead of submitted directly (§2.2.1).
+    multi_job = prepared is not None or intent.job_count == "many" or bool(ctx.get("batch_mode"))
 
     # ------------------------------------------------------------------
     # Step 2: Dispatch based on intent

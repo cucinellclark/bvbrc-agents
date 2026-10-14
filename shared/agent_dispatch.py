@@ -51,6 +51,7 @@ if Path(_solr_api_path).is_dir() and _solr_api_path not in sys.path:
 
 from shared.answer_filter import collect_known_links, filter_answer  # noqa: E402
 from shared.tools import prepared_actions_of  # noqa: E402
+from shared.step_outputs import build_step_outputs  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -328,10 +329,17 @@ def _blocked_actions_of(result: Any) -> list[dict[str, Any]]:
 
 
 def _with_blocked_actions(response: Dict[str, Any], result: Any) -> Dict[str, Any]:
-    """Attach ``blocked_actions`` to *response* when the agent had any."""
+    """Attach ``blocked_actions`` and ``step_outputs`` when the agent had any.
+
+    Every agent's response passes through here, so this is where a plan step
+    gets its structured outputs (D4 Phase 3), built from the tool results.
+    """
     blocked = _blocked_actions_of(result)
     if blocked:
         response["blocked_actions"] = blocked
+    outputs = build_step_outputs(getattr(result, "tool_trace", None) or [])
+    if outputs:
+        response["step_outputs"] = outputs
     return response
 
 

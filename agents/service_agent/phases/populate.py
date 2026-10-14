@@ -101,8 +101,8 @@ PLAN_MODE_NUDGE = (
     "This session is in PLAN mode. Nothing was submitted — "
     "submit_gowe_job was refused. Do NOT claim a job was submitted. "
     "Rewrite your answer as a 'Ready to submit' summary (workflow, each "
-    "input value, output folder name) and tell the user to switch to "
-    "Execute mode to run it."
+    "input value, output folder name) and end with: 'Answer **Yes** below "
+    "to submit it, **No** to submit nothing, or tell me what to change.'"
 )
 
 MULTI_JOB_NUDGE = (
@@ -246,8 +246,9 @@ def _plan_mode_summary(state: AgentState) -> str:
         )
     else:
         lines.append(
-            "Switch this chat to **Execute mode** (the Plan/Execute toggle next "
-            "to the message box) and ask me to submit when you are ready."
+            "Answer **Yes** below to submit it, **No** to submit nothing, or tell "
+            "me what to change. (In **Execute mode** a single job is submitted "
+            "without asking.)"
         )
     return "\n".join(lines)
 

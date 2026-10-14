@@ -24,6 +24,7 @@ from orchestrator.router.models import Plan, Step
 from orchestrator.router.router import route
 from orchestrator.synthesizer.synthesizer import synthesize
 from shared.answer_filter import filter_answer
+from shared.step_outputs import extract_values, merge_step_outputs
 
 logger = logging.getLogger(__name__)
 
@@ -94,17 +95,7 @@ async def orchestrate(
         if decision.routing_override:
             routing_event_data["routing_override"] = decision.routing_override
         if decision.plan and decision.plan.steps:
-            if decision.decision == "pipeline":
-                routing_event_data["steps"] = [
-                    {
-                        "agent_key": s.agent_key,
-                        "task": s.task,
-                        "depends_on": s.depends_on,
-                    }
-                    for s in decision.plan.steps
-                ]
-            else:
-                routing_event_data["agent_key"] = decision.plan.steps[0].agent_key
+            routing_event_data["agent_key"] = decision.plan.steps[0].agent_key
 
         yield Event(
             type=EventType.ROUTING_DECISION,
@@ -217,6 +208,7 @@ async def orchestrate(
             for action in ar.get("blocked_actions") or []:
                 blocked_actions.append(action)
                 blocked_agent = blocked_agent or ar.get("agent")
+        plan_ctx = _plan_context(request.plan_context)
         if blocked_actions:
             yield Event(
                 type=EventType.EXECUTION_BLOCKED,
@@ -226,8 +218,54 @@ async def orchestrate(
                     "execution_mode": "plan",
                     "blocked_actions": blocked_actions,
                     "original_query": request.query,
+                    # A revision ("Other") of a plan step's question: the new
+                    # question still belongs to that step.
+                    **({"plan_context": plan_ctx} if plan_ctx else {}),
                 },
             )
+            if plan_ctx:
+                yield Event(
+                    type=EventType.PLAN_STEP_BLOCKED,
+                    agent_name=blocked_agent,
+                    data={**plan_ctx, "agent": blocked_agent,
+                          "summaries": [a.get("summary") for a in blocked_actions]},
+                )
+
+        # ------------------------------------------------------------------
+        # 3a''. A plan step's question answered Yes (D4 Phase 3): the replay
+        #       ran the step's prepared actions, so the step is complete
+        #       (or failed).  Jobs put the plan in its waiting state; a
+        #       group-only step lets it auto-advance.
+        # ------------------------------------------------------------------
+        if plan_ctx and request.replay_actions and agent_results:
+            replay_result = agent_results[0]
+            outputs = replay_result.get("step_outputs") or {}
+            sub_ids = list(replay_result.get("submission_ids") or [])
+            answer = replay_result.get("answer", "")
+            if replay_result.get("status") == "completed":
+                yield Event(
+                    type=EventType.PLAN_STEP_COMPLETED,
+                    agent_name="service",
+                    data={**plan_ctx, "result_summary": answer[:500],
+                          "agent_result": replay_result, "step_outputs": outputs},
+                )
+                if sub_ids:
+                    yield Event(
+                        type=EventType.PLAN_WORKFLOW_SUBMITTED,
+                        agent_name="service",
+                        data={**plan_ctx,
+                              "workflow_id": replay_result.get("workflow_id", ""),
+                              "submission_id": sub_ids[-1],
+                              "submission_ids": sub_ids,
+                              "result_summary": answer[:500],
+                              "step_outputs": outputs},
+                    )
+            else:
+                yield Event(
+                    type=EventType.PLAN_STEP_FAILED,
+                    agent_name="service",
+                    data={**plan_ctx, "error": answer or "The prepared actions did not run."},
+                )
 
         # ------------------------------------------------------------------
         # 3b. PLANNING AGENT — special status handling
@@ -307,7 +345,9 @@ async def orchestrate(
                         Step(
                             agent_key=step_exec["agent"],
                             task=step_exec["task"],
-                            batch_mode=True,
+                            # Several jobs per step is a service thing; on
+                            # any other agent the flag only confused it.
+                            batch_mode=step_exec["agent"] == "service",
                         )
                     ],
                 )
@@ -328,9 +368,24 @@ async def orchestrate(
                     yield event  # Forward all agent events
                     if event.type == EventType.AGENT_RESULT:
                         step_agent_results.append(event.data.get("result_for_ui", {}))
+                    elif event.type == EventType.ORCHESTRATOR_ERROR:
+                        # The delegated agent failed or hit its time limit.
+                        # Before, this was dropped: the step came back empty,
+                        # defaulted to "completed", and synthesis wrote "I
+                        # don't have the current plan" (live, Oct 14).
+                        err = dict(event.data or {})
+                        step_agent_results.append({
+                            **err,
+                            "agent": err.get("agent") or step_exec.get("agent"),
+                            "status": "error",
+                            "answer": err.get("answer") or err.get("error") or "The step failed.",
+                        })
 
                 # Emit plan step result event
-                step_result = step_agent_results[0] if step_agent_results else {}
+                step_result = step_agent_results[0] if step_agent_results else {
+                    "agent": step_exec.get("agent"), "status": "error",
+                    "answer": "The step did not return a result.",
+                }
                 step_status = step_result.get("status", "completed")
 
                 # D4 (§4.2 C, minimal): jobs or groups the delegated agent
@@ -338,8 +393,23 @@ async def orchestrate(
                 # question as a direct turn.  plan_context says which step
                 # they belong to.  The 3a' scan above only sees the planning
                 # agent's own result, never the delegated step's.
+                step_ctx = {
+                    "plan_id": step_exec.get("plan_id"),
+                    "step_id": step_exec.get("step_id"),
+                    "step_index": step_exec.get("step_index"),
+                }
+                step_outputs = merge_step_outputs(
+                    step_result.get("step_outputs"),
+                    {"values": extract_values(step_result.get("answer", ""), step_exec.get("expects"))},
+                )
                 step_blocked = list(step_result.get("blocked_actions") or [])
-                if step_blocked:
+                if step_blocked and not (
+                    step_result.get("submission_ids") or step_result.get("submission_id")
+                ):
+                    # D4 Phase 3: the step prepared jobs or groups under the
+                    # plan gate.  The plan pauses on the question; Yes
+                    # replays them and completes the step (3a'' above), No
+                    # leaves it paused (Skip moves on), Other revises.
                     yield Event(
                         type=EventType.EXECUTION_BLOCKED,
                         agent_name=step_exec.get("agent"),
@@ -348,13 +418,34 @@ async def orchestrate(
                             "execution_mode": "plan",
                             "blocked_actions": step_blocked,
                             "original_query": request.query,
-                            "plan_context": {
-                                "plan_id": step_exec.get("plan_id"),
-                                "step_id": step_exec.get("step_id"),
-                                "step_index": step_exec.get("step_index"),
-                            },
+                            "plan_context": step_ctx,
                         },
                     )
+                    yield Event(
+                        type=EventType.PLAN_STEP_BLOCKED,
+                        agent_name=step_exec.get("agent"),
+                        data={
+                            **step_ctx,
+                            "agent": step_exec.get("agent"),
+                            "summaries": [a.get("summary") for a in step_blocked],
+                            "result_summary": step_result.get("answer", "")[:500],
+                            "step_outputs": step_outputs,
+                        },
+                    )
+                    yield Event(
+                        type=EventType.ORCHESTRATOR_DONE,
+                        data={
+                            # Never empty: the gateway stores the question
+                            # card on this message.
+                            "response_text": step_result.get("answer")
+                            or "This step is ready. Answer the question below to continue the plan.",
+                            "decision": decision.decision,
+                            "agents_used": agents_used,
+                            "result_for_ui": step_result,
+                            "elapsed_ms": _elapsed_ms(start_time),
+                        },
+                    )
+                    return
 
                 # --- WORKFLOW SUBMITTED ---
                 # If the step submitted a long-running workflow to GoWe,
@@ -369,11 +460,10 @@ async def orchestrate(
                         type=EventType.PLAN_STEP_COMPLETED,
                         agent_name=step_exec.get("agent"),
                         data={
-                            "plan_id": step_exec.get("plan_id"),
-                            "step_id": step_exec.get("step_id"),
-                            "step_index": step_exec.get("step_index"),
+                            **step_ctx,
                             "result_summary": step_result.get("answer", "")[:500],
                             "agent_result": step_result,
+                            "step_outputs": step_outputs,
                         },
                     )
                     # Notify that a workflow was submitted and the plan
@@ -390,6 +480,7 @@ async def orchestrate(
                             "submission_id": step_result.get("submission_id", ""),
                             "submission_ids": step_result.get("submission_ids", []),
                             "result_summary": step_result.get("answer", "")[:500],
+                            "step_outputs": step_outputs,
                         },
                     )
                     # Return early — skip synthesis and auto-advance.
@@ -413,6 +504,7 @@ async def orchestrate(
                         "step_index": step_exec.get("step_index"),
                         "result_summary": step_result.get("answer", "")[:500],
                         "agent_result": step_result,
+                        "step_outputs": step_outputs,
                     }
                     if step_result.get("structured_data"):
                         step_completed_data["structured_data"] = step_result[
@@ -617,6 +709,17 @@ async def orchestrate_to_response(
         execution_trace=execution_trace,
         status=status,
     )
+
+
+def _plan_context(value: Any) -> dict[str, Any] | None:
+    """``{plan_id, step_id, step_index}`` from a request's plan_context, or None."""
+    if not isinstance(value, dict) or not value.get("plan_id"):
+        return None
+    return {
+        "plan_id": value.get("plan_id"),
+        "step_id": value.get("step_id"),
+        "step_index": value.get("step_index"),
+    }
 
 
 def _elapsed_ms(start: float) -> float:

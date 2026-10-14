@@ -52,6 +52,7 @@ def build_step_execution_prompt(
     target_agent: str,
     step_reasoning: str,
     prior_results: dict[str, dict] | None = None,
+    prior_outputs_block: str = "",
 ) -> str:
     """Build the system prompt for step execution query formulation.
 
@@ -64,19 +65,28 @@ def build_step_execution_prompt(
         step_description: Description of the current step.
         target_agent: Agent key for this step.
         step_reasoning: Why this step is needed.
-        prior_results: Dict of step_id -> result summary from completed steps.
+        prior_results: Dict of step_id -> result summary from completed steps
+            (only the steps this one depends on).
+        prior_outputs_block: ``=== PRIOR STEP OUTPUTS ===`` (structured,
+            copied from tool results); shown before any answer text.
 
     Returns:
         Complete system prompt for the step execution LLM call.
     """
     prior_results_section = ""
-    if prior_results:
-        lines = ["## Results from Prior Steps", ""]
-        for step_id, result in prior_results.items():
+    if prior_results or prior_outputs_block:
+        lines = []
+        if prior_outputs_block:
+            # Structured outputs first: these are what the next agent needs
+            # exactly (ids, group paths, job folders).  Copy them verbatim.
+            lines += [prior_outputs_block, "",
+                      "Copy every value above that this step needs into the query, exactly.", ""]
+        lines += ["## Results from Prior Steps", ""]
+        for step_id, result in (prior_results or {}).items():
             summary = result.get("answer", result.get("result_summary", ""))
             if summary:
-                if len(summary) > 4000:
-                    summary = summary[:4000] + "... [truncated]"
+                if len(summary) > 1500:
+                    summary = summary[:1500] + "... [truncated]"
                 lines.append(f"**{step_id}:** {summary}")
                 lines.append("")
 

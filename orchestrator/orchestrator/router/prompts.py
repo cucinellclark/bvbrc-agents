@@ -24,12 +24,10 @@ data, features, or services — route those to **helpdesk**, which answers from 
 BV-BRC's own documentation. Never use **direct** to say that BV-BRC lacks a \
 service, tool, or feature (see the rule below).
 
-2. **agent** — Route to a single agent. Use this when the user's request \
-clearly requires exactly one agent.
-
-3. **pipeline** — Route to multiple agents in sequence. Use this when the \
-user's request requires output from one agent to feed into another, or \
-requires independent work from multiple agents.
+2. **agent** — Route to one agent. Work that needs several agents in a \
+row (results from one domain driving another: find data, then make a \
+group, then run a service) is ONE **agent** decision for **planning**, \
+which splits it into steps the user can follow.
 
 ## Available Agents
 
@@ -99,7 +97,7 @@ once. Route to **planning** only for more than four services, or for \
 - A request to RERUN, resubmit or run again earlier jobs ("rerun job \
 23428307", "rerun all the jobs under /…/Workshop_2026", "resubmit the \
 failed ones") goes to **service** as one agent call, however many jobs \
-or folders it names — never planning, never a pipeline. The service \
+or folders it names — never planning. The service \
 agent has a rerun tool that copies the original parameters and asks the \
 user to confirm the set once. "...and tell me if the results differ" \
 does not change this: comparing is a later request.
@@ -120,16 +118,12 @@ select/refine, analyze). Examples: "analyze H5N1 genomes from 2024", \
 analysis of MERS-CoV genomes". These are analytical workflows even \
 without explicit "plan" language. Route to planning so the user can \
 review intermediate data before committing to an analysis.
-- Do NOT use a simple data→service **pipeline** when the user would \
-benefit from reviewing intermediate results (e.g., checking how many \
-genomes were found, choosing which analysis to run). Use **planning** \
-instead, which supports review checkpoints.
-- If the request requires finding data and THEN running a service on it, \
-route to **service** directly — the service agent can query BV-BRC data \
-and browse workspace files inline as part of its workflow. Only use a \
-**pipeline** if the data retrieval itself is the primary deliverable \
-(not just context gathering for a service). For complex or exploratory \
-analytical requests, prefer **planning** over **pipeline**.
+- Work that needs results from one domain to drive another — find a \
+family or a set of genomes, make a group of them, then run a service on \
+it; select genomes by AMR phenotype into two groups, then build a tree — \
+goes to **planning**. A single service whose inputs the user already \
+named (a file, an SRA run, an existing group, a genome id) goes to \
+**service**, even if the service agent has to look the input up.
 - If the request requires checking workspace files and THEN running a \
 service on them, route to **service** directly — it can browse the \
 workspace to find input files. EXCEPTION: if the request implies \
@@ -142,10 +136,8 @@ ones named above (e.g. docking, protein structure prediction, primer \
 design, TreeSort, HA subtype numbering), and only the agents can check. If the user wants to \
 RUN something (dock, design, predict, classify, ...), route to **service**. \
 If they ask WHETHER BV-BRC can do something, route to **helpdesk**.
-- If the request involves multiple independent tasks for different agents, \
-use a **pipeline** with no dependencies between the steps.
-- Use **agent** (not pipeline) when only one agent is needed, even if the \
-task is complex.
+- If the request involves several independent tasks for different \
+agents, route to **planning**.
 - If the request is ambiguous, pick the most likely single agent and explain \
 your reasoning.
 - If the request is a greeting, small talk, or a general biology question \
@@ -204,9 +196,8 @@ agent has dedicated prompt guidance for this tool.
 ## Workflow Submission Routing
 - When a user asks to plan/build a service AND also submit/run/execute \
 it in the same request (e.g. "assemble genome X and submit the job"), \
-route as a **single agent** call to **service** — NOT a pipeline. \
-The service agent handles the full lifecycle (plan + submit) internally. \
-Creating a separate pipeline step for submission will cause errors.
+route as a **single agent** call to **service**. The service agent \
+handles the full lifecycle (plan + submit) internally.
 - When a user asks to "submit", "run", or "execute" an already-planned \
 workflow from a previous turn, route to the **service** agent with a \
 task that includes the workflow_id. \
@@ -214,21 +205,10 @@ Example: {{"decision": "agent", "agent_key": "service", \
 "task": "Submit workflow wf_abc123"}}
 - The workflow_id is visible in the conversation context as \
 [workflow: wf_abc123 | ...]. Use the id from that context.
-- NEVER create a pipeline with separate "plan" and "submit" steps \
-for the same service request. Always use a single agent call.
 - If there are multiple planned workflows and the user is ambiguous, \
 use decision "direct" to ask which one to submit.
 - If no planned workflows exist in the context, use decision "direct" \
 to inform the user and suggest planning one first.
-
-## Preserving User Data in Task Descriptions
-- For **pipeline** steps, each step's "task" is the only input the agent \
-receives. You MUST copy any user-supplied data verbatim into the relevant \
-step's "task" field: FASTA sequences, amino-acid strings, SRA accessions, \
-genome IDs, file paths, and any other literal data. Never summarise away \
-data the agent will need.
-- For **single-agent** routing this is less critical (the system forwards \
-the original query), but you should still include key identifiers.
 
 ## Response Format
 
@@ -240,13 +220,6 @@ For direct response (no agent needed):
 
 For single-agent routing:
 {{"decision": "agent", "reasoning": "brief explanation", "agent_key": "agent name", "task": "focused task description for the agent"}}
-
-For multi-agent pipeline:
-{{"decision": "pipeline", "reasoning": "brief explanation", "steps": [{{"agent_key": "first_agent", "task": "task for first agent", "depends_on": []}}, {{"agent_key": "second_agent", "task": "task using results from first agent", "depends_on": [0]}}]}}
-
-The depends_on array contains the indices (0-based) of steps that must \
-complete before this step can run. An empty array means the step can \
-run immediately. Steps with no dependency on each other will run in parallel.
 """
 
 

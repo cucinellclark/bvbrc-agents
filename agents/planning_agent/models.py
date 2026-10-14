@@ -23,12 +23,10 @@ from shared.models import (
 
 
 class AgentConfig(BaseAgentConfig):
-    """Configuration for the planning agent.
+    """Configuration for the planning agent (BaseAgentConfig plus the recon cap)."""
 
-    Inherits all fields from BaseAgentConfig. No additional fields needed.
-    """
-
-    pass
+    # D4 Phase 3: tool lookups allowed before the model must plan or ask.
+    max_recon_tools: int = 4
 
 
 # ---------------------------------------------------------------------------
@@ -53,6 +51,7 @@ class PlanStep(BaseModel):
     agent: str  # "data" | "service" | "workspace" | "helpdesk" | "analysis" | "direct"
     reasoning: str
     depends_on: list[str] = Field(default_factory=list)
+    expects: list[str] = Field(default_factory=list)
     status: Literal["pending", "running", "completed", "failed", "skipped"] = "pending"
     result_summary: str | None = None
     result_data: dict[str, Any] | None = None

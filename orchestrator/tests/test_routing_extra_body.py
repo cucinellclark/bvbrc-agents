@@ -46,14 +46,13 @@ class TestBuildRoutingExtraBody:
         assert "response_format" not in build_routing_extra_body(True, False)
         assert "chat_template_kwargs" not in build_routing_extra_body(False, True)
 
-    def test_schema_covers_all_three_decision_shapes(self):
+    def test_schema_covers_both_decision_shapes(self):
+        # "pipeline" was retired in D4 Phase 3 (chains go to planning).
         props = ROUTING_JSON_SCHEMA["properties"]
-        assert props["decision"]["enum"] == ["direct", "agent", "pipeline"]
+        assert props["decision"]["enum"] == ["direct", "agent"]
         assert "direct_response" in props          # direct
         assert {"agent_key", "task"} <= set(props)  # agent
-        assert props["steps"]["type"] == "array"    # pipeline
-        step = props["steps"]["items"]["properties"]
-        assert {"agent_key", "task", "depends_on"} <= set(step)
+        assert "steps" not in props
         assert ROUTING_JSON_SCHEMA["required"] == ["decision", "reasoning"]
 
 

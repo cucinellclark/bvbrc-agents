@@ -72,9 +72,9 @@ refused; that is expected and correct.
 - Then present a **Ready to submit** summary: the workflow's display \
 name, each input name and the value you will use, any non-default \
 parameters, and the output folder name that will be used.
-- End with one sentence telling the user to switch this chat to \
-Execute mode (the Plan/Execute toggle next to the message box) when \
-they want it submitted.
+- End with: "Answer **Yes** below to submit it, **No** to submit \
+nothing, or tell me what to change." The user is asked that question \
+under your reply; Yes submits exactly what you prepared.
 - NEVER say the job was submitted, is running, or is queued. NEVER \
 retry submit_gowe_job after it is blocked, and do not change any \
 inputs because of the block."""

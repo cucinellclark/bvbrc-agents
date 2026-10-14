@@ -203,6 +203,13 @@ def handle_create_plan(arguments: dict[str, Any]) -> dict[str, Any]:
             "agent": step["agent"].strip(),
             "reasoning": step["reasoning"].strip(),
             "depends_on": step.get("depends_on", []),
+            # D4 Phase 3: named ids this step should produce (plfam_id, ...);
+            # the orchestrator extracts them from the answer into
+            # step_outputs.values for the steps that depend on it.
+            "expects": [
+                str(e).strip() for e in (step.get("expects") or [])
+                if isinstance(e, str) and e.strip()
+            ][:5],
             "status": "pending",
             "result_summary": None,
             "result_data": None,

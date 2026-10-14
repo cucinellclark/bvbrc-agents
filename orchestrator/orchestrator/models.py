@@ -114,6 +114,13 @@ class OrchestratorRequest(BaseModel):
     # nothing is submitted on this turn.
     prepared_actions: list[dict[str, Any]] | None = None
 
+    # D4 Phase 3: the plan step a replayed or revised question belongs to,
+    # {plan_id, step_id, step_index}.  The gateway takes it from the STORED
+    # card (never from the browser), so a request cannot claim another step.
+    # After the replay the orchestrator emits that step's PLAN_STEP_COMPLETED
+    # (and PLAN_WORKFLOW_SUBMITTED), and a revision's new question keeps it.
+    plan_context: dict[str, Any] | None = None
+
     # User-attached text files (inline content from browser upload)
     attached_files: list[dict[str, Any]] = Field(default_factory=list)
 

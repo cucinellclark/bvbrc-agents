@@ -169,7 +169,9 @@ These IDs link records across collections:
 - genome_id: Links genome -> genome_feature, genome_amr, genome_sequence, pathway, \
 subsystem, sp_gene, etc.
 - feature_id / patric_id: Links genome_feature -> pathway, subsystem, sp_gene, \
-protein_feature, protein_structure.
+protein_feature, protein_structure. An id like fig|83332.12.peg.3062 is a \
+patric_id (query patric_id:"fig|83332.12.peg.3062"); feature_id looks like \
+PATRIC.83332.12.NC_000962.CDS.3335.4198.fwd. Feature groups hold feature_ids.
 - taxon_id / taxon_lineage_ids: Links any collection -> taxonomy.
 
 Cross-collection query pattern:

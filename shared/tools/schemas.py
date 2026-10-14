@@ -651,14 +651,17 @@ CREATE_GROUP = {
     "function": {
         "name": "create_group",
         "description": (
-            "Create a genome or feature group in the user's BV-BRC workspace "
-            "from a Solr query. Runs the query to fetch matching IDs, then "
-            "creates the group. Use this when the user asks to save search "
+            "Create a genome or feature group in the user's BV-BRC workspace. "
+            "Give EITHER a Solr query (any collection: genome, genome_amr, "
+            "genome_feature, sp_gene, ...; the tool collects the genome_id or "
+            "feature_id of every matching row, deduplicated, up to limit) OR "
+            "an explicit list of ids -- never both. Use the query when the "
+            "selection is described by fields; use ids for pasted lists or "
+            "ids an earlier step found. Use this when the user asks to save "
             "results as a group, or when a downstream service needs a genome "
             "or feature group as input. For mixed exact subsets (e.g. 5 of A "
-            "and 5 of B), pass a genome_id:(id1 OR id2 OR ...) query built "
-            "from prior search_data calls; a single A OR B query with limit "
-            "will NOT balance subsets."
+            "and 5 of B), pass the chosen ids; a single A OR B query with "
+            "limit will NOT balance subsets."
         ),
         "parameters": {
             "type": "object",
@@ -675,8 +678,8 @@ CREATE_GROUP = {
                 "collection": {
                     "type": "string",
                     "description": (
-                        "Solr collection to query for IDs. "
-                        "Use 'genome' for genome groups, "
+                        "Solr collection the query runs on (with query). "
+                        "'genome' or 'genome_amr' for genome groups, "
                         "'genome_feature' for feature groups."
                     ),
                 },
@@ -684,7 +687,20 @@ CREATE_GROUP = {
                     "type": "string",
                     "description": (
                         "Solr query string (same syntax as search_data). "
-                        "Example: 'genus:Salmonella AND host_name:Human'"
+                        "Example: 'genus:Salmonella AND host_name:Human'. "
+                        "Omit when ids is given."
+                    ),
+                },
+                "ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Explicit member ids instead of a query: genome ids "
+                        "like 83332.12 for a genome group; for a feature "
+                        "group, feature_id values (PATRIC.83332.12...) or "
+                        "patric_ids (fig|83332.12.peg.3062), which the tool "
+                        "converts to feature_id. Order is kept, duplicates "
+                        "dropped."
                     ),
                 },
                 "limit": {
@@ -712,7 +728,7 @@ CREATE_GROUP = {
                     "default": "error",
                 },
             },
-            "required": ["group_name", "group_type", "collection", "query"],
+            "required": ["group_name", "group_type"],
         },
     },
 }
@@ -1292,6 +1308,19 @@ CREATE_PLAN = {
                                     "this step can run"
                                 ),
                                 "default": [],
+                            },
+                            "expects": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": (
+                                    "Named identifiers this step must find for "
+                                    "later steps, from: plfam_id, pgfam_id, "
+                                    "patric_id, feature_id, genome_id, "
+                                    "srr_accession. They "
+                                    "are copied exactly into the steps that "
+                                    "depend on this one. Groups, job ids and "
+                                    "output folders are passed on automatically."
+                                ),
                             },
                         },
                         "required": [

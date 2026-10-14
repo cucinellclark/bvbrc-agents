@@ -63,6 +63,17 @@ from planning_agent.prompts.step_query import (  # noqa: E402
     build_step_execution_prompt,
 )
 from shared.tools.schemas import ALL_TOOL_SCHEMAS as TOOL_SCHEMAS  # noqa: E402
+from shared.step_outputs import format_step_outputs  # noqa: E402
+
+RECON_CAP_DEFAULT = 4
+PLAN_TOOL_NAMES = frozenset({"create_plan", "ask_clarification"})
+PLAN_ONLY_SCHEMAS = [s for s in TOOL_SCHEMAS if s["function"]["name"] in PLAN_TOOL_NAMES]
+RECON_CAP_NUDGE = (
+    "[SYSTEM CHECK — not from the user. Do not acknowledge or quote this note.] "
+    "You have looked up enough to plan. Call create_plan now (or ask_clarification "
+    "if a choice only the user can make is still open). Do not look anything else "
+    "up: each step's agent finds the details it needs when the step runs."
+)
 
 logger = logging.getLogger(__name__)
 
@@ -394,6 +405,14 @@ async def _execute_step(
         if recent_msgs:
             original_query = format_recent_messages(recent_msgs, max_per_message=200, max_messages=3)
 
+    # D4 Phase 3: only the steps this one depends on (transitively) feed it;
+    # their structured outputs go first, verbatim.
+    relevant = _relevant_prior_results(steps, current_index, completed_results)
+    outputs_block = format_step_outputs({
+        f"{sid}: {_step_description(steps, sid)[:80]}": (res or {}).get("step_outputs") or {}
+        for sid, res in relevant.items()
+    })
+
     # Build the step execution prompt
     step_prompt = build_step_execution_prompt(
         plan_title=plan_data.get("title", ""),
@@ -404,7 +423,8 @@ async def _execute_step(
         step_description=step_description,
         target_agent=target_agent,
         step_reasoning=step_reasoning,
-        prior_results=completed_results if completed_results else None,
+        prior_results=relevant or None,
+        prior_outputs_block=outputs_block,
     )
 
     messages = [
@@ -427,6 +447,10 @@ async def _execute_step(
     )
 
     formulated_query = get_response_content(response) or step_description
+    # The block is also appended to the delegated agent's task, so ids and
+    # paths reach it even if the formulated query paraphrased them away.
+    if outputs_block:
+        formulated_query = f"{formulated_query}\n\n{outputs_block}"
 
     await emit_progress(
         progress_callback,
@@ -445,6 +469,7 @@ async def _execute_step(
         "plan_id": plan_data.get("plan_id", ""),
         "step_id": step_id,
         "step_index": current_index,
+        "expects": list(step.get("expects") or []),
     }
 
     return state.to_result()
@@ -556,6 +581,12 @@ async def _run_planning_loop(
 
     executed_fingerprints: set[str] = set()
     duplicate_count = 0
+    # D4 Phase 3 recon cap: after this many lookups the model may only plan
+    # or ask.  The planner used to spend its whole 300 s on reconnaissance
+    # (mshukla, Oct 9); the steps look things up themselves.
+    recon_cap = max(0, int(getattr(config, "max_recon_tools", RECON_CAP_DEFAULT) or 0))
+    recon_count = 0
+    capped = False
 
     def _check_cancelled() -> None:
         """Raise CancelledError if the current asyncio task has been cancelled."""
@@ -565,6 +596,11 @@ async def _run_planning_loop(
 
     for iteration in range(config.max_iterations):
         _check_cancelled()  # checkpoint 1: top of iteration
+
+        if recon_cap and recon_count >= recon_cap and not capped:
+            capped = True
+            logger.info("Planning recon cap reached (%d lookups): plan or ask now", recon_count)
+            state.add_user_message(RECON_CAP_NUDGE)
 
         state.iteration = iteration + 1
 
@@ -579,7 +615,7 @@ async def _run_planning_loop(
         response = await chat_completion(
             client=client,
             messages=state.messages,
-            tools=TOOL_SCHEMAS,
+            tools=PLAN_ONLY_SCHEMAS if capped else TOOL_SCHEMAS,
             config=config,
         )
 
@@ -622,6 +658,13 @@ async def _run_planning_loop(
 
             _check_cancelled()  # checkpoint 3: before tool execution
 
+            # Recon cap within one response: several lookups can arrive in a
+            # single model reply (live, Oct 14: five), so the cap is applied
+            # per call, not only between replies.
+            if recon_cap and recon_count >= recon_cap and tc.name not in PLAN_TOOL_NAMES:
+                state.add_tool_result(tc.id, json.dumps({"_skipped": True, "_message": RECON_CAP_NUDGE}))
+                continue
+
             # Build headers for shared tools that need auth
             _headers = (
                 {"Authorization": config.bvbrc_auth_token}
@@ -640,6 +683,8 @@ async def _run_planning_loop(
             duration_ms = (time.time() - start) * 1000
 
             executed_fingerprints.add(fp)
+            if tc.name not in PLAN_TOOL_NAMES:
+                recon_count += 1
             error = result.get("error") if isinstance(result, dict) else None
             state.record_execution(
                 tc=tc,
@@ -730,6 +775,44 @@ async def _run_planning_loop(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _step_description(steps: list[dict[str, Any]], step_id: str) -> str:
+    for s_ in steps:
+        if s_.get("step_id") == step_id:
+            return s_.get("description", "")
+    return ""
+
+
+def _relevant_prior_results(
+    steps: list[dict[str, Any]],
+    current_index: int,
+    completed: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Completed results of the steps the current step depends on, transitively.
+
+    A step that declares no ``depends_on`` gets every earlier completed step:
+    planners often leave the field empty on a step that plainly uses the one
+    before it, and dropping its outputs would lose the id the chain needs.
+    """
+    completed = completed or {}
+    if current_index >= len(steps):
+        return {}
+    by_id = {s_.get("step_id"): s_ for s_ in steps}
+    direct = list(steps[current_index].get("depends_on") or [])
+    if not direct:
+        earlier = [s_.get("step_id") for s_ in steps[:current_index]]
+        return {sid: completed[sid] for sid in earlier if sid in completed}
+    wanted: list[str] = []
+    stack = list(direct)
+    while stack:
+        sid = stack.pop()
+        if sid in wanted or sid not in by_id:
+            continue
+        wanted.append(sid)
+        stack.extend(by_id[sid].get("depends_on") or [])
+    order = [s_.get("step_id") for s_ in steps]
+    return {sid: completed[sid] for sid in order if sid in wanted and sid in completed}
 
 
 def _build_agent_catalog_text(context: dict[str, Any]) -> str:

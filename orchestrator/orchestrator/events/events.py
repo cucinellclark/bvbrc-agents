@@ -57,6 +57,11 @@ class EventType(str, Enum):
     PLAN_STEP_FAILED = "plan_step_failed"
     PLAN_REVIEW_READY = "plan_review_ready"
     PLAN_WORKFLOW_SUBMITTED = "plan_workflow_submitted"
+    # D4 Phase 3: a plan step prepared jobs or groups under the plan gate;
+    # the plan pauses on its Yes / No / Other question (EXECUTION_BLOCKED
+    # with the same plan_context).  Never followed by PLAN_STEP_COMPLETED in
+    # the same turn: the replay turn completes the step.
+    PLAN_STEP_BLOCKED = "plan_step_blocked"
 
     # --- Registry / discovery ---
     DISCOVERY_START = "discovery_start"

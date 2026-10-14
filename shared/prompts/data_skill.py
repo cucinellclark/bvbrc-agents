@@ -70,6 +70,9 @@ for querying BV-BRC's Solr collections.  Follow these rules:
 
 ### Cross-Collection Queries
 Collections are linked by ``genome_id``, ``feature_id``/``patric_id``, and ``taxon_id``.
+An id like ``fig|83332.12.peg.3062`` is a **patric_id**: query
+``patric_id:"fig|83332.12.peg.3062"``. ``feature_id`` looks like
+``PATRIC.83332.12.NC_000962.CDS.3335.4198.fwd``; feature groups hold feature_ids.
 Pattern: query collection A → extract IDs → filter collection B with those IDs.
 Batch ``genome_id`` filters at max 50 IDs per query.
 

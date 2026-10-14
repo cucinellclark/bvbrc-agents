@@ -5,7 +5,7 @@ Provides three tools for the agent toolbox:
 
   ``list_groups``     – List all genome or feature groups in the user's workspace.
   ``get_group_ids``   – Retrieve the member IDs of a group by name.
-  ``create_group``    – Create a group from a Solr query.
+  ``create_group``    – Create a group from a Solr query or explicit ids.
 
 All three delegate to the core implementations in
 ``mcp_server/functions/group_functions.py`` via the lazy-import bridge.
@@ -13,6 +13,7 @@ All three delegate to the core implementations in
 
 from __future__ import annotations
 
+import re
 import sys
 from typing import Any, Dict, List, Optional
 
@@ -317,18 +318,130 @@ async def get_group_ids(
 # ---------------------------------------------------------------------------
 
 
+# A feature group holds feature_id values (PATRIC.83332.12.NC_000962.CDS...).
+# fig|... ids are patric_ids: accepted, and converted to feature_id first.
+_ID_PATTERNS = {
+    "genome_group": re.compile(r"^\d+\.\d+$"),
+    "feature_group": re.compile(r"^(?:PATRIC|RefSeq)\.\d+\.\d+\..+$"),
+}
+_PATRIC_ID_RE = re.compile(r"^fig\|\d+\.\d+\.[a-z]+\.\d+$")
+
+
+def _clean_ids(ids: Any, group_type: str) -> tuple[list[str], list[str]]:
+    """``(valid ids in order, deduplicated; malformed values)``."""
+    pattern = _ID_PATTERNS[group_type]
+    good: list[str] = []
+    bad: list[str] = []
+    seen: set[str] = set()
+    for raw in ids if isinstance(ids, list) else []:
+        val = str(raw).strip()
+        if not val or val in seen:
+            continue
+        if pattern.match(val) or (group_type == "feature_group" and _PATRIC_ID_RE.match(val)):
+            seen.add(val)
+            good.append(val)
+        else:
+            bad.append(val)
+    return good, bad
+
+
+async def _patric_to_feature_ids(
+    ids: list[str], token: Optional[str], base_url: Optional[str]
+) -> tuple[list[str], list[str]]:
+    """Replace fig|... patric_ids by their feature_id, order kept.
+
+    Returns ``(ids, not_found)``; ids that are already feature_ids pass through.
+    """
+    wanted = [i for i in ids if _PATRIC_ID_RE.match(i)]
+    if not wanted:
+        return ids, []
+    solr = _get_solr_query_fn()
+    mapping: dict[str, str] = {}
+    for start in range(0, len(wanted), 100):
+        chunk = wanted[start:start + 100]
+        query = "patric_id:(" + " OR ".join(f'"{i}"' for i in chunk) + ")"
+        res = await solr(collection="genome_feature", query=query, select=["patric_id", "feature_id"],
+                         limit=len(chunk) * 2, token=token, base_url=base_url)
+        for doc in (res or {}).get("results") or []:
+            if isinstance(doc, dict) and doc.get("patric_id") and doc.get("feature_id"):
+                mapping.setdefault(str(doc["patric_id"]), str(doc["feature_id"]))
+    out: list[str] = []
+    missing: list[str] = []
+    for i in ids:
+        if _PATRIC_ID_RE.match(i):
+            if i in mapping:
+                if mapping[i] not in out:
+                    out.append(mapping[i])
+            else:
+                missing.append(i)
+        elif i not in out:
+            out.append(i)
+    return out, missing
+
+
+def selection_summary(arguments: Dict[str, Any]) -> str:
+    """How a create_group call selects its members, for a question card."""
+    ids = arguments.get("ids")
+    if isinstance(ids, list) and ids:
+        return f"{len(ids)} listed ids"
+    query = str(arguments.get("query") or "").strip()
+    if len(query) > 160:
+        query = query[:157] + "..."
+    coll = arguments.get("collection") or ""
+    return f"{coll}: {query}" if coll and query else query
+
+
+async def count_group_members(arguments: Dict[str, Any], config: Any = None,
+                              headers: Optional[Dict[str, str]] = None) -> Optional[int]:
+    """How many members a create_group call would add (capped by limit), or None.
+
+    One count-only Solr request, so a plan-mode question can show the real
+    selection ("200 genomes") before anything is written.  For a per-record
+    collection (genome_amr, genome_feature with a genome group) the row count
+    can exceed the distinct ids; it is reported as an upper bound by the
+    caller.
+    """
+    group_type = arguments.get("group_type")
+    if group_type not in _GROUP_TYPE_CONFIG:
+        return None
+    if arguments.get("ids"):
+        good, _ = _clean_ids(arguments.get("ids"), group_type)
+        return len(good)
+    query = arguments.get("query")
+    if not query:
+        return None
+    token = _extract_token(headers) or getattr(config, "bvbrc_auth_token", None)
+    try:
+        res = await _get_solr_query_fn()(
+            collection=arguments.get("collection") or _GROUP_TYPE_CONFIG[group_type]["default_collection"],
+            query=query, count_only=True, token=token,
+            base_url=getattr(config, "bvbrc_api_url", None),
+        )
+    except Exception:
+        return None
+    n = res.get("numFound") if isinstance(res, dict) else None
+    if not isinstance(n, int):
+        return None
+    try:
+        limit = max(1, min(int(arguments.get("limit") or _DEFAULT_LIMIT), _MAX_LIMIT))
+    except (TypeError, ValueError):
+        limit = _DEFAULT_LIMIT
+    return min(n, limit)
+
+
 async def create_group(
     group_name: str,
     group_type: str,
-    collection: str,
-    query: str,
+    collection: Optional[str] = None,
+    query: Optional[str] = None,
     limit: int = _DEFAULT_LIMIT,
     if_exists: str = "error",
+    ids: Optional[List[str]] = None,
     config: Any = None,
     headers: Optional[Dict[str, str]] = None,
     **kwargs: Any,
 ) -> Dict[str, Any]:
-    """Create a genome or feature group from a Solr query.
+    """Create a genome or feature group from a Solr query or explicit ids.
 
     Runs the query against BV-BRC Solr to fetch matching IDs (up to
     *limit*), then creates the group in the user's workspace.
@@ -379,21 +492,61 @@ async def create_group(
 
     base_url = getattr(config, "bvbrc_api_url", None)
 
-    # --- Step 1: Fetch IDs by query ---
-    fetch_result = await _fetch_ids_by_query(
-        collection=collection,
-        query=query,
-        id_field=id_field,
-        limit=limit,
-        token=token,
-        base_url=base_url,
-    )
+    has_query = bool(query and str(query).strip())
+    if has_query == bool(ids):
+        return {
+            "error": "Give exactly one of query (with collection) or ids.",
+            "errorType": "INVALID_PARAMETERS",
+        }
 
-    if "error" in fetch_result and not fetch_result.get("ids"):
-        return fetch_result
+    if ids:
+        # --- Step 1 (ids): validate, keep order, drop duplicates ---
+        given = ids
+        ids, bad = _clean_ids(given, group_type)
+        if bad:
+            return {
+                "error": (
+                    f"{len(bad)} value(s) are not {display} member ids: "
+                    f"{', '.join(bad[:5])}. Expected "
+                    + ("genome ids like 83332.12." if group_type == "genome_group"
+                       else "feature_ids like PATRIC.83332.12.NC_000962.CDS.3335.4198.fwd "
+                            "or patric_ids like fig|83332.12.peg.3062.")
+                ),
+                "errorType": "INVALID_PARAMETERS",
+            }
+        if not ids:
+            return {"error": "ids is empty.", "errorType": "INVALID_PARAMETERS"}
+        if group_type == "feature_group":
+            ids, missing = await _patric_to_feature_ids(ids, token, base_url)
+            if missing:
+                return {
+                    "error": (
+                        f"{len(missing)} patric_id(s) were not found in BV-BRC: "
+                        f"{', '.join(missing[:5])}. Nothing was created."
+                    ),
+                    "errorType": "NOT_FOUND",
+                }
+        total_matching = len(ids)
+        ids = ids[:limit]
+        query = None
+        collection = None
+    else:
+        # --- Step 1: Fetch IDs by query ---
+        collection = collection or type_cfg["default_collection"]
+        fetch_result = await _fetch_ids_by_query(
+            collection=collection,
+            query=query,
+            id_field=id_field,
+            limit=limit,
+            token=token,
+            base_url=base_url,
+        )
 
-    ids = fetch_result["ids"]
-    total_matching = fetch_result.get("total_matching", len(ids))
+        if "error" in fetch_result and not fetch_result.get("ids"):
+            return fetch_result
+
+        ids = fetch_result["ids"]
+        total_matching = fetch_result.get("total_matching", len(ids))
 
     if not ids:
         return {

@@ -85,9 +85,11 @@ PLAN_MODE_BLOCKED_MESSAGE = (
     "nothing was submitted or created. Do not call it again in this turn "
     "and do not change any of the inputs. Instead, present exactly what you "
     "prepared (workflow or group, every input value, output folder name) as "
-    "a 'Ready to submit' summary and tell the user to switch the session to "
-    "Execute mode (the Plan/Execute toggle next to the message box) if they "
-    "want it run. Never say the job was submitted or the group was created."
+    "a 'Ready to submit' summary. The user is asked one Yes / No / Other "
+    "question right under your reply, and Yes runs exactly what you "
+    "prepared: end with 'Answer **Yes** below to run it, **No** to skip it, "
+    "or tell me what to change.' Do not tell them to switch modes. Never say "
+    "the job was submitted or the group was created."
 )
 
 
@@ -191,6 +193,45 @@ def prepared_actions_of(result: Any) -> list[Dict[str, Any]]:
                 entry[key] = action[key]
         actions.append(entry)
     return actions
+
+
+# Collections with one row per genome (or per feature for a feature group):
+# their row count is the member count.  Others (genome_amr, sp_gene, ...)
+# have several rows per member, so the count is an upper bound.
+_ONE_ROW_PER_MEMBER = {"genome_group": {"genome"}, "feature_group": {"genome_feature"}}
+
+
+async def _add_group_preview(
+    result: Dict[str, Any], arguments: Dict[str, Any], config: Any, headers: Any
+) -> None:
+    """Put the member count and the selection on a plan-mode group question.
+
+    D4 Phase 3: the user approves the actual selection ("genome_group
+    'strep_tet_R' — 200 genomes (genome_amr: antibiotic:tetracycline AND
+    ...)"), not just a name.  One count-only Solr request; on failure the
+    summary keeps the name only.  The arguments are not changed, so the
+    replay runs exactly what was shown.
+    """
+    from shared.tools.groups import count_group_members, selection_summary
+
+    args = arguments if isinstance(arguments, dict) else {}
+    group_type = args.get("group_type") or "group"
+    name = args.get("group_name") or "unnamed"
+    try:
+        n = await asyncio.wait_for(count_group_members(args, config, headers), timeout=15)
+    except Exception:
+        n = None
+    unit = "genomes" if group_type == "genome_group" else "features" if group_type == "feature_group" else "members"
+    parts = [f"{group_type} '{name}'"]
+    if n is not None:
+        exact = bool(args.get("ids")) or args.get("collection") in _ONE_ROW_PER_MEMBER.get(group_type, set())
+        parts.append(f"— {'' if exact else 'up to '}{n} {unit}")
+        result["member_count"] = n
+        result["member_count_exact"] = exact
+    selection = selection_summary(args)
+    if selection:
+        parts.append(f"({selection})")
+    result["summary"] = " ".join(parts)
 
 
 def is_invalid_arguments_result(result: Any) -> bool:
@@ -372,6 +413,8 @@ async def execute_tool(
         result = blocked_by_mode_result(tool_name, arguments)
         if tool_name == "submit_gowe_job":
             _add_output_location(result, arguments, config)
+        elif tool_name == "create_group":
+            await _add_group_preview(result, arguments, config, headers)
         return result
 
     # Apply per-tool timeout overrides (use the larger of caller vs override)

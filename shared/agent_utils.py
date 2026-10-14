@@ -810,11 +810,12 @@ def format_execution_mode(source: Any) -> str:
         "you must still MAKE the call. Every other tool works.\n"
         "Fully prepare the job or group (discover, browse, verify, populate\n"
         "every input), then CALL the tool anyway. The refusal is expected and\n"
-        "is what gives the user a one-click 'Submit this job' button; if you\n"
-        "skip the call that button never appears. Never say the job was\n"
-        "submitted or the group created, and tell the user to switch to\n"
-        "Execute mode using the Plan/Execute toggle next to the message box\n"
-        "when they want it run."
+        "is what asks the user one Yes / No / Other question under your\n"
+        "reply (Yes runs exactly what you prepared); if you skip the call\n"
+        "that question never appears. Never say the job was submitted or the\n"
+        "group created. End with: 'Answer **Yes** below to run it, **No** to\n"
+        "skip it, or tell me what to change.' Do not tell the user to switch\n"
+        "modes."
     )
 
 
