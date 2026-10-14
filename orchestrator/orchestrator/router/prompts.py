@@ -89,6 +89,13 @@ into another across different agent domains. Do NOT route to planning \
 for single-agent questions, even if complex. Only use planning when \
 multiple agents need to coordinate and the user would benefit from \
 reviewing a structured plan before execution.
+- Route to the **service** agent when the user wants SEVERAL services on \
+ONE input and names up to four of them ("run Taxonomic Classification and \
+Metagenomic Binning on ERR7916233", "run CGA, binning and classification \
+on this sample"), or asks for "all" / "the relevant" services on one input. \
+The service agent prepares every job and asks the user to confirm the set \
+once. Route to **planning** only for more than four services, or for \
+"everything you can do with this" style requests that need a plan.
 - Route to the **planning** agent when the user wants to run the SAME \
 workflow/service on MULTIPLE independent samples. This includes: \
 "assemble all the reads in this folder", "annotate these 5 genomes", \

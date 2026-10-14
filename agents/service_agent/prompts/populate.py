@@ -17,7 +17,40 @@ from shared.prompts.data_skill import DATA_SKILL_PROMPT
 from shared.prompts.helpdesk_skill import HELPDESK_SKILL_PROMPT
 from shared.prompts.groups_sra_skill import GROUPS_SRA_SKILL_PROMPT
 from shared.prompts.similar_genome_skill import SIMILAR_GENOME_SKILL_PROMPT
+from shared.prompts.gowe_skill import RELEVANT_SERVICES_BY_INPUT
 
+
+# D4 multi-job mode: the user asked for several jobs (several services on one
+# input, "all services", several samples run separately, or a revision of a
+# prepared set).  The gate is forced on by code whatever the session mode, so
+# this replaces both == EXECUTION MODE == texts.
+_MULTI_JOB_SECTION = """\
+== EXECUTION MODE ==
+This request asks for SEVERAL jobs. In this turn submit_gowe_job records \
+each job instead of submitting it: the call is refused with \
+"blocked_by_mode", nothing is submitted, and the user confirms the whole \
+set with ONE question after your reply. That is how it must work, \
+whatever mode the chat is in. Every other tool works normally.
+How to prepare the set:
+- Call list_gowe_workflows ONCE. Resolve shared inputs ONCE (one \
+get_sra_metadata, one workspace lookup); reuse them for every job.
+- For EACH job: get_workflow_inputs, populate every input, then CALL \
+submit_gowe_job. The refusal is expected and correct -- it is what adds \
+the job to the set. Then go straight on to the next job; do not write \
+any summary until every job has been prepared or has a reason it cannot be.
+- NEVER retry a refused call and NEVER change its inputs because of the \
+refusal.
+- A job that needs an earlier job's output (annotate the assembly) cannot \
+be prepared yet: prepare the jobs whose inputs exist now and say which \
+one waits for what.
+- A job missing a value only the user can give: prepare the others, and \
+ask for the value in the same reply.
+- At most 10 jobs per message; say so if the request has more.
+When the set is complete, reply with one line per job: the service's \
+display name, the sample or input, the non-default parameters, and the \
+output folder name. Finish with: "Answer **Yes** below to submit them, \
+**No** to submit nothing, or tell me what to change." NEVER say a job \
+was submitted, is running, or is queued."""
 
 _PLAN_MODE_SECTION = """\
 == EXECUTION MODE ==
@@ -56,9 +89,36 @@ user has explicitly asked you to run/submit/go ahead and all required \
 inputs are complete, submit without an extra confirmation round."""
 
 
+def format_prepared_job_set(prepared_actions: list[dict] | None) -> str:
+    """The set the user is revising ("Other" / text after No), for the prompt."""
+    if not prepared_actions:
+        return ""
+    import json
+
+    lines = [
+        "=== PREPARED JOB SET ===",
+        "The user is answering a question about THIS set of prepared jobs. "
+        "Their message says what to change. Keep every job they did not "
+        "mention exactly as it is (same workflow, same inputs, same output "
+        "folder) and call submit_gowe_job for each job that should remain, "
+        "with the change applied where they asked for one. Do not start over "
+        "and do not ask them to repeat what is already here. If their message "
+        "means no job should remain, say so and prepare nothing.",
+    ]
+    for i, action in enumerate(prepared_actions, 1):
+        summary = action.get("summary") or action.get("tool") or "action"
+        args = json.dumps(action.get("arguments") or {}, default=str)
+        if len(args) > 2000:
+            args = args[:2000] + " ... [truncated]"
+        lines.append(f"{i}. {summary}\n   arguments: {args}")
+    return "\n".join(lines)
+
+
 def build_populate_prompt(
     attached_files: list[dict] | None = None,
     execution_mode: str = "plan",
+    multi_job: bool = False,
+    prepared_actions: list[dict] | None = None,
 ) -> str:
     """Build the system prompt for the workflow populate phase.
 
@@ -69,10 +129,20 @@ def build_populate_prompt(
         execution_mode: ``"plan"`` (default) or ``"execute"``.  Selects
             the ``== EXECUTION MODE ==`` section.  Anything other than
             ``"execute"`` is treated as plan.
+        multi_job: the turn prepares a set of jobs under the plan gate
+            (D4).  Replaces the mode section with ``_MULTI_JOB_SECTION``.
+        prepared_actions: the set being revised, rendered as
+            ``=== PREPARED JOB SET ===``.
     """
-    mode_section = (
-        _EXECUTE_MODE_SECTION if execution_mode == "execute" else _PLAN_MODE_SECTION
-    )
+    if multi_job:
+        mode_section = _MULTI_JOB_SECTION
+    else:
+        mode_section = (
+            _EXECUTE_MODE_SECTION if execution_mode == "execute" else _PLAN_MODE_SECTION
+        )
+    prepared_section = format_prepared_job_set(prepared_actions)
+    if prepared_section:
+        mode_section += "\n\n" + prepared_section
     files_section = "None"
     if attached_files:
         lines = []
@@ -215,9 +285,9 @@ provides them.
 - For a SINGLE job request, call submit_gowe_job EXACTLY ONCE. After a \
 successful submission, produce your summary message. Do NOT submit the \
 same job again with different output paths or parameters.
-- Only submit multiple jobs when a === BATCH MODE === section is present \
-and you have been EXPLICITLY instructed to process multiple independent \
-samples.
+- Call submit_gowe_job once per job ONLY when the request asks for \
+several jobs (see == MULTI-JOB ==) or a === BATCH MODE === section is \
+present.
 
 == FILE PATHS ==
 All file paths in inputs must be PLAIN workspace path strings \
@@ -274,33 +344,32 @@ it actually does, and do not submit anything.
 == USER-ATTACHED FILES ==
 {files_section}
 
-== BATCH / MULTI-SAMPLE SUBMISSIONS ==
-When instructed to submit MULTIPLE INDEPENDENT JOBS for separate \
-samples (e.g., "submit separate genome assembly jobs for each of \
-these 5 samples"), call submit_gowe_job ONCE PER SAMPLE. Each call \
-should use:
-- The SAME workflow_id
-- Sample-specific inputs (one entry in paired_end_libs, or one entry \
-in single_end_libs, or one SRA accession in srr_ids — per job)
-- A UNIQUE output_path and output_file derived from the sample name \
-(auto-generated by you, never ask the user). The system automatically \
-places outputs under the session workspace, so just use descriptive \
-names (e.g., SampleA_assembly, SampleB_assembly).
+== MULTI-JOB ==
+A request for SEVERAL jobs is one of: two or more services on one input \
+("run Taxonomic Classification and Metagenomic Binning on ERR7916233"), \
+"all" or "every" service on an input, or the same service on several \
+samples run SEPARATELY ("assemble SRR1, SRR2 and SRR3"). Each job is \
+one submit_gowe_job call with its own inputs and its own output_path \
+and output_file derived from the service and sample (SRR1_assembly, \
+SRR1_taxclass; auto-generated, never asked). Resolve shared inputs once \
+and reuse them. At most 10 jobs per message.
+Whether several samples are separate jobs or one job depends on the \
+workflow: Genome Assembly, Comprehensive Genome Analysis, Variation, \
+Taxonomic Classification and Metagenomic Binning take ONE sample per \
+job; RNASeq, Comparative Systems, Bacterial Genome Tree and Core Genome \
+MLST take all samples in ONE job. One job with several inputs is a \
+single job, not a set.
+In a set, prepared jobs are confirmed by the user afterwards and \
+submitted together. Never describe a prepared job as submitted, and \
+never promise to run a further job when one completes: chaining jobs \
+happens only inside a plan.
 
-All jobs will be submitted in sequence within this session. After \
-all submissions succeed, produce a brief confirmation (e.g., \
-"All 5 jobs have been submitted successfully").
-
-Note: Whether multiple samples should be submitted as separate jobs \
-or combined into a single job depends on the workflow. Some workflows \
-(like RNASeq) legitimately accept multiple samples in one job. Others \
-(like GenomeAssembly) require one job per sample. Follow the \
-instructions you receive — if told to submit separate jobs, do so; \
-if told to submit one job with all samples, do that instead.
+{RELEVANT_SERVICES_BY_INPUT}
 
 == SUBMISSION FAILURES ==
 A submit_gowe_job result with "_skipped" means that job was NOT \
-submitted (one job per message). Never describe it as submitted.
+submitted or prepared (one job per message, or the 10-job cap). \
+Never describe it as submitted.
 If submit_gowe_job returns an error with "blocked_by_mode", the \
 session is in plan mode: nothing was submitted and nothing failed. \
 Do NOT retry and do NOT change any inputs — produce the Ready to \

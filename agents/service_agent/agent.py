@@ -30,7 +30,7 @@ from agent_utils import emit_progress
 
 from service_agent.classifier import classify_intent
 from service_agent.handlers import handle_submit, handle_status, handle_cancel
-from service_agent.models import AgentConfig, AgentResult, AgentState
+from service_agent.models import AgentConfig, AgentResult, AgentState, Intent
 from service_agent.phases.populate import populate_and_submit
 from service_agent.phases.replay import replay_blocked_actions, valid_replay_actions
 
@@ -66,6 +66,13 @@ async def run_agent(
     cfg = config or AgentConfig()
     ctx = dict(context or {})
     replay = ctx.pop("replay_actions", None)
+    # D4 "Other": the user is revising a prepared job set.  The set stays in
+    # the context for the prompt (=== PREPARED JOB SET ===) and forces
+    # multi-job mode; the classifier is skipped.
+    prepared = ctx.get("prepared_actions")
+    if prepared is not None and not isinstance(prepared, list):
+        ctx.pop("prepared_actions", None)
+        prepared = None
     state = AgentState(query=query, context=ctx)
 
     # ------------------------------------------------------------------
@@ -89,16 +96,23 @@ async def run_agent(
     # Step 1: Classify intent
     # ------------------------------------------------------------------
     await emit_progress(progress_callback, 0, 1, "Analyzing request...")
-    intent = await classify_intent(query, ctx, cfg)
+    if prepared is not None:
+        intent = Intent(action="plan", job_count="many", reasoning="revising a prepared job set")
+    else:
+        intent = await classify_intent(query, ctx, cfg)
     state.classified_intent = intent
 
     logger.info(
-        "Intent: action=%s, workflow_id=%s, confidence=%.2f, submit_after_plan=%s",
+        "Intent: action=%s, workflow_id=%s, confidence=%.2f, submit_after_plan=%s, job_count=%s",
         intent.action,
         intent.workflow_id,
         intent.confidence,
         intent.submit_after_plan,
+        intent.job_count,
     )
+    # D4: several jobs are prepared under the plan gate and confirmed once,
+    # whatever the session mode.  The gate is set here, by code.
+    multi_job = prepared is not None or intent.job_count == "many"
 
     # ------------------------------------------------------------------
     # Step 2: Dispatch based on intent
@@ -137,7 +151,7 @@ async def run_agent(
     # Sep).  The populate loop reads the request with all tools and asks a
     # real question if it needs one.
     if intent.action == "unknown":
-        return await _run_gowe_flow(query, cfg, state, progress_callback)
+        return await _run_job_request(query, cfg, state, multi_job, progress_callback)
 
     # Submit without workflow_id: a job prepared through GoWe has no saved
     # workflow id -- its inputs live only in the conversation ("Ready to
@@ -147,7 +161,7 @@ async def run_agent(
     # JSON (Qwen3.8, 2026-10-09).
     if intent.action == "submit" and not intent.workflow_id:
         logger.info("Submit with no workflow_id: running the populate loop on the conversation")
-        return await _run_gowe_flow(query, cfg, state, progress_callback)
+        return await _run_job_request(query, cfg, state, multi_job, progress_callback)
 
     # Status/cancel without workflow_id: classifier couldn't resolve
     if intent.action in ("status", "cancel") and not intent.workflow_id:
@@ -162,12 +176,56 @@ async def run_agent(
     # Plan (or modify/fallback): GoWe-first workflow populate + submit.
     # The LLM discovers workflows from GoWe, selects one, populates
     # its inputs, and submits the job in a single loop.
-    return await _run_gowe_flow(query, cfg, state, progress_callback)
+    return await _run_job_request(query, cfg, state, multi_job, progress_callback)
 
 
 # ======================================================================
 # GoWe-first workflow flow (primary)
 # ======================================================================
+
+
+async def _run_job_request(
+    query: str,
+    config: AgentConfig,
+    state: AgentState,
+    multi_job: bool,
+    progress_callback: ProgressCallback | None = None,
+) -> AgentResult:
+    """Run the populate loop; in multi-job mode, under the plan gate.
+
+    Multi-job (D4): the loop prepares every job as a ``blocked_action`` and
+    the user confirms the set with one question.  Two exceptions keep the
+    rules for single jobs: if the classifier over-counted and only one job
+    was prepared while the session is in Execute mode, that job is submitted
+    right away through the replay path (Execute mode means one job needs no
+    click); a revision turn (``prepared_actions``) always asks again.
+    """
+    if not multi_job:
+        return await _run_gowe_flow(query, config, state, progress_callback)
+
+    session_mode = config.execution_mode
+    state.multi_job = True
+    gated = config.model_copy(update={"execution_mode": "plan"})
+    result = await _run_gowe_flow(query, gated, state, progress_callback)
+
+    revising = bool(state.context.get("prepared_actions"))
+    if (
+        session_mode == "execute"
+        and not revising
+        and state.status == "completed"
+        and state.current_phase == "ready"
+        and len(state.blocked_actions) == 1
+    ):
+        action = state.blocked_actions[0]
+        logger.info("Multi-job turn prepared one job in execute mode: submitting it directly")
+        await emit_progress(progress_callback, 0, 1, "Submitting the prepared job...")
+        direct = AgentState(query=query, context=state.context)
+        direct.classified_intent = state.classified_intent
+        direct.tool_executions = list(state.tool_executions)
+        direct = await replay_blocked_actions([dict(action)], config, direct)
+        await emit_progress(progress_callback, 1, 1, "Done.")
+        return direct.to_result()
+    return result
 
 
 async def _run_gowe_flow(

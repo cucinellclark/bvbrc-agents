@@ -108,6 +108,12 @@ class OrchestratorRequest(BaseModel):
     # verbatim instead of rebuilding the job with the LLM.
     replay_actions: list[dict[str, Any]] | None = None
 
+    # "Other" on the confirmation question (D4): the prepared set the user is
+    # revising, same shape as replay_actions and checked the same way by the
+    # gateway.  The service agent edits it under the plan gate and asks again;
+    # nothing is submitted on this turn.
+    prepared_actions: list[dict[str, Any]] | None = None
+
     # User-attached text files (inline content from browser upload)
     attached_files: list[dict[str, Any]] = Field(default_factory=list)
 

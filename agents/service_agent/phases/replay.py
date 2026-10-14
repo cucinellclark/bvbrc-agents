@@ -82,22 +82,37 @@ def _group_line(summary: str, result: dict[str, Any]) -> str:
     return f"{verb} group **{name}**{size}{where}."
 
 
+def _folder_of(action: dict[str, Any]) -> str:
+    """The output folder name the prepared job asked for, for failure lines."""
+    inputs = (action.get("arguments") or {}).get("inputs") or {}
+    out = inputs.get("output_path") if isinstance(inputs, dict) else None
+    return f" (output folder `{out}`)" if out else ""
+
+
 async def replay_blocked_actions(
     actions: list[dict[str, Any]],
     config: AgentConfig,
     state: AgentState,
 ) -> AgentState:
-    """Run each prepared call verbatim, in order; stop at the first failure."""
+    """Run each prepared call verbatim, in order.
+
+    A failed ``submit_gowe_job`` does not stop the set: the jobs are
+    independent, so the next one still runs and the reply names each outcome.
+    A failed ``create_group`` does stop it, since a later submit may use the
+    group.  A plan-mode refusal stops it too: nothing after it could run.
+    """
     headers = (
         {"Authorization": config.bvbrc_auth_token}
         if config.bvbrc_auth_token else None
     )
     lines: list[str] = []
     succeeded = 0
-    failed = False
+    attempted = 0
+    stopped = False
 
     for i, action in enumerate(actions):
         tool, summary = action["tool"], action["summary"]
+        attempted += 1
         tc = ToolCall(id=f"replay_{i}", name=tool, arguments=action["arguments"])
         result = await execute_tool(
             tool_name=tool,
@@ -124,34 +139,36 @@ async def replay_blocked_actions(
         if is_needs_user_input_result(result):
             # The prepared job lacks something only the user can give (the
             # organism for CGA / annotation).  The tool text is written for
-            # the model, so say it plainly instead.
+            # the model, so say it plainly instead.  The other jobs still run.
             if result.get("wrong_workflow"):
                 lines.append(
-                    f"Did not submit **{summary}**: this workflow annotates a single "
-                    f"organism's genome and cannot run on a metagenome. For a "
-                    f"metagenomic sample, ask for Metagenomic Binning or Taxonomic "
-                    f"Classification instead."
+                    f"Did not submit **{summary}**{_folder_of(action)}: this workflow "
+                    f"annotates a single organism's genome and cannot run on a "
+                    f"metagenome. For a metagenomic sample, ask for Metagenomic "
+                    f"Binning or Taxonomic Classification instead."
                 )
             else:
                 lines.append(
-                    f"Did not submit **{summary}**: it needs the organism (its "
-                    f"scientific name and NCBI taxonomy ID). Tell me which organism "
-                    f"this genome is and I will prepare it again."
+                    f"Did not submit **{summary}**{_folder_of(action)}: it needs the "
+                    f"organism (its scientific name and NCBI taxonomy ID). Tell me "
+                    f"which organism this genome is and I will prepare it again."
                 )
-            failed = True
-            break
+            continue
         if is_blocked_result(result):
             lines.append(
                 f"Not run: **{summary}**. This chat is in Plan mode, so nothing "
                 f"was submitted or created."
             )
-            failed = True
+            stopped = True
             break
         if error:
             logger.warning("Replay of %s failed: %s", tool, error)
-            lines.append(f"Could not run **{summary}**: {error}")
-            failed = True
-            break
+            lines.append(f"Could not run **{summary}**{_folder_of(action)}: {error}")
+            if tool == "create_group":
+                # Later submits may depend on the group.
+                stopped = True
+                break
+            continue
 
         succeeded += 1
         if tool == "submit_gowe_job" and result.get("submission_id"):
@@ -167,12 +184,17 @@ async def replay_blocked_actions(
         else:
             lines.append(f"Done: **{summary}**.")
 
-    skipped = actions[len(state.tool_executions):]
-    if failed and skipped:
+    skipped = actions[attempted:] if stopped else []
+    if skipped:
         lines.append(
             "Not attempted after that: "
-            + "; ".join(f"**{a['summary']}**" for a in skipped) + "."
+            + "; ".join(f"**{a['summary']}**{_folder_of(a)}" for a in skipped) + "."
         )
+    n_jobs = sum(1 for a in actions if a["tool"] == "submit_gowe_job")
+    if n_jobs > 1:
+        n_sub = len(state.submission_ids)
+        lines.insert(0, f"Submitted {n_sub} of {n_jobs} jobs." if n_sub != n_jobs
+                     else f"Submitted all {n_jobs} jobs.")
     if state.submission_ids:
         lines.append(_COMPLETION_NOTE)
 

@@ -70,6 +70,9 @@ STUCK_MESSAGE = (
 SUCCESS_PHRASES = (
     "submitted successfully", "has been submitted", "job was submitted",
     "submission was successful", "successfully submitted", "job is now running",
+    # Plural forms for a job set (D4).
+    "have been submitted", "jobs were submitted", "were submitted",
+    "are now running", "jobs are running", "is now queued", "are now queued",
 )
 
 PLAN_MODE_NUDGE = (
@@ -78,6 +81,15 @@ PLAN_MODE_NUDGE = (
     "Rewrite your answer as a 'Ready to submit' summary (workflow, each "
     "input value, output folder name) and tell the user to switch to "
     "Execute mode to run it."
+)
+
+MULTI_JOB_NUDGE = (
+    "Nothing was submitted — every submit_gowe_job call was recorded, not "
+    "run, and the user has not confirmed the set yet. Do NOT claim a job was "
+    "submitted or running. Rewrite your answer as a list of the prepared "
+    "jobs (service, input, non-default parameters, output folder name) and "
+    "finish with: Answer **Yes** below to submit them, **No** to submit "
+    "nothing, or tell me what to change."
 )
 
 
@@ -133,6 +145,19 @@ _NUDGE_ECHO_OPENERS = re.compile(
 )
 
 
+# D4: the most jobs one turn may prepare (multi-job mode) or submit (batch
+# mode).  Matches the replay limit (MAX_REPLAY_ACTIONS, gateway
+# MAX_REPLAY_ACTIONS): a bigger set could be prepared but never confirmed.
+MAX_PREPARED_JOBS = 10
+
+CAPPED_SUBMIT_MESSAGE = (
+    f"NOT submitted or prepared: this message already holds {MAX_PREPARED_JOBS} "
+    "jobs, the most one message can carry. Do not call submit_gowe_job again in "
+    "this turn. In your reply, list this job under what was left out and tell "
+    "the user to ask for it in a new message."
+)
+
+
 def _add_nudge(state: AgentState, text: str) -> None:
     """Send a mid-loop correction, marked as a system check."""
     state.add_user_message(SYSTEM_CHECK_PREFIX + text)
@@ -184,15 +209,36 @@ def _strip_nudge_echo(content: str) -> str:
 
 def _plan_mode_summary(state: AgentState) -> str:
     """Fallback 'Ready to submit' text when the LLM keeps claiming success."""
-    lines = ["**Ready to submit (plan mode — nothing was submitted).**", ""]
+    n = len(state.blocked_actions)
+    if state.multi_job or n > 1:
+        lines = [f"**Prepared {n} job{'s' if n != 1 else ''} — nothing was submitted.**", ""]
+    else:
+        lines = ["**Ready to submit (plan mode — nothing was submitted).**", ""]
     for action in state.blocked_actions:
         lines.append(f"- {action.get('summary') or action.get('tool')}")
     lines.append("")
-    lines.append(
-        "Switch this chat to **Execute mode** (the Plan/Execute toggle next "
-        "to the message box) and ask me to submit when you are ready."
-    )
+    if state.multi_job or n > 1:
+        lines.append(
+            "Answer **Yes** below to submit them, **No** to submit nothing, "
+            "or tell me what to change."
+        )
+    else:
+        lines.append(
+            "Switch this chat to **Execute mode** (the Plan/Execute toggle next "
+            "to the message box) and ask me to submit when you are ready."
+        )
     return "\n".join(lines)
+
+
+def _capped_note(state: AgentState) -> str:
+    """Fixed text for jobs refused by the per-message cap (never 'submitted')."""
+    if not state.capped_submits:
+        return ""
+    items = "\n".join(f"- {s}" for s in state.capped_submits)
+    return (
+        f"\n\n**Not included ({MAX_PREPARED_JOBS} jobs per message):**\n{items}\n\n"
+        "Ask for these in a new message once this set is done."
+    )
 
 
 def _submitted_summary(state: AgentState) -> str:
@@ -328,6 +374,12 @@ async def populate_and_submit(
     """
     state.current_phase = "populate"
     batch_mode = bool(state.context.get("batch_mode", False)) if state.context else False
+    # D4: multi-job mode (set by agent.run_agent, which also forced the plan
+    # gate on).  A batch step is multi-job by definition: it may submit or
+    # prepare several jobs, up to the same cap.
+    multi_job = bool(state.multi_job)
+    job_set = multi_job or batch_mode
+    prepared_actions = state.context.get("prepared_actions") if state.context else None
     force_no_tools = False
 
     # Build system prompt — feed parsed_documents for file inventory
@@ -335,6 +387,8 @@ async def populate_and_submit(
     system_prompt = build_populate_prompt(
         attached_files=parsed_docs,
         execution_mode=config.execution_mode,
+        multi_job=multi_job,
+        prepared_actions=prepared_actions if isinstance(prepared_actions, list) else None,
     )
 
     images: list[str] = []
@@ -385,7 +439,7 @@ async def populate_and_submit(
                 "page_context", "images",
                 "conversation_summary", "recent_messages",
                 "parsed_documents", "attached_files", "handoff", "llm_override", "llm_options",
-                "batch_mode",
+                "batch_mode", "prepared_actions", "multi_job",
             )
         }
         if ctx_for_prompt:
@@ -397,7 +451,8 @@ async def populate_and_submit(
         system_prompt += (
             "\n\n=== BATCH MODE ===\n"
             "You have been delegated a multi-sample task. You may call "
-            "submit_gowe_job once per sample as instructed."
+            "submit_gowe_job once per sample as instructed, up to "
+            f"{MAX_PREPARED_JOBS} per message; name any sample left out."
         )
 
     # Initialize messages
@@ -496,6 +551,7 @@ async def populate_and_submit(
                         + _output_location_note(state)
                         + _duplicate_note(state)
                         + _skipped_note(state)
+                        + _capped_note(state)
                     )
                     return state
 
@@ -548,7 +604,7 @@ async def populate_and_submit(
                             state.add_assistant_message(
                                 content=content, tool_calls=[],
                             )
-                            _add_nudge(state, PLAN_MODE_NUDGE)
+                            _add_nudge(state, MULTI_JOB_NUDGE if job_set else PLAN_MODE_NUDGE)
                             continue
                         logger.warning(
                             "LLM still claimed success after plan-mode "
@@ -557,7 +613,7 @@ async def populate_and_submit(
                         content = _plan_mode_summary(state)
                     state.status = "completed"
                     state.current_phase = "ready"
-                    state.operation_message = content
+                    state.operation_message = content + _capped_note(state)
                     return state
 
                 # A reply that asks the user something is a legitimate end of
@@ -692,6 +748,29 @@ async def populate_and_submit(
             # --- Cancel checkpoint: before each tool execution ---
             _check_cancelled()
 
+            # D4 per-message cap for a set: once MAX_PREPARED_JOBS jobs are
+            # prepared (multi-job) or submitted (batch), further submits in
+            # the same response get a fixed refusal and are listed as left
+            # out.  The replay path cannot carry more than that anyway.
+            if (
+                tc.name == "submit_gowe_job"
+                and job_set
+                and len(state.blocked_actions) + len(state.submission_ids) >= MAX_PREPARED_JOBS
+            ):
+                logger.warning(
+                    "Per-message cap (%d): refusing submit_gowe_job %s", MAX_PREPARED_JOBS, tc.id
+                )
+                if call_fingerprint(tc) not in executed_fingerprints:
+                    summary = describe_blocked_action("submit_gowe_job", tc.arguments or {})
+                    if summary not in state.capped_submits:
+                        state.capped_submits.append(summary)
+                state.add_tool_result(
+                    tc.id,
+                    json.dumps({"_skipped": True, "_message": CAPPED_SUBMIT_MESSAGE}),
+                )
+                force_no_tools = True
+                continue
+
             # Single-submission cap: for non-batch requests, block any
             # additional submit_gowe_job calls after the first success.
             if (
@@ -764,8 +843,9 @@ async def populate_and_submit(
             # tool never ran, so this is not a failed submission: feed
             # the refusal back and force the next LLM call to be
             # text-only so it produces the 'Ready to submit' summary
-            # instead of retrying.  In batch mode keep tools enabled so
-            # each sample still gets its own blocked entry.
+            # instead of retrying.  For a job set (multi-job or batch)
+            # keep tools enabled so each job gets its own blocked entry,
+            # until the per-message cap.
             if tc.name == "submit_gowe_job" and is_blocked_result(result):
                 logger.info(
                     "submit_gowe_job refused by execution-mode gate "
@@ -774,7 +854,7 @@ async def populate_and_submit(
                 )
                 result_str = truncate_result(result, max_chars=result_char_limit(tc.name))
                 state.add_tool_result(tc.id, result_str)
-                if not batch_mode:
+                if not job_set or len(state.blocked_actions) >= MAX_PREPARED_JOBS:
                     force_no_tools = True
                 continue
 
@@ -890,8 +970,9 @@ async def populate_and_submit(
 
                 # For single-job requests, force the next LLM call to
                 # produce text only (no tool calls) so it summarizes
-                # instead of submitting again.
-                if not batch_mode:
+                # instead of submitting again.  A batch step stops at
+                # the per-message cap.
+                if not batch_mode or len(state.submission_ids) >= MAX_PREPARED_JOBS:
                     force_no_tools = True
 
                 # Do NOT return here -- let the LLM continue the loop.

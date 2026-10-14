@@ -92,14 +92,61 @@ async def test_two_actions_run_in_order():
     assert result.submission_ids == ["sub_1"]
 
 
-async def test_first_failure_stops_the_rest():
-    result, tool = await _run([TC_ACTION, GROUP_ACTION], [{"error": "GoWe returned 400: bad srr_ids"}])
+async def test_failed_submit_does_not_stop_the_rest():
+    """D4: jobs in a set are independent, so the next one still runs."""
+    group_ok = {"name": "strep_resist", "count": 2, "action": "created"}
+    result, tool = await _run([TC_ACTION, GROUP_ACTION], [{"error": "GoWe returned 400: bad srr_ids"}, group_ok])
+    assert tool.await_count == 2
+    assert result.status == "completed"
+    assert "Could not run **Taxonomic Classification → tc_ERR7916233** (output folder `tc_ERR7916233`)" in result.operation_message
+    assert "bad srr_ids" in result.operation_message
+    assert "Created group **strep_resist**" in result.operation_message
+    assert "Not attempted" not in result.operation_message
+    assert result.submission_ids == []
+
+
+async def test_failed_group_stops_the_rest():
+    result, tool = await _run([GROUP_ACTION, TC_ACTION], [{"error": "Workspace.create: 500"}])
     tool.assert_awaited_once()
     assert result.status == "error"
-    assert "Could not run **Taxonomic Classification" in result.error_message
-    assert "bad srr_ids" in result.error_message
-    assert "Not attempted after that: **strep_resist (genome)**" in result.error_message
+    assert "Could not run **strep_resist (genome)**" in result.error_message
+    assert "Not attempted after that: **Taxonomic Classification → tc_ERR7916233** (output folder `tc_ERR7916233`)" in result.error_message
     assert result.submission_ids == []
+
+
+def _submit_action(n):
+    return {"tool": "submit_gowe_job", "summary": f"GenomeAssembly → asm_{n}",
+            "arguments": {"workflow_id": "wf_asm", "inputs": {"srr_ids": [f"SRR{n}"], "output_path": f"asm_{n}"}}}
+
+
+async def test_set_second_fails_third_still_runs_and_each_outcome_is_listed():
+    ok1 = {**_submit_ok(1), "output_path": "/alice@patricbrc.org/home/chats/s1/asm_1"}
+    ok3 = {**_submit_ok(3), "output_path": "/alice@patricbrc.org/home/chats/s1/asm_3"}
+    result, tool = await _run([_submit_action(1), _submit_action(2), _submit_action(3)],
+                              [ok1, {"error": "GoWe returned 400: bad accession"}, ok3])
+    assert tool.await_count == 3
+    assert result.status == "completed"
+    assert result.submission_ids == ["sub_1", "sub_3"]
+    msg = result.operation_message
+    assert msg.startswith("Submitted 2 of 3 jobs.")
+    assert "Submitted **GenomeAssembly → asm_1**. Results will be saved to `/alice@patricbrc.org/home/chats/s1/asm_1`." in msg
+    assert "Could not run **GenomeAssembly → asm_2** (output folder `asm_2`): GoWe returned 400: bad accession" in msg
+    assert "Submitted **GenomeAssembly → asm_3**." in msg
+    assert "completion message" in msg
+
+
+async def test_set_all_fail_is_an_error():
+    result, tool = await _run([_submit_action(1), _submit_action(2)],
+                              [{"error": "down"}, {"error": "down"}])
+    assert tool.await_count == 2
+    assert result.status == "error"
+    assert result.error_message.startswith("Submitted 0 of 2 jobs.")
+
+
+async def test_single_action_reply_has_no_count_line():
+    result, _ = await _run([TC_ACTION], [_submit_ok()])
+    assert not result.operation_message.startswith("Submitted 1 of")
+    assert not result.operation_message.startswith("Submitted all")
 
 
 async def test_partial_success_is_completed_and_names_the_failure():
@@ -108,6 +155,8 @@ async def test_partial_success_is_completed_and_names_the_failure():
     assert result.status == "completed"
     assert "Created group" in result.operation_message
     assert "Could not run **Taxonomic Classification" in result.operation_message
+    # One job in the set: no "n of m" count line.
+    assert not result.operation_message.startswith("Submitted 0 of")
 
 
 async def test_plan_mode_is_still_gated():
@@ -205,6 +254,35 @@ async def test_executor_forwards_replay_actions_in_context():
     context = seen.get("context") or {}
     assert context.get("replay_actions") == [TC_ACTION]
     assert context.get("execution_mode") == "execute"
+
+
+async def test_executor_forwards_prepared_actions_in_context():
+    """'Other': the stored set reaches the service agent as prepared_actions."""
+    from types import SimpleNamespace
+
+    from orchestrator.events.stream import collect_events
+    from orchestrator.executor.agent_executor import execute_agent_step
+    from orchestrator.models import OrchestratorRequest
+    from orchestrator.router.models import Step
+
+    seen = {}
+
+    class _Agent:
+        key = "service"
+        config = SimpleNamespace(chat_tool="agent_chat", chat_tool_params={},
+                                 mcp_server_name=None, timeout_seconds=300)
+        tool_names = ["agent_chat"]
+
+        async def call_tool(self, name, arguments, progress_handler=None):
+            seen.update(arguments)
+            return {"answer": "ok", "status": "completed"}
+
+    request = OrchestratorRequest(query="drop the binning job", execution_mode="execute",
+                                  target_agent="service", prepared_actions=[TC_ACTION])
+    await collect_events(execute_agent_step(Step(agent_key="service", task="drop the binning job"), _Agent(), request))
+    context = seen.get("context") or {}
+    assert context.get("prepared_actions") == [TC_ACTION]
+    assert "replay_actions" not in context
 
 
 async def test_repeat_click_reports_already_submitted():

@@ -77,12 +77,28 @@ or "run it", resolve to that workflow.
 - If multiple planned workflows exist and the user is ambiguous, set \
 action to "unknown" so the agent can ask for clarification.
 
+## job_count and services_named
+"job_count" is how many separate jobs this message asks for:
+- "many" when the user names two or more different services or workflows \
+("run Taxonomic Classification and Metagenomic Binning on X"), asks for \
+"all", "every" or "each" service ("run all relevant services on X", \
+"submit one job for each service"), or gives several samples to run \
+separately with the same service ("assemble SRR1, SRR2 and SRR3").
+- "one" for a single service on a single input; for a service that takes \
+several inputs together (a tree, a comparison or an alignment of several \
+genomes is ONE job); for two steps of the same service (trimming and QC \
+are ONE Fastq Utils job); for status/cancel; or when unclear.
+"services_named" lists the service names the user wrote, as written \
+(an empty list if none).
+
 ## Response format
 Return ONLY a JSON object (no markdown, no explanation):
 {"action": "plan|submit|status|cancel|modify|unknown", \
 "workflow_id": "wf_... or null", \
 "confidence": 0.0-1.0, \
 "submit_after_plan": true|false, \
+"job_count": "one|many", \
+"services_named": ["..."], \
 "reasoning": "brief explanation"}
 """
 
@@ -142,10 +158,12 @@ async def classify_intent(
         intent = _parse_classifier_response(content)
         logger.info(
             "Intent classified: action=%s, workflow_id=%s, confidence=%.2f, "
-            "model=%s, reasoning=%s",
+            "job_count=%s, services_named=%s, model=%s, reasoning=%s",
             intent.action,
             intent.workflow_id,
             intent.confidence,
+            intent.job_count,
+            intent.services_named,
             classifier_model,
             intent.reasoning,
         )
@@ -243,10 +261,19 @@ def _parse_classifier_response(content: str) -> Intent:
     if action not in valid_actions:
         action = "plan"
 
+    # D4: how many jobs the message asks for.  Anything but "many" is one.
+    job_count = "many" if data.get("job_count") == "many" else "one"
+    services_named = data.get("services_named")
+    if not isinstance(services_named, list):
+        services_named = []
+    services_named = [str(s) for s in services_named if isinstance(s, (str, int))]
+
     return Intent(
         action=action,
         workflow_id=data.get("workflow_id"),
         confidence=float(data.get("confidence", 0.8)),
         reasoning=data.get("reasoning", ""),
         submit_after_plan=bool(data.get("submit_after_plan", False)),
+        job_count=job_count,
+        services_named=services_named,
     )

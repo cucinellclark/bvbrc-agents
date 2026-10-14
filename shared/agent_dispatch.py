@@ -248,11 +248,26 @@ def timeout_partial_result(
         and step["result"].get("submission_id")
         and not step.get("error")
     ]
+    # D4: jobs prepared under the plan gate before the cut-off still get
+    # their confirmation question (same shape record_execution builds).
+    blocked_actions = [
+        {
+            "tool": step["tool"],
+            "summary": step["result"].get("summary") or step["tool"],
+            "arguments": step["result"].get("arguments") or step.get("arguments") or {},
+        }
+        for step in progress
+        if isinstance(step.get("result"), dict) and step["result"].get("blocked_by_mode")
+    ]
+    n_prepared = len(blocked_actions)
     answer = (
         f"I ran out of time (the {minutes}-minute limit) before I could finish. "
         f"Here is how far I got:\n\n" + "\n".join(lines) + "\n\n"
         + ("The submitted job keeps running; a completion message will appear in this "
            "chat. " if submission_ids else "")
+        + (f"I had prepared {n_prepared} job{'s' if n_prepared != 1 else ''} before the "
+           f"cut-off; they are listed below. Answer **Yes** to submit them, **No** to "
+           f"submit nothing, or tell me what to change. " if blocked_actions else "")
         + "Ask me to continue from here, or narrow the request (for example one genus, "
           "one genome group, or a count first)."
     )
@@ -261,7 +276,7 @@ def timeout_partial_result(
     )
     response: Dict[str, Any] = {
         "answer": answer,
-        "status": "completed" if submission_ids else "error",
+        "status": "completed" if (submission_ids or blocked_actions) else "error",
         "timed_out": True,
         "sources": [],
         "elapsed_seconds": float(timeout_seconds),
@@ -275,6 +290,8 @@ def timeout_partial_result(
         response["submission_ids"] = submission_ids
         response["submission_id"] = submission_ids[-1]
         response["auto_submitted"] = True
+    if blocked_actions:
+        response["blocked_actions"] = blocked_actions
     return response
 
 

@@ -175,6 +175,11 @@ class Intent(BaseModel):
     confidence: float = 1.0
     reasoning: str = ""
     submit_after_plan: bool = False
+    # D4: "many" when the message asks for several jobs (several services on
+    # one input, "all services", or several samples run separately).  The
+    # service agent then prepares the set under the plan gate and asks once.
+    job_count: Literal["one", "many"] = "one"
+    services_named: list[str] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -239,6 +244,13 @@ class AgentState(BaseAgentState):
 
     # Intent from classifier
     classified_intent: Intent | None = None
+
+    # D4 multi-job mode: the populate loop runs under the plan gate whatever
+    # the session mode, keeps tools enabled after each blocked submit (up to
+    # MAX_PREPARED_JOBS), and the user confirms the set with one question.
+    multi_job: bool = False
+    # Submits refused because the set was already at MAX_PREPARED_JOBS.
+    capped_submits: list[str] = Field(default_factory=list)
 
     # -----------------------------------------------------------------------
     # Phase 2 step management

@@ -126,6 +126,8 @@ async def execute_agent_step(
     context_data["execution_mode"] = request.execution_mode
     if request.replay_actions:
         context_data["replay_actions"] = request.replay_actions
+    if request.prepared_actions:
+        context_data["prepared_actions"] = request.prepared_actions
 
     # Forward page context (description of the page the user is viewing)
     if request.page_context:

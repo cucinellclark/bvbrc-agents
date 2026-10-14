@@ -5,6 +5,31 @@ discover, configure, or submit bioinformatics workflows.
 Inject ``GOWE_SKILL_PROMPT`` into any agent's system prompt.
 """
 
+# D4: what "all relevant services" means for a given input, written from
+# service_status.md (working workflows only; experimental ones are named as
+# such).  Agents use this table instead of reconnaissance or guessing.
+RELEVANT_SERVICES_BY_INPUT = """\
+### RELEVANT SERVICES BY INPUT
+When the user asks for "all", "every" or "the relevant" services and names
+none, decide from the input type with this table. Never guess beyond it and
+never run searches to decide.
+- Isolate reads (FASTQ files or an SRA accession): Genome Assembly,
+  Comprehensive Genome Analysis, Taxonomic Classification, Fastq Utils.
+- Metagenome reads: Taxonomic Classification, Metagenomic Binning,
+  Metagenomic Read Mapping.
+- SARS-CoV-2 reads: Comprehensive SARS2 Analysis, SARS2 Assembly. Nothing else.
+- Assembled contigs (a FASTA of one organism): Comprehensive Genome Analysis,
+  Metagenomic Binning (contigs mode).
+- Genome ids or a genome group: Bacterial Genome Tree, Comparative Systems,
+  Genome Alignment, Core Genome MLST, Whole Genome SNP Analysis.
+- Feature group: MSA SNP, Gene Tree, MetaCATS.
+- Protein sequence: BLAST; Protein Structure Prediction is experimental.
+Three or fewer apply: prepare all of them; the user confirms the set. More
+than three apply: do not prepare anything yet. List the applicable services
+in one short reply and ask which ones to run; the user answers in text.
+If the input type is unclear (reads that could be an isolate or a
+metagenome), ask that first, in the same reply."""
+
 GOWE_SKILL_PROMPT = """
 ## Workflow Engine Reference (Skill)
 
@@ -80,4 +105,12 @@ already know fails wastes it and produces a confusing failure.
     ``sample_id`` + ``srr_accession``; RNASeq adds ``condition``. Reusing
     one workflow's shape on another is rejected at submit.
 - Never guess SRA field names — use what the schema provides.
-""".strip()
+
+### Several Services on One Input
+"Run X, Y and Z on this sample" is one request for the **service** agent,
+which prepares every job and asks the user to confirm the set once. Do not
+split it into a plan unless more than four services are involved or one
+service needs another's output first.
+
+""" + RELEVANT_SERVICES_BY_INPUT + "\n"
+GOWE_SKILL_PROMPT = GOWE_SKILL_PROMPT.strip()

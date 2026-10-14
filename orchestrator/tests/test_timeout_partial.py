@@ -58,6 +58,27 @@ def test_job_submitted_before_the_cutoff_keeps_its_submission_id():
     assert "completion message will appear" in r["answer"]
 
 
+def test_prepared_jobs_survive_the_timeout():
+    """D4: a multi-job turn cut at 300 s keeps the jobs it had prepared."""
+    from shared.tools import blocked_by_mode_result
+    tc = {"workflow_id": "TaxonomicClassification", "inputs": {"srr_ids": ["ERR1"], "output_path": "tc_ERR1"}}
+    binning = {"workflow_id": "MetagenomicBinning", "inputs": {"srr_ids": ["ERR1"], "output_path": "bin_ERR1"}}
+    progress = [
+        _step("get_workflow_inputs", {"inputs": []}, workflow_id="TaxonomicClassification"),
+        _step("submit_gowe_job", blocked_by_mode_result("submit_gowe_job", tc), error="plan mode", **tc),
+        _step("submit_gowe_job", blocked_by_mode_result("submit_gowe_job", binning), error="plan mode", **binning),
+        _step("get_workflow_inputs", {"inputs": []}, workflow_id="MetagenomicReadMapping"),
+    ]
+    r = timeout_partial_result("service", progress, 300)
+    assert r["status"] == "completed" and r["timed_out"]
+    assert [a["arguments"]["workflow_id"] for a in r["blocked_actions"]] == [
+        "TaxonomicClassification", "MetagenomicBinning"]
+    assert r["blocked_actions"][0]["summary"] == "TaxonomicClassification → tc_ERR1"
+    assert "prepared 2 jobs before the cut-off" in r["answer"]
+    assert "**Yes**" in r["answer"]
+    assert "submission_ids" not in r
+
+
 def test_record_execution_feeds_the_progress_list():
     from shared.models import TOOL_PROGRESS
     sink: list = []

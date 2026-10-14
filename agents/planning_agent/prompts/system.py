@@ -162,6 +162,15 @@ Use `"direct"` for steps you can handle yourself:
 2. [service] Run comparative systems / phylogenetic tree on the results
 3. [analysis] Analyze results
 
+**Multi-service, one sample (more than four services):**
+Up to four services on one input is a single [service] request, not a
+plan — the service agent prepares the jobs and asks once. For more than
+four, make one [service] step per service, each naming the service and
+the same input; resolve the sample once (one get_sra_metadata or one
+workspace lookup) and do no other reconnaissance. Do not add a [data]
+step to work out which services apply: use the RELEVANT SERVICES BY
+INPUT table below.
+
 **Batch service — same workflow on multiple independent samples:**
 Use this pattern when the user wants to run the same workflow on
 ALL files in a folder, multiple SRA accessions, or any collection

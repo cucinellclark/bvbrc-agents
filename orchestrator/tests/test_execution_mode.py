@@ -305,6 +305,61 @@ class TestOrchestratorPlumbing:
         args = handle.call_tool.await_args.args[1]
         assert args["context"]["execution_mode"] == "plan"
 
+    async def test_delegated_plan_step_blocked_actions_become_a_question(self):
+        """D4 §4.2 C (minimal): the delegated step's prepared jobs are scanned too."""
+        from mcp.types import Tool as McpTool
+
+        from orchestrator.config import AgentConfig, OrchestratorConfig
+        from orchestrator.events.events import EventType
+        from orchestrator.events.stream import collect_events
+        from orchestrator.llm.client import LLMClient
+        from orchestrator.models import OrchestratorRequest
+        from orchestrator.orchestrate import orchestrate
+        from orchestrator.registry.agent_handle import AgentHandle
+        from orchestrator.registry.agent_registry import AgentRegistry
+
+        def _agent(name):
+            return AgentConfig(name=name, description=name, endpoint="http://localhost:8053", capabilities=[])
+
+        config = OrchestratorConfig(
+            agents={"planning": _agent("Planning"), "service": _agent("Service")},
+            health_check_interval=0, routing_model="m", routing_base_url="http://x", routing_api_key="k",
+        )
+        registry = AgentRegistry(config)
+        for key in ("planning", "service"):
+            handle = AgentHandle(key, config.agents[key])
+            handle._healthy = True
+            handle._tools = [McpTool(name="agent_chat", description="Chat", inputSchema={})]
+            registry._agents[key] = handle
+
+        registry._agents["planning"].call_tool = AsyncMock(return_value={
+            "answer": "", "status": "step_ready", "sources": [], "elapsed_seconds": 0.1, "tool_trace": [],
+            "step_execution": {"agent": "service", "task": "Submit assemblies for SRR1 and SRR2",
+                               "plan_id": "plan_1", "step_id": "step_2", "step_index": 1},
+        })
+        blocked = [
+            {"tool": "submit_gowe_job", "summary": "GenomeAssembly → SRR1", "arguments": {"workflow_id": "ga", "inputs": {"srr_ids": ["SRR1"]}}},
+            {"tool": "submit_gowe_job", "summary": "GenomeAssembly → SRR2", "arguments": {"workflow_id": "ga", "inputs": {"srr_ids": ["SRR2"]}}},
+        ]
+        registry._agents["service"].call_tool = AsyncMock(return_value={
+            "answer": "Prepared 2 jobs.", "status": "completed", "sources": [], "elapsed_seconds": 1.0,
+            "tool_trace": [], "blocked_actions": blocked,
+        })
+        llm = MagicMock(spec=LLMClient)
+        llm.complete = AsyncMock(return_value="unused")
+
+        request = OrchestratorRequest(query="Execute plan step: submit", target_agent="planning",
+                                      workflow_context={"plan_action": "execute_next"})
+        events = await collect_events(orchestrate(request, registry, llm))
+
+        blocked_events = [e for e in events if e.type == EventType.EXECUTION_BLOCKED]
+        assert len(blocked_events) == 1
+        data = blocked_events[0].data
+        assert data["agent"] == "service"
+        assert data["blocked_actions"] == blocked
+        assert data["plan_context"] == {"plan_id": "plan_1", "step_id": "step_2", "step_index": 1}
+        assert any(e.type == EventType.ORCHESTRATOR_DONE for e in events)
+
 
 # -----------------------------------------------------------------------
 # Prompts

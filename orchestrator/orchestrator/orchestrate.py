@@ -333,6 +333,29 @@ async def orchestrate(
                 step_result = step_agent_results[0] if step_agent_results else {}
                 step_status = step_result.get("status", "completed")
 
+                # D4 (§4.2 C, minimal): jobs or groups the delegated agent
+                # prepared under the plan gate get the same confirmation
+                # question as a direct turn.  plan_context says which step
+                # they belong to.  The 3a' scan above only sees the planning
+                # agent's own result, never the delegated step's.
+                step_blocked = list(step_result.get("blocked_actions") or [])
+                if step_blocked:
+                    yield Event(
+                        type=EventType.EXECUTION_BLOCKED,
+                        agent_name=step_exec.get("agent"),
+                        data={
+                            "agent": step_exec.get("agent"),
+                            "execution_mode": "plan",
+                            "blocked_actions": step_blocked,
+                            "original_query": request.query,
+                            "plan_context": {
+                                "plan_id": step_exec.get("plan_id"),
+                                "step_id": step_exec.get("step_id"),
+                                "step_index": step_exec.get("step_index"),
+                            },
+                        },
+                    )
+
                 # --- WORKFLOW SUBMITTED ---
                 # If the step submitted a long-running workflow to GoWe,
                 # mark the step as completed (submission succeeded) but
