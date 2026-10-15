@@ -101,15 +101,14 @@ or folders it names — never planning. The service \
 agent has a rerun tool that copies the original parameters and asks the \
 user to confirm the set once. "...and tell me if the results differ" \
 does not change this: comparing is a later request.
-- Route to the **planning** agent when the user wants to run the SAME \
-workflow/service on MULTIPLE independent samples. This includes: \
-"assemble all the reads in this folder", "annotate these 5 genomes", \
-"assemble SRR123, SRR456, SRR789", or any request that implies \
-applying a service to each item in a collection separately. The \
-planning agent will identify the samples, confirm the list with the \
-user, and coordinate the batch submission. Single-sample requests \
-(one file, one SRA accession, one genome) should still go to **service** \
-directly.
+- Route to the **service** agent when the user wants to run the SAME \
+workflow/service on MULTIPLE samples they point to: "assemble all the \
+reads in this folder", "run CGA on every sample in /…/reads", "assemble \
+SRR123, SRR456, SRR789". It is one agent call however many samples: the \
+service agent lists the samples, prepares one job per sample and asks \
+the user to confirm the set once. Only when the samples must first be \
+FOUND by a data search ("find E. coli SRA runs from 2024 and assemble \
+each") is it a chain for **planning**.
 - Route to the **planning** agent when the user wants to find specific \
 data and then perform an analysis, experiment, or comparison on it — \
 especially when the request implies multiple phases (retrieve data, \
@@ -126,9 +125,8 @@ named (a file, an SRA run, an existing group, a genome id) goes to \
 **service**, even if the service agent has to look the input up.
 - If the request requires checking workspace files and THEN running a \
 service on them, route to **service** directly — it can browse the \
-workspace to find input files. EXCEPTION: if the request implies \
-running a service on ALL or MULTIPLE files/samples in a folder \
-(batch operation), route to **planning** instead.
+workspace to find input files, including running one service on ALL \
+the files/samples in a folder (a batch).
 - NEVER tell the user that BV-BRC does not have, support, or offer a \
 service, tool, or feature, and never recommend outside tools in its place. \
 You do not see the full service list — BV-BRC has 30+ services beyond the \

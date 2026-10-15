@@ -188,43 +188,27 @@ workspace lookup) and do no other reconnaissance. Do not add a [data]
 step to work out which services apply: use the RELEVANT SERVICES BY
 INPUT table below.
 
-**Batch service — same workflow on multiple independent samples:**
-Use this pattern when the user wants to run the same workflow on
-ALL files in a folder, multiple SRA accessions, or any collection
-of independent samples.
+**Batch service — same workflow on multiple samples:**
+One workflow on every sample in a folder or on a list of SRA runs is NOT
+a plan: the service agent does it in one turn (list_samples, then
+prepare_batch) and asks the user once. If such a request reaches you,
+do not plan and do not look anything up: call prepare_batch right away
+(workflow_id = the service name, template_inputs = {}, samples = []).
+That hands the request to the service agent, which does the rest. It is
+a plan only when the samples must first be found by a data search:
+1. [data] Find the samples (e.g. SRA runs matching the criteria);
+   `expects: ["srr_accession"]`.
+2. [service] "Run <workflow> on each of the SRA runs from step 1 with
+   list_samples and prepare_batch." depends_on step 1.
+Never pair read files or list samples in a step description yourself;
+list_samples does it.
 
-1. [workspace] Browse the folder to identify all samples. For read
-   files, detect paired-end patterns (R1/R2, _1/_2). For SRA
-   accessions, instruct the service agent to call get_sra_metadata.
-2. [service] Submit the jobs. The service step description MUST
-   specify:
-   a. The workflow to use (e.g., "Genome Assembly")
-   b. The exact list of samples (file paths or SRA accessions)
-   c. Whether to submit SEPARATE jobs (one per sample) or ONE
-      job with all samples combined.
-
-**How to decide separate vs combined jobs:**
-- Workflows that process ONE sample at a time (GenomeAssembly,
-  ComprehensiveGenomeAnalysis, Variation, SARS2Assembly,
-  TaxonomicClassification, MetagenomeBinning): submit SEPARATE
-  jobs — one per sample.
-- Workflows that inherently operate on MULTIPLE samples together
-  (RNASeq, ComparativeSystems, PhylogeneticTree, CoreGenomeMlst):
-  submit ONE job with all samples combined.
-- If unsure, call `list_gowe_workflows` to check the workflow
-  description, and default to separate jobs unless the workflow
-  clearly expects multiple samples.
-
-Example step 3 description for separate jobs:
-  "Submit separate Genome Assembly jobs for each of these 5 samples:
-   1. Sample_A: read1=/path/A_R1.fastq, read2=/path/A_R2.fastq
-   2. Sample_B: read1=/path/B_R1.fastq, read2=/path/B_R2.fastq
-   ... (list all samples)
-   Submit one job per sample."
-
-Example step 3 description for combined job:
-  "Submit a single RNASeq job with all 6 samples as srr_libs:
-   SRR123, SRR456, SRR789, SRR012, SRR345, SRR678."
+**Separate vs combined jobs** (prepare_batch one_job):
+- One sample per job (GenomeAssembly, ComprehensiveGenomeAnalysis,
+  Variation, SARS2Assembly, MetagenomeBinning): separate jobs.
+- Workflows that operate on several samples together (RNASeq,
+  ComparativeSystems, PhylogeneticTree, CoreGenomeMlst): ONE job with all
+  samples.
 
 ## Guidelines
 

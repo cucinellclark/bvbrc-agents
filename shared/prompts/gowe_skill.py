@@ -91,7 +91,8 @@ already know fails wastes it and produces a confusing failure.
 - Record-typed inputs (``paired_end_libs``, ``single_end_libs``, etc.) carry a
   ``fields`` list in the ``get_workflow_inputs`` result. Use EXACTLY those field
   names — never add fields the schema does not list.
-- Detect pairing from filename patterns: R1/R2, _1/_2, .1/.2
+- To find the samples in a reads folder, call ``list_samples(path=...)``:
+  it pairs R1/R2 and _1/_2 files by name. Never pair files by eye.
 
 ### SRA Inputs
 - Call ``get_sra_metadata`` when the user provides SRR/ERR/DRR accessions.
@@ -105,6 +106,12 @@ already know fails wastes it and produces a confusing failure.
     ``sample_id`` + ``srr_accession``; RNASeq adds ``condition``. Reusing
     one workflow's shape on another is rejected at submit.
 - Never guess SRA field names — use what the schema provides.
+
+### One Service on Many Samples (Batch)
+"Assemble every read pair in this folder", "run CGA on these 5 SRA runs" is
+one request for the **service** agent: ``list_samples`` finds the samples,
+``prepare_batch`` prepares one job per sample (at most 10 per message), and
+the user confirms the set once. Not a plan.
 
 ### Several Services on One Input
 "Run X, Y and Z on this sample" is one request for the **service** agent,

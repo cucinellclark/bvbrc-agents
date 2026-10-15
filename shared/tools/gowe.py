@@ -460,6 +460,27 @@ def _find_bad_value(value: Any, pattern: re.Pattern) -> str | None:
 # ---------------------------------------------------------------------------
 
 
+async def dry_run_refusal(workflow_id: str, inputs: Dict[str, Any], config: Any = None) -> Optional[str]:
+    """GoWe's reason for refusing *inputs*, or None when it accepts them.
+
+    Used by tools that prepare jobs without submitting (``rerun_jobs``,
+    ``prepare_batch``), so a job GoWe would refuse is reported before the
+    user's Yes.  A dry run that errors returns None: the real submit decides.
+    ``inputs_valid``, not ``valid``: ``valid`` is also false while an
+    executor is unavailable, which is no reason to drop the job.
+    """
+    try:
+        r = await _get_client(config).dry_run(workflow_id, inputs, auth_token=_get_auth(config))
+    except Exception as e:
+        logger.warning("Dry run of %s failed: %s", workflow_id, e)
+        return None
+    if isinstance(r, dict) and r.get("inputs_valid") is False:
+        errors = r.get("errors") or []
+        msgs = [str(e.get("message") if isinstance(e, dict) else e) for e in errors]
+        return "; ".join(m for m in msgs if m) or "the workflow refused the inputs"
+    return None
+
+
 async def list_gowe_workflows(
     config: Any = None,
     **kwargs: Any,

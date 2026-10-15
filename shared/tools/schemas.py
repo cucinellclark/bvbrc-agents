@@ -3,10 +3,11 @@
 This is the SINGLE SOURCE OF TRUTH for tool schemas. Every agent uses these
 definitions. No per-agent schema variants.
 
-29 tools total:
+31 tools total:
   Data:      search_data, facet_query, probe_data, list_collections, get_collection_fields
-  Workspace: workspace_browse, get_file_metadata, read_file_preview, search_file, summarize_file
-  GoWe:      list_gowe_workflows, get_workflow_inputs, submit_gowe_job, rerun_jobs
+  Workspace: workspace_browse, get_file_metadata, read_file_preview, search_file, summarize_file,
+             list_samples
+  GoWe:      list_gowe_workflows, get_workflow_inputs, submit_gowe_job, rerun_jobs, prepare_batch
   Groups:    create_group, list_groups, get_group_ids
   SRA:       get_sra_metadata
   Genome:    find_similar_genomes
@@ -641,6 +642,95 @@ RERUN_JOBS = {
                 },
             },
             "required": [],
+        },
+    },
+}
+
+
+LIST_SAMPLES = {
+    "type": "function",
+    "function": {
+        "name": "list_samples",
+        "description": (
+            "List the samples in a folder of sequencing reads, paired by file "
+            "name (R1/R2, _1/_2), and/or check a list of SRA run accessions. "
+            "Reads one folder level (.fastq/.fq, optionally .gz). Returns "
+            "paired [{sample_id, read1, read2}], single [{sample_id, read}], "
+            "sra [{sample_id, srr_accession}] and unpaired files (one mate "
+            "missing: NOT a sample). Use it instead of pairing files from a "
+            "workspace_browse listing yourself, whenever a workflow is to run "
+            "on every sample in a folder or on several SRA runs; pass its "
+            "entries to prepare_batch as samples."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Workspace folder holding the read files.",
+                },
+                "sra_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "SRA run accessions, e.g. ['SRR1234567', 'ERR7916233'].",
+                },
+            },
+            "required": [],
+        },
+    },
+}
+
+
+PREPARE_BATCH = {
+    "type": "function",
+    "function": {
+        "name": "prepare_batch",
+        "description": (
+            "Prepare one job per sample for ONE workflow (or one job holding "
+            "every sample, one_job=true) without submitting anything. First "
+            "call get_workflow_inputs and populate every input EXCEPT the "
+            "reads/SRA inputs and output_file -- that is template_inputs. "
+            "samples are the entries of list_samples (paired, single, sra). "
+            "The tool puts each sample's reads into the right input, names "
+            "each job's output_file <template output_file>_<sample_id>, checks "
+            "each job with GoWe and returns prepared_actions; the user "
+            "confirms the set with one question. Do NOT call submit_gowe_job "
+            "for these samples yourself. errorType TOO_MANY (more than 10 "
+            "jobs) prepares nothing: ask which samples to run first."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "workflow_id": {
+                    "type": "string",
+                    "description": "Workflow NAME exactly as list_gowe_workflows reported it.",
+                },
+                "template_inputs": {
+                    "type": "object",
+                    "description": (
+                        "Every input the jobs share (recipe, platform, "
+                        "organism, output_path ...), as you would pass to "
+                        "submit_gowe_job, without the read / SRA inputs."
+                    ),
+                },
+                "samples": {
+                    "type": "array",
+                    "items": {"type": "object"},
+                    "description": (
+                        "list_samples entries: {sample_id, read1, read2}, "
+                        "{sample_id, read} or {sample_id, srr_accession}."
+                    ),
+                },
+                "one_job": {
+                    "type": "boolean",
+                    "description": (
+                        "Put every sample in ONE job (RNA-Seq and other "
+                        "workflows that compare samples). Default false: one "
+                        "job per sample."
+                    ),
+                },
+            },
+            "required": ["workflow_id", "template_inputs", "samples"],
         },
     },
 }
@@ -1493,7 +1583,7 @@ SUMMARIZE_FILE = {
 # MASTER LISTS
 # ===================================================================
 
-# All 29 tools in a single list
+# All 31 tools in a single list
 ALL_TOOL_SCHEMAS: list[dict] = [
     # Data
     SEARCH_DATA,
@@ -1507,11 +1597,13 @@ ALL_TOOL_SCHEMAS: list[dict] = [
     READ_FILE_PREVIEW,
     SEARCH_FILE,
     SUMMARIZE_FILE,
+    LIST_SAMPLES,
     # GoWe
     LIST_GOWE_WORKFLOWS,
     GET_WORKFLOW_INPUTS,
     SUBMIT_GOWE_JOB,
     RERUN_JOBS,
+    PREPARE_BATCH,
     # Groups
     CREATE_GROUP,
     LIST_GROUPS,

@@ -9,11 +9,18 @@ Environment variables:
     BV_BRC_AUTH_TOKEN  — Default auth token for agent connections
     ORCHESTRATOR_PORT  — Default port (overridden by --port)
     ORCHESTRATOR_HOST  — Default host (overridden by --host)
+    ORCHESTRATOR_LOG_DIR — Log directory (default: <workspace>/logs)
+
+Logs go to <log dir>/orchestrator-<port>.log.  Each checkout and port has its
+own file: the dev (Agents/) and public (DevEnvironment/) orchestrators used to
+share DevEnvironment/logs/agents/orchestrator.log, interleaving both and
+rotating each other's file every few minutes.
 """
 
 import argparse
 import logging
 import logging.handlers
+import os
 import sys
 from pathlib import Path
 
@@ -21,8 +28,14 @@ import uvicorn
 
 from orchestrator.server import create_app
 
-# Centralized log directory for all agents
-_LOG_DIR = Path(__file__).resolve().parent.parent.parent.parent.parent / "DevEnvironment" / "logs" / "agents"
+# <workspace>/logs, where the workspace is the directory holding bvbrc-agents/
+# (Agents/ for dev, DevEnvironment/ for the public test instance).
+_WORKSPACE = Path(__file__).resolve().parents[3]
+
+
+def log_file_path(port: int) -> Path:
+    log_dir = Path(os.environ.get("ORCHESTRATOR_LOG_DIR") or _WORKSPACE / "logs")
+    return log_dir / f"orchestrator-{port}.log"
 
 
 def main() -> None:
@@ -58,7 +71,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    # Configure logging — console + rotating file in DevEnvironment/logs/agents/
+    # Configure logging — console + rotating file (see log_file_path)
     log_level = getattr(logging, args.log_level.upper())
     log_format = "%(asctime)s [%(name)s] %(levelname)s: %(message)s"
     formatter = logging.Formatter(log_format)
@@ -73,9 +86,10 @@ def main() -> None:
     root_logger.addHandler(console_handler)
 
     # Rotating file handler at DEBUG level
-    _LOG_DIR.mkdir(parents=True, exist_ok=True)
+    log_file = log_file_path(args.port)
+    log_file.parent.mkdir(parents=True, exist_ok=True)
     file_handler = logging.handlers.RotatingFileHandler(
-        _LOG_DIR / "orchestrator.log",
+        log_file,
         maxBytes=10 * 1024 * 1024,  # 10 MB
         backupCount=5,
         encoding="utf-8",
@@ -97,6 +111,7 @@ def main() -> None:
     print(
         f"Starting BV-BRC Orchestrator on {args.host}:{args.port}\n"
         f"  Config: {config_path or '(defaults)'}\n"
+        f"  Log:    {log_file}\n"
         f"  Docs:   http://{args.host}:{args.port}/docs\n"
     )
 

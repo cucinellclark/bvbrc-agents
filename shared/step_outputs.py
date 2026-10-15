@@ -114,7 +114,7 @@ def build_step_outputs(executions: Iterable[Any]) -> dict[str, Any]:
             submission_ids.append(str(result["submission_id"]))
             if result.get("output_path"):
                 output_paths.append(str(result["output_path"]))
-        elif name in ("workspace_browse", "get_file_metadata", "read_file_preview", "summarize_file", "search_file"):
+        elif name in ("workspace_browse", "get_file_metadata", "read_file_preview", "summarize_file", "search_file", "list_samples"):
             path = args.get("path")
             if isinstance(path, str) and path.startswith("/") and path not in paths:
                 paths.append(path)

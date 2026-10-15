@@ -473,8 +473,10 @@ async def populate_and_submit(
     if batch_mode:
         system_prompt += (
             "\n\n=== BATCH MODE ===\n"
-            "You have been delegated a multi-sample task. You may call "
-            "submit_gowe_job once per sample as instructed, up to "
+            "You have been delegated a multi-sample task. For one workflow "
+            "on several samples use list_samples (unless the task already "
+            "lists them) and prepare_batch, as in == BATCH ==. Otherwise you "
+            "may call submit_gowe_job once per sample as instructed, up to "
             f"{MAX_PREPARED_JOBS} per message; name any sample left out."
         )
 
@@ -599,7 +601,7 @@ async def populate_and_submit(
                 )
                 # A submit refused by the execution-mode gate never ran:
                 # it is neither an attempt nor a failure.
-                # rerun_jobs prepares a set the same way (D4 Phase 2).
+                # rerun_jobs / prepare_batch prepare a set the same way (D4).
                 ever_blocked_submit = any(
                     (te.tool_call.name == "submit_gowe_job" and _is_blocked_execution(te))
                     or bool(prepared_actions_of(te.result))
@@ -857,12 +859,12 @@ async def populate_and_submit(
                 state.current_phase = "handoff"
                 return state
 
-            # rerun_jobs prepared a set of jobs (it never submits).  The set
+            # rerun_jobs / prepare_batch prepared a set of jobs (they never submit).  The set
             # is complete: it is confirmed with the same one question as any
             # job set, whatever the session mode, so end tool use and let the
             # model list it.  A set past the per-message cap (only possible
             # if jobs were prepared before the call) keeps the first ten.
-            if tc.name == "rerun_jobs" and prepared_actions_of(result):
+            if tc.name in ("rerun_jobs", "prepare_batch") and prepared_actions_of(result):
                 state.multi_job = True
                 job_set = True
                 if len(state.blocked_actions) > MAX_PREPARED_JOBS:

@@ -24,6 +24,8 @@ TOOL_TIMEOUT_OVERRIDES: dict[str, float] = {
     "search_file": 90.0,  # streams up to 25 MB from the workspace
     "summarize_file": 90.0,  # same scan
     "rerun_jobs": 90.0,  # recursive listing + query_tasks + workflow catalog
+    "list_samples": 60.0,  # one folder listing of up to 500 items
+    "prepare_batch": 90.0,  # workflow inputs + up to 10 GoWe dry runs
 }
 
 # Per-tool result character limits.  Tools that return bulk text (file
@@ -37,6 +39,8 @@ TOOL_RESULT_CHAR_LIMITS: dict[str, int] = {
     "search_literature": 24_000,   # self-bounded to ~20 000 by literature.py
     "workspace_browse":  16_000,   # ~45 compact items; job_result entries carry a job block
     "rerun_jobs":        24_000,   # up to 10 prepared jobs with their full inputs
+    "prepare_batch":     24_000,   # same
+    "list_samples":      24_000,   # up to ~100 samples with full read paths
 }
 
 
@@ -78,6 +82,8 @@ TOOL_AGENT_ALLOWLIST: Dict[str, frozenset[str]] = {
     # Prepares jobs (never submits), but the set it prepares is replayed by
     # the service agent, which owns the confirmation question and watches.
     "rerun_jobs": frozenset({"service"}),
+    # D4 Phase 4: same reason; list_samples (read-only) stays with everyone.
+    "prepare_batch": frozenset({"service"}),
 }
 
 PLAN_MODE_BLOCKED_MESSAGE = (
@@ -169,10 +175,10 @@ def _add_output_location(result: Dict[str, Any], arguments: Dict[str, Any], conf
 def prepared_actions_of(result: Any) -> list[Dict[str, Any]]:
     """Jobs a tool prepared without running them (D4), as blocked actions.
 
-    ``rerun_jobs`` returns ``prepared_actions`` in the same ``{tool, summary,
+    ``rerun_jobs`` and ``prepare_batch`` return ``prepared_actions`` in the same ``{tool, summary,
     arguments}`` shape as a plan-mode refusal, so they reach the same
     confirmation question and the same verbatim replay.  ``origin``,
-    ``original`` and ``dropped_inputs`` are kept (the gateway matches a replay on tool + arguments
+    ``original``, ``dropped_inputs`` and ``samples`` are kept (the gateway matches a replay on tool + arguments
     only, so extra keys do not change what may run).
     """
     if not isinstance(result, dict) or not isinstance(result.get("prepared_actions"), list):
@@ -188,7 +194,7 @@ def prepared_actions_of(result: Any) -> list[Dict[str, Any]]:
             "summary": action.get("summary") or action["tool"],
             "arguments": action["arguments"],
         }
-        for key in ("origin", "original", "dropped_inputs"):
+        for key in ("origin", "original", "dropped_inputs", "samples"):
             if key in action:
                 entry[key] = action[key]
         actions.append(entry)
@@ -253,6 +259,11 @@ def wrong_agent_result(tool_name: str, agent_key: str) -> Dict[str, Any]:
             "they can ask for it to be run as a job (for example \"run "
             "<workflow> on <input>\")."
         )
+    elif tool_name == "prepare_batch":
+        next_step = (
+            "Tell the user they can ask for the batch directly (for example "
+            "\"run <workflow> on every sample in <folder>\")."
+        )
     elif tool_name == "rerun_jobs":
         next_step = (
             "Tell the user they can ask for the rerun directly (for example "
@@ -285,6 +296,7 @@ HANDOFF_TARGETS: Dict[str, str] = {
     "create_group": "data",
     "create_plan": "planning",
     "rerun_jobs": "service",
+    "prepare_batch": "service",
 }
 
 

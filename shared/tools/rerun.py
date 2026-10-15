@@ -310,23 +310,9 @@ async def rerun_jobs(
     # first ran (Docking's "named_library", Oct 14).  A job GoWe would refuse
     # is skipped here rather than failing after the user's Yes.  A dry run
     # that errors keeps the job: the real submit decides.
-    client = gowe._get_client(config)
-
-    async def dry_run(c: Dict[str, Any]) -> Optional[str]:
-        try:
-            r = await client.dry_run(c["workflow"]["id"], c["inputs"], auth_token=gowe._get_auth(config))
-        except Exception as e:
-            logger.warning("rerun_jobs dry run for job %s failed: %s", c["job"]["task_id"], e)
-            return None
-        # inputs_valid, not valid: valid is also false while an executor is
-        # unavailable, which is no reason to drop the job.
-        if isinstance(r, dict) and r.get("inputs_valid") is False:
-            errors = r.get("errors") or []
-            msgs = [str(e.get("message") if isinstance(e, dict) else e) for e in errors]
-            return "; ".join(m for m in msgs if m) or "the workflow refused the recorded inputs"
-        return None
-
-    refusals = await asyncio.gather(*(dry_run(c) for c in runnable))
+    refusals = await asyncio.gather(
+        *(gowe.dry_run_refusal(c["workflow"]["id"], c["inputs"], config) for c in runnable)
+    )
     kept = []
     for c, refusal in zip(runnable, refusals):
         if refusal:

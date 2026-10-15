@@ -18,9 +18,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 VENV_DIR="$PROJECT_DIR/orchestrator_env"
-LOG_DIR="$(cd "$PROJECT_DIR/../../.." && pwd)/DevEnvironment/logs/agents"
+# Same directory as orchestrator/__main__.py: <workspace>/logs (Agents/logs for dev).
+LOG_DIR="${ORCHESTRATOR_LOG_DIR:-$(cd "$PROJECT_DIR/../.." && pwd)/logs}"
 PID_FILE="$PROJECT_DIR/orchestrator.pid"
-LOG_FILE="$LOG_DIR/orchestrator.log"
 CONFIG_FILE="$PROJECT_DIR/config/agents.yaml"
 AUTH_TOKEN_FILE="$PROJECT_DIR/auth_token.txt"
 
@@ -77,6 +77,12 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# The server writes orchestrator-<port>.log itself (rotating); --background
+# sends stdout/stderr (startup errors, uvicorn) to a separate .out file, so
+# the two never write the same file.
+LOG_FILE="$LOG_DIR/orchestrator-$PORT.log"
+OUT_FILE="$LOG_DIR/orchestrator-$PORT.out"
 
 # ── Stop mode ─────────────────────────────────────────────────────────
 if $STOP; then
@@ -151,10 +157,10 @@ CMD=(
 
 if $BACKGROUND; then
     echo "Starting in background..."
-    echo "Log file: $LOG_FILE"
+    echo "Log file: $LOG_FILE (stdout: $OUT_FILE)"
     echo ""
 
-    nohup "${CMD[@]}" >> "$LOG_FILE" 2>&1 &
+    nohup "${CMD[@]}" >> "$OUT_FILE" 2>&1 &
     BG_PID=$!
     echo "$BG_PID" > "$PID_FILE"
 
@@ -168,7 +174,7 @@ if $BACKGROUND; then
         echo "  Stop:    $0 --stop"
     else
         echo "ERROR: Orchestrator failed to start. Check logs:"
-        echo "  tail -20 $LOG_FILE"
+        echo "  tail -20 $OUT_FILE"
         rm -f "$PID_FILE"
         exit 1
     fi

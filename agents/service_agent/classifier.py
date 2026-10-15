@@ -83,7 +83,9 @@ action to "unknown" so the agent can ask for clarification.
 ("run Taxonomic Classification and Metagenomic Binning on X"), asks for \
 "all", "every" or "each" service ("run all relevant services on X", \
 "submit one job for each service"), or gives several samples to run \
-separately with the same service ("assemble SRR1, SRR2 and SRR3"); and \
+separately with the same service ("assemble SRR1, SRR2 and SRR3", \
+"assemble every read pair in this folder", "run CGA on each sample in \
+/…/reads"); and \
 ALWAYS for a request to rerun, resubmit or run again earlier jobs \
 ("rerun job 23428307", "rerun all the jobs in this folder"), even one \
 job: the action is "plan".

@@ -63,6 +63,8 @@ or with ``name_contains=["keyword"]`` to search.
 into your next tool call.
 - If the item is not found, tell the user the folder/file was not found and \
 ask them to verify the name or pick from the listing.
+- For the sequencing samples in a reads folder (R1/R2 pairs), call \
+``list_samples(path=...)`` instead of pairing files from a listing.
 
 ### Error Handling
 - **"Object not found"** means the path does not exist or is misspelled. It \

@@ -2,7 +2,7 @@
 
 Provides:
   - ``TOOL_DISPATCH``: Universal dispatch table mapping tool names to async callables.
-  - ``ALL_TOOL_SCHEMAS``: All 29 tool schemas (re-exported from schemas.py).
+  - ``ALL_TOOL_SCHEMAS``: All 31 tool schemas (re-exported from schemas.py).
   - ``TOOL_SCHEMA_MAP``: Name-to-schema lookup (re-exported from schemas.py).
 
 All agents import from here. No more per-agent dispatch tables.
@@ -40,6 +40,8 @@ from shared.tools.file_search import search_file
 from shared.tools.file_summary import summarize_file
 from shared.tools.gowe import list_gowe_workflows, get_workflow_inputs, submit_gowe_job
 from shared.tools.rerun import rerun_jobs
+from shared.tools.samples import list_samples
+from shared.tools.batch import prepare_batch
 from shared.tools.groups import create_group, list_groups, get_group_ids
 from shared.tools.sra import get_sra_metadata
 from shared.tools.similar_genome import find_similar_genomes
@@ -129,11 +131,13 @@ TOOL_DISPATCH: Dict[str, Any] = {
     "read_file_preview": read_file_preview,
     "search_file": search_file,
     "summarize_file": summarize_file,
+    "list_samples": list_samples,
     # GoWe tools
     "list_gowe_workflows": list_gowe_workflows,
     "get_workflow_inputs": get_workflow_inputs,
     "submit_gowe_job": submit_gowe_job,
     "rerun_jobs": rerun_jobs,
+    "prepare_batch": prepare_batch,
     # Group tools
     "create_group": create_group,
     "list_groups": list_groups,
