@@ -20,17 +20,19 @@ from llm_config import (
     uses_max_completion_tokens,
 )
 
-# Import shared retry utility — the orchestrator adds bvbrc-agents/ to
-# sys.path at startup, making the shared package importable.
-try:
-    from shared.agent_utils import llm_call_with_retry
-except ImportError:
-    # Fallback: if shared is not importable, provide a no-op wrapper
-    async def llm_call_with_retry(fn, *a, **kw):  # type: ignore[misc]
-        kw.pop("max_retries", None)
-        kw.pop("base_delay", None)
-        kw.pop("max_delay", None)
-        return await fn(*a, **kw)
+# The shared retry wrapper (and LLM usage recording).  Until 2026-10-15 this
+# was a try/except with a no-op fallback, and since nothing had put the
+# bvbrc-agents root on sys.path when this module loads, the fallback was what
+# ran: router and synthesizer calls were never retried and never counted.
+# documents.py does the same path setup.
+import sys
+from pathlib import Path
+
+_REPO_ROOT = str(Path(__file__).resolve().parents[3])
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
+from shared.agent_utils import llm_call_with_retry  # noqa: E402
 
 
 logger = logging.getLogger(__name__)
@@ -82,6 +84,7 @@ class LLMClient:
         system_prompt: str | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
+        usage_site: str = "orchestrator",
     ) -> str:
         """Send a completion request and return the response text.
 
@@ -103,6 +106,7 @@ class LLMClient:
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens,
+            usage_site=usage_site,
         )
 
     def _build_create_kwargs(
@@ -187,6 +191,7 @@ class LLMClient:
         messages: list[dict[str, str]],
         temperature: float | None = None,
         max_tokens: int | None = None,
+        usage_site: str = "orchestrator",
     ) -> str:
         """Send a chat completion request with explicit messages.
 
@@ -205,7 +210,7 @@ class LLMClient:
                 return await self._client.chat.completions.create(**create_kwargs)
 
             response = await llm_call_with_retry(
-                _do_call, max_retries=1, base_delay=2.0
+                _do_call, max_retries=1, base_delay=2.0, _usage_site=usage_site
             )
 
             content = response.choices[0].message.content or ""
@@ -225,6 +230,7 @@ class LLMClient:
         messages: list[dict[str, str]],
         temperature: float | None = None,
         max_tokens: int | None = None,
+        usage_site: str = "orchestrator",
     ) -> AsyncGenerator[str, None]:
         """Stream a chat completion, yielding text chunks as they arrive.
 
@@ -240,11 +246,14 @@ class LLMClient:
         try:
             create_kwargs = self._build_create_kwargs(messages, temperature, max_tokens)
             create_kwargs["stream"] = True
+            create_kwargs["stream_options"] = {"include_usage": True}
 
             async def _do_stream_call():
                 return await self._client.chat.completions.create(**create_kwargs)
 
-            stream = await llm_call_with_retry(_do_stream_call, max_retries=1, base_delay=2.0)
+            stream = await llm_call_with_retry(
+                _do_stream_call, max_retries=1, base_delay=2.0, _usage_site=usage_site
+            )
 
             full_content = ""
             async for chunk in stream:
@@ -272,6 +281,7 @@ class LLMClient:
         system_prompt: str | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
+        usage_site: str = "orchestrator",
     ) -> AsyncGenerator[str, None]:
         """Stream a completion request, yielding text chunks as they arrive.
 
@@ -296,6 +306,7 @@ class LLMClient:
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens,
+            usage_site=usage_site,
         ):
             yield chunk
 

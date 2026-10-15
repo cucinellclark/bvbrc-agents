@@ -129,6 +129,7 @@ async def route(
                 prompt=user_prompt,
                 system_prompt=system_prompt,
                 temperature=0.0,
+                usage_site="router",
             )
             logger.info(
                 f"Routing LLM raw response (attempt {attempt}/{max_routing_attempts}): "

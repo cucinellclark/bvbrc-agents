@@ -151,3 +151,5 @@ class OrchestratorResponse(BaseModel):
     result_for_ui: dict[str, Any] = Field(default_factory=dict)
     execution_trace: list[dict[str, Any]] = Field(default_factory=list)
     status: Literal["completed", "needs_input", "error"] = "completed"
+    # LLM calls this turn made (shared.usage.summarize)
+    usage: dict[str, Any] | None = None

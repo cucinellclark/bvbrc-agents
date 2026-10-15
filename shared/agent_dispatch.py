@@ -753,6 +753,10 @@ async def dispatch_agent(
         return _error_response(f"Unknown agent type: {agent_type}")
 
     from shared.models import HANDOFF
+    from shared.usage import CURRENT_AGENT
+
+    # LLM calls in this agent run are attributed to it (shared.usage).
+    agent_token = CURRENT_AGENT.set(agent_type)
 
     handoff_slot: dict[str, Any] = {}
     handoff_token = HANDOFF.set(handoff_slot)
@@ -763,6 +767,7 @@ async def dispatch_agent(
         return _error_response(_classify_agent_error(e, agent_type))
     finally:
         HANDOFF.reset(handoff_token)
+        CURRENT_AGENT.reset(agent_token)
 
     if handoff_slot:
         return _handoff_response(agent_type, handoff_slot, response)

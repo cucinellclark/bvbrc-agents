@@ -210,6 +210,7 @@ async def synthesize(
             prompt=user_prompt,
             system_prompt=system_prompt,
             temperature=0.1,
+            usage_site="synthesizer",
             # No max_tokens override: the model's configured budget
             # (Mongo modelList / llm.yaml). A thinking model spent the old
             # hardcoded 2048 on reasoning and returned empty content.

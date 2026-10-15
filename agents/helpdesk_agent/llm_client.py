@@ -130,6 +130,8 @@ async def chat_completion_stream(
     cfg = config or AgentConfig()
     kwargs = _build_kwargs(cfg, messages, tools=None, tool_choice=tool_choice)
     kwargs["stream"] = True
+    # Token counts arrive on the last chunk (shared.usage records them).
+    kwargs["stream_options"] = {"include_usage": True}
 
     async def _open_stream():
         return await client.chat.completions.create(**kwargs)

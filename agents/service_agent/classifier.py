@@ -158,7 +158,7 @@ async def classify_intent(
         async def _do_classify():
             return await client.chat.completions.create(**kwargs)
 
-        response = await llm_call_with_retry(_do_classify)
+        response = await llm_call_with_retry(_do_classify, _usage_site="classifier")
         content = response.choices[0].message.content or ""
         intent = _parse_classifier_response(content)
         logger.info(

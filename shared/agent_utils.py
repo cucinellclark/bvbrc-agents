@@ -17,7 +17,14 @@ import json
 import re
 import logging
 import random
+import time
 from typing import Any, Callable, TypeVar
+
+# Always the package path: agent_utils itself is imported both as
+# ``agent_utils`` and ``shared.agent_utils``, and two copies of shared.usage
+# would mean two turn tallies (the bvbrc-agents root is on sys.path wherever
+# agents run).
+from shared import usage as _usage
 
 logger = logging.getLogger(__name__)
 
@@ -149,9 +156,14 @@ async def llm_call_with_retry(
     timeout_max_retries: int = 1,
     timeout_delay_min: float = 10.0,
     timeout_delay_max: float = 30.0,
+    _usage_site: str = "agent",
     **kwargs: Any,
 ) -> Any:
     """Call an async LLM function with exponential backoff on transient errors.
+
+    Every attempt is recorded in the turn's LLM usage tally
+    (``shared.usage``) under *_usage_site*; a streamed result is recorded
+    when its stream ends.
 
     **Transient errors** (rate-limit 429, server errors 5xx, connection
     resets) are retried up to *max_retries* times with exponential backoff
@@ -196,11 +208,14 @@ async def llm_call_with_retry(
     timeout_attempts = 0
 
     max_total_attempts = max(max_retries, timeout_max_retries) + 1 + max_retries + timeout_max_retries
-    for _ in range(max_total_attempts):
+    for attempt in range(max_total_attempts):
+        started = time.monotonic()
         try:
-            return await fn(*args, **kwargs)
+            result = await fn(*args, **kwargs)
         except Exception as e:
             last_exc = e
+            _usage.record_call(_usage_site, started=started, retry=attempt > 0,
+                               error=f"{type(e).__name__}: {e}")
 
             # Context-window errors are not transient — re-raise immediately
             if is_context_window_error(e):
@@ -249,6 +264,8 @@ async def llm_call_with_retry(
                 e,
             )
             await asyncio.sleep(delay)
+        else:
+            return _usage.wrap_result(result, _usage_site, started, attempt > 0)
 
     # Should not reach here, but satisfy type checker
     raise last_exc  # type: ignore[misc]
@@ -264,6 +281,7 @@ async def llm_stream_with_retry(
     timeout_delay_min: float = 10.0,
     timeout_delay_max: float = 30.0,
     label: str = "stream",
+    _usage_site: str = "agent_stream",
     **kwargs: Any,
 ) -> Any:
     """Open an LLM streaming connection with retry on transient errors.
@@ -294,11 +312,15 @@ async def llm_stream_with_retry(
         + max_retries
         + timeout_max_retries
     )
-    for _ in range(max_total_attempts):
+    for attempt in range(max_total_attempts):
+        started = time.monotonic()
         try:
-            return await fn(*args, **kwargs)
+            stream = await fn(*args, **kwargs)
+            return _usage.wrap_result(stream, _usage_site, started, attempt > 0)
         except Exception as e:
             last_exc = e
+            _usage.record_call(_usage_site, started=started, retry=attempt > 0,
+                               error=f"{type(e).__name__}: {e}")
 
             if is_context_window_error(e):
                 raise

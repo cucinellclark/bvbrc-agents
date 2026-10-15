@@ -25,11 +25,42 @@ from orchestrator.router.router import route
 from orchestrator.synthesizer.synthesizer import synthesize
 from shared.answer_filter import filter_answer
 from shared.step_outputs import extract_values, merge_step_outputs
+from shared import usage
 
 logger = logging.getLogger(__name__)
 
 
 async def orchestrate(
+    request: OrchestratorRequest,
+    registry: AgentRegistry,
+    llm: LLMClient,
+    routing_llm: LLMClient | None = None,
+) -> AsyncGenerator[Event, None]:
+    """Run one turn (``_orchestrate``) and count its LLM calls.
+
+    Opens the turn's usage tally (``shared.usage``) before anything runs, so
+    the router, every agent and the synthesizer record into it, and adds the
+    summary to ORCHESTRATOR_DONE as ``usage`` (the gateway stores it on the
+    assistant message).  One ``LLM_USAGE`` log line per turn, also when the
+    turn ends without ORCHESTRATOR_DONE (an error or a Stop).
+    """
+    calls = usage.start_turn()
+    done = False
+    try:
+        async for event in _orchestrate(request, registry, llm, routing_llm=routing_llm):
+            if event.type == EventType.ORCHESTRATOR_DONE and not done:
+                done = True
+                summary = usage.summarize(calls)
+                event.data = {**(event.data or {}), "usage": summary}
+                logger.info("%s session=%s", usage.log_line(summary), request.session_id)
+            yield event
+    finally:
+        if not done:
+            logger.info("%s session=%s ended=without_done",
+                        usage.log_line(usage.summarize(calls)), request.session_id)
+
+
+async def _orchestrate(
     request: OrchestratorRequest,
     registry: AgentRegistry,
     llm: LLMClient,
@@ -678,6 +709,7 @@ async def orchestrate_to_response(
     result_for_ui: dict[str, Any] = {}
     execution_trace: list[dict[str, Any]] = []
     status = "completed"
+    turn_usage: dict[str, Any] | None = None
 
     async for event in orchestrate(request, registry, llm, routing_llm=routing_llm):
         execution_trace.append(
@@ -694,6 +726,7 @@ async def orchestrate_to_response(
             agents_used = event.data.get("agents_used", [])
             tool_calls = event.data.get("tool_calls", [])
             result_for_ui = event.data.get("result_for_ui", {})
+            turn_usage = event.data.get("usage")
             if event.data.get("decision") == "error":
                 status = "error"
 
@@ -708,6 +741,7 @@ async def orchestrate_to_response(
         result_for_ui=result_for_ui,
         execution_trace=execution_trace,
         status=status,
+        usage=turn_usage,
     )
 
 
