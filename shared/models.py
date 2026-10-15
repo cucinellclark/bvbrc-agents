@@ -151,6 +151,10 @@ class BaseAgentConfig(BaseModel):
     # The agent that handed this turn to us (F1), or None.  A recipient
     # cannot hand off again: execute_tool gives it the plain refusal.
     handoff_from: str | None = None
+    # Set when this run is a delegated plan step: {plan_id, step_id,
+    # prior_groups: [{name, path}]}.  create_group's guard allows one group per
+    # step and refuses one identical to an earlier step's (shared.tools.groups).
+    plan_step: dict | None = None
     # D1: send chat_template_kwargs.enable_thinking=false on this agent's
     # LLM calls (Qwen models only; see shared.agent_utils.thinking_extra_body).
     disable_thinking: bool = False

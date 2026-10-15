@@ -26,6 +26,15 @@ GROUPS_SRA_SKILL_PROMPT = """
     returns ``errorType: ALREADY_EXISTS`` and changes nothing. Then ask the
     user whether to append, replace, or use a new name — do NOT retry with a
     different query or a different name on your own.
+- **A group for a condition is built from a query that carries the
+  condition.** "Resistant" and "susceptible" groups each come from their
+  own ``create_group(collection=..., query=<the condition>, limit=...)``
+  (e.g. ``genome_amr`` with ``resistant_phenotype:Resistant`` or
+  ``:Susceptible``). Never fill a group with ids copied from a different
+  search, and never reuse one list for two groups: a group with exactly
+  the same members as another is refused (``DUPLICATE_GROUP_MEMBERS``).
+  In a plan step, create only the step's ONE group
+  (``ONE_GROUP_PER_STEP``); the plan has a step for each group.
 - Only the **data** and **service** agents can call ``create_group``. Any
   other agent describes the group (query, count, name) and tells the user they
   can ask for it to be made.

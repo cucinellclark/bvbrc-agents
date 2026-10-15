@@ -418,6 +418,16 @@ async def execute_tool(
     if agent_key and allowed_agents is not None and agent_key not in allowed_agents:
         return wrong_agent_result(tool_name, agent_key)
 
+    # One group per plan step, and no group identical to one already made
+    # (shared.tools.groups.group_guard).  Before the plan-mode gate, so a
+    # prepared group is refused too, not only a created one.
+    if tool_name == "create_group":
+        from shared.tools.groups import group_guard
+
+        refusal = await group_guard(_safe_args(arguments), config, headers)
+        if refusal:
+            return refusal
+
     # Execution-mode gate: side-effecting tools only run in EXECUTE mode.
     # A missing config (or a config without the attribute) is treated as
     # PLAN — the safe default.

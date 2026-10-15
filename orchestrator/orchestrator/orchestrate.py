@@ -379,6 +379,11 @@ async def _orchestrate(
                             # Several jobs per step is a service thing; on
                             # any other agent the flag only confused it.
                             batch_mode=step_exec["agent"] == "service",
+                            plan_step={
+                                "plan_id": step_exec.get("plan_id"),
+                                "step_id": step_exec.get("step_id"),
+                                "prior_groups": step_exec.get("prior_groups") or [],
+                            },
                         )
                     ],
                 )

@@ -33,6 +33,10 @@ Basic patterns:
   field:(val1 OR val2 OR val3)         -- match any of multiple values
   field:val*                           -- prefix wildcard
   field:*val*                          -- contains wildcard
+  A SPECIES is genome_name:"Genus species" (phrase), never a wildcard on
+  the epithet: genome_name:*pneumoniae* also matches Klebsiella, Mycoplasma
+  and Chlamydia pneumoniae (31,318 tetracycline-resistant genomes in
+  genome_amr vs 10,387 for "Streptococcus pneumoniae").
   *                                    -- match all records
 
 IMPORTANT -- quoting multi-word values:
@@ -203,9 +207,9 @@ genomes are resistant to X" / "how many genomes have gene Y", call ONE \
 facet_query with facet_fields=["genome_id"] and count_distinct=true, then \
 report distinct_counts.genome_id. NEVER set a large facet_limit and count the \
 returned values yourself — the list is truncated and counting it burns minutes. \
-Example: How many S. pneumoniae genomes are resistant to penicillin? -> \
-facet_query(collection="genome_amr", query='genome_name:"Streptococcus \
-pneumoniae" AND antibiotic:penicillin AND resistant_phenotype:Resistant', \
+Shape: "How many <Genus species> genomes are resistant to <antibiotic>?" -> \
+facet_query(collection="genome_amr", query='genome_name:"<Genus species>" \
+AND antibiotic:<antibiotic> AND resistant_phenotype:Resistant', \
 facet_fields=["genome_id"], count_distinct=true) -> answer with \
 distinct_counts.genome_id (mention numFound as the number of AMR records).
 
@@ -217,7 +221,8 @@ distinct_counts.genome_id (mention numFound as the number of AMR records).
      b. PROBE the data: Call probe_data with the user's keywords to discover
         what values actually exist in the collection.
      c. TRY DIFFERENT FIELDS: If species:X returned 0, try genus:X.
-        If genus:X returned 0, try genome_name:*X*.
+        If genus:X returned 0, try genome_name:X* (a prefix: a genome name
+        starts with its genus; never *X*, which matches other organisms).
      d. EXPLAIN: If all alternatives return 0, tell the user exactly which
         queries you tried and why they failed.
    - NEVER report "0 results" after trying only one query formulation.
@@ -290,6 +295,14 @@ Exception: for **mixed exact subsets** (e.g. "5 of serovar A and 5 of \
 serovar B in one group"), you MUST fetch IDs per subset first with \
 search_data, then pass a combined genome_id:(…) query to create_group. \
 See the Groups skill section below for the full playbook.
+
+Groups for a CONDITION (resistant vs susceptible, host, year, country): each \
+group comes from its own create_group whose query carries that condition \
+(collection genome_amr, query 'antibiotic:<antibiotic> AND \
+resistant_phenotype:Resistant AND genome_name:"<Genus species>"', limit <n>). \
+Never fill such a group with ids from a search that lacks the condition, and \
+never use one id list for two groups -- a group identical to another is \
+refused. In a plan step, create only that step's one group.
 
 Parameters:
 - group_name: A descriptive name for the group.

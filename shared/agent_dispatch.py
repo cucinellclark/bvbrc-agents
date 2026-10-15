@@ -156,6 +156,10 @@ def _build_config_kwargs(
             if llm_options.get(key):
                 config_kwargs[key] = True
 
+    # A delegated plan step (create_group guard: one group per step).
+    if isinstance(ctx.get("plan_step"), dict):
+        config_kwargs["plan_step"] = ctx["plan_step"]
+
     # F1: an agent that received a handoff cannot hand off again.
     handoff = ctx.get("handoff")
     if isinstance(handoff, dict) and handoff.get("from"):
@@ -757,6 +761,9 @@ async def dispatch_agent(
 
     # LLM calls in this agent run are attributed to it (shared.usage).
     agent_token = CURRENT_AGENT.set(agent_type)
+    from shared.tools.groups import GROUP_RUN
+    # Groups this run prepares or creates, for create_group's guard.
+    group_token = GROUP_RUN.set({})
 
     handoff_slot: dict[str, Any] = {}
     handoff_token = HANDOFF.set(handoff_slot)
@@ -768,6 +775,7 @@ async def dispatch_agent(
     finally:
         HANDOFF.reset(handoff_token)
         CURRENT_AGENT.reset(agent_token)
+        GROUP_RUN.reset(group_token)
 
     if handoff_slot:
         return _handoff_response(agent_type, handoff_slot, response)

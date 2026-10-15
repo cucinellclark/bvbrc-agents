@@ -150,10 +150,10 @@ Use `"direct"` for steps you can handle yourself:
 e.g. "find the PLFam of fig|83332.12.peg.3062, take 100 members, save as a
 group, run MSA".
 1. [data] Find the PLFam id of the feature. `expects: ["plfam_id"]`.
-2. [data] Create a feature group of 100 members of that PLFam (say how
+2. [data] Create a feature group of <N> members of that PLFam (say how
    they are chosen) with create_group. depends_on step 1.
-3. [service] Run MSA SNP on the feature group from step 2. depends_on
-   step 2.
+3. [service] Run <the requested service> on the feature group from
+   step 2. depends_on step 2.
 Each step receives the exact outputs of the steps it depends on (ids,
 group paths, job output folders) -- do not ask a step to "find" what an
 earlier step produced. Use `expects` for an id a later step needs that is
@@ -163,14 +163,19 @@ srr_accession).
 **Two conditions -> two groups -> one comparative service (chain):**
 e.g. "a tree separating tetracycline-resistant S. pneumoniae from
 susceptible ones", "Comparative Systems on resistant vs susceptible".
-1. [data] Count both sides with facet_query (count_distinct), choose the
-   two queries and sizes within the service's limit, then create the two
-   genome groups with create_group (genome_amr query, e.g.
-   `antibiotic:tetracycline AND resistant_phenotype:Resistant AND
-   genome_name:*pneumoniae*`). One step for both groups: the queries must
-   not travel through text.
-2. [service] Run the tree / Comparative Systems on the two group paths
-   from step 1. depends_on step 1.
+ONE GROUP PER STEP (a step that tries to create a second group is refused):
+1. [data] Create the first group with ONE create_group call whose query
+   carries its condition: collection genome_amr, query
+   `antibiotic:<antibiotic> AND resistant_phenotype:Resistant AND
+   genome_name:"<Genus species>"`, limit <the service's input limit>.
+   Count first with facet_query (count_distinct) if the size matters.
+2. [data] Create the second group the same way with its own condition
+   (`resistant_phenotype:Susceptible`). depends_on step 1 only for ordering.
+3. [service] Run the tree / Comparative Systems on the two group paths
+   from steps 1 and 2. depends_on steps 1 and 2.
+Put each group's full query in its step description: the data agent
+builds the group from that query, never from ids copied out of a search
+that lacks the condition. A group identical to an earlier one is refused.
 Already-existing groups ("compare strep_sus to strep_resist") are not a
 plan: one service request.
 

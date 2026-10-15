@@ -471,6 +471,9 @@ async def _execute_step(
         "step_id": step_id,
         "step_index": current_index,
         "expects": list(step.get("expects") or []),
+        # Every group earlier steps made (create_group guard: a step may not
+        # rebuild one of them under a new name).
+        "prior_groups": _prior_groups(completed_results),
     }
 
     return state.to_result()
@@ -798,6 +801,16 @@ def _step_description(steps: list[dict[str, Any]], step_id: str) -> str:
         if s_.get("step_id") == step_id:
             return s_.get("description", "")
     return ""
+
+
+def _prior_groups(completed_results: Any) -> list[dict[str, Any]]:
+    """``[{name, path}]`` of the groups in any completed step's outputs."""
+    groups: list[dict[str, Any]] = []
+    for res in (completed_results or {}).values() if isinstance(completed_results, dict) else []:
+        for g in ((res or {}).get("step_outputs") or {}).get("groups") or []:
+            if isinstance(g, dict) and g.get("path") and all(g["path"] != x["path"] for x in groups):
+                groups.append({"name": g.get("name"), "path": g["path"]})
+    return groups
 
 
 def _relevant_prior_results(

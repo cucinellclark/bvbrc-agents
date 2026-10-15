@@ -13,8 +13,10 @@ All three delegate to the core implementations in
 
 from __future__ import annotations
 
+import json
 import re
 import sys
+from contextvars import ContextVar
 from typing import Any, Dict, List, Optional
 
 from shared.tools._mcp_imports import get_group_functions, get_json_rpc
@@ -427,6 +429,130 @@ async def count_group_members(arguments: Dict[str, Any], config: Any = None,
     except (TypeError, ValueError):
         limit = _DEFAULT_LIMIT
     return min(n, limit)
+
+
+# ---------------------------------------------------------------------------
+# Group guard: one group per plan step; no two groups with the same members
+# ---------------------------------------------------------------------------
+# Live, 2026-10-15 (tet R vs S tree): the data step searched genomes with no
+# phenotype filter and built BOTH groups from the same 50 ids; the user's Yes
+# created two identical groups for "resistant" and "susceptible".  Checked in
+# execute_tool before the plan-mode gate, so a prepared group is refused too.
+#
+# GROUP_RUN holds the groups prepared or created in the current agent run
+# (set per run by dispatch_agent, like HANDOFF); prior plan steps' groups come
+# from config.plan_step["prior_groups"] (paths), read from the Workspace once.
+
+GROUP_RUN: ContextVar[Optional[dict]] = ContextVar("group_run", default=None)
+
+
+async def resolve_group_members(arguments: Dict[str, Any], config: Any = None,
+                                headers: Optional[Dict[str, str]] = None) -> Optional[frozenset]:
+    """The member ids a create_group call would write, or None if unknown."""
+    group_type = arguments.get("group_type")
+    if group_type not in _GROUP_TYPE_CONFIG:
+        return None
+    try:
+        limit = max(1, min(int(arguments.get("limit") or _DEFAULT_LIMIT), _MAX_LIMIT))
+    except (TypeError, ValueError):
+        limit = _DEFAULT_LIMIT
+    if arguments.get("ids"):
+        good, _ = _clean_ids(arguments.get("ids"), group_type)
+        return frozenset(good[:limit]) or None
+    query = arguments.get("query")
+    if not query:
+        return None
+    token = _extract_token(headers) or getattr(config, "bvbrc_auth_token", None)
+    try:
+        res = await _fetch_ids_by_query(
+            collection=arguments.get("collection") or _GROUP_TYPE_CONFIG[group_type]["default_collection"],
+            query=query, id_field=_GROUP_TYPE_CONFIG[group_type]["id_field"], limit=limit,
+            token=token, base_url=getattr(config, "bvbrc_api_url", None),
+        )
+    except Exception:
+        return None
+    return frozenset(res.get("ids") or []) or None
+
+
+async def _workspace_group_members(paths: List[str], config: Any, headers: Optional[Dict[str, str]]) -> Dict[str, frozenset]:
+    """``{path: member ids}`` for existing groups (one Workspace.get)."""
+    if not paths:
+        return {}
+    token = _extract_token(headers) or getattr(config, "bvbrc_auth_token", None)
+    ws_url = getattr(config, "bvbrc_workspace_url", None) or "https://p3.theseed.org/services/Workspace"
+    try:
+        api = get_json_rpc(getattr(config, "mcp_server_path", None)).JsonRpcCaller(
+            service_url=ws_url, timeout=getattr(config, "tool_timeout_seconds", 30))
+        got = await api.acall("Workspace.get", [{"objects": list(paths)}], token=token)
+    except Exception:
+        return {}
+    out: Dict[str, frozenset] = {}
+    for obj in (got[0] if isinstance(got, list) and got and isinstance(got[0], list) else got) or []:
+        try:
+            meta, data = obj[0], obj[1]
+            id_list = json.loads(data).get("id_list", {}) if isinstance(data, str) else {}
+            members = [i for vals in id_list.values() for i in vals]
+            out[meta[2] + meta[0]] = frozenset(members)
+        except Exception:
+            continue
+    return out
+
+
+async def group_guard(arguments: Dict[str, Any], config: Any = None,
+                      headers: Optional[Dict[str, str]] = None) -> Optional[Dict[str, Any]]:
+    """A refusal for this create_group call, or None to let it through.
+
+    Records the call's members when it passes, so a later call in the same
+    run is compared with it.
+    """
+    run = GROUP_RUN.get()
+    plan_step = getattr(config, "plan_step", None) or {}
+    name = str(arguments.get("group_name") or "").strip()
+
+    if plan_step and run is not None and run.get("groups"):
+        first = run["groups"][0][0]
+        return {
+            "error": (
+                f"This plan step already made a group ({first}). A plan step creates "
+                f"ONE group; {name or 'this group'} belongs in its own step. Do not "
+                f"call create_group again in this step: say which group is left and "
+                f"that the plan's next step creates it."
+            ),
+            "errorType": "ONE_GROUP_PER_STEP",
+        }
+
+    members = await resolve_group_members(arguments, config, headers)
+    if not members:
+        return None
+
+    others: List[tuple[str, frozenset]] = list(run.get("groups") or []) if run is not None else []
+    prior_paths = [g.get("path") for g in plan_step.get("prior_groups") or [] if isinstance(g, dict) and g.get("path")]
+    if prior_paths:
+        cache = run.setdefault("prior", None) if run is not None else None
+        if cache is None:
+            cache = await _workspace_group_members(prior_paths, config, headers)
+            if run is not None:
+                run["prior"] = cache
+        others += [(path.rsplit("/", 1)[-1], ids) for path, ids in cache.items()]
+
+    for other_name, other_ids in others:
+        if other_name != name and other_ids == members:
+            return {
+                "error": (
+                    f"{name or 'This group'} would have exactly the same {len(members)} "
+                    f"members as {other_name}. Groups meant to differ (e.g. resistant vs "
+                    f"susceptible) must each be built from a query that carries its own "
+                    f"condition: create_group(collection=..., query=<that condition>, "
+                    f"limit=...), never from ids copied out of a search without it. "
+                    f"Nothing was created."
+                ),
+                "errorType": "DUPLICATE_GROUP_MEMBERS",
+                "same_as": other_name,
+            }
+
+    if run is not None:
+        run.setdefault("groups", []).append((name, members))
+    return None
 
 
 async def create_group(

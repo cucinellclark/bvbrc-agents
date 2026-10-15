@@ -18,6 +18,10 @@ for querying BV-BRC's Solr collections.  Follow these rules:
 - Exact match: ``field:value`` (e.g. ``genus:Salmonella``)
 - Phrase match: ``field:"multi word value"`` — ALWAYS quote multi-word values
 - Wildcards: ``field:Sal*`` (prefix only, no leading wildcards)
+- A species is ``genome_name:"Genus species"`` (phrase). Never a wildcard
+  on the epithet: ``genome_name:*pneumoniae*`` also matches *Klebsiella*,
+  *Mycoplasma* and *Chlamydia pneumoniae* (about two thirds of its matches
+  in ``genome_amr`` are not *S. pneumoniae*).
 - OR group: ``field:(val1 OR val2 OR val3)``
 - AND: ``field1:val1 AND field2:val2``
 - NOT: ``NOT field:val``  or  ``field1:val1 AND NOT field2:val2``

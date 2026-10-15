@@ -292,12 +292,13 @@ They are infrastructure fields handled by the system — treat them as \
 if they already have defaults.
 - output_path: just a folder NAME, not a path. If the user named a \
 folder for the results ("put it in my Testing folder"), use exactly that \
-name (e.g. "Testing"). Otherwise use a short descriptive name (e.g. \
-"SRR19542959_ComprehensiveAnalysis"). Every job's results are placed in \
+name (e.g. "Testing"). Otherwise use a short descriptive name of the \
+form "<sample>_<Service>" (the SRA accession or read-file stem, then the \
+service). Every job's results are placed in \
 that folder inside this chat's workspace folder (chats/<session>/), \
 never elsewhere in the user's workspace.
 - output_file: Generate a descriptive basename derived from the sample \
-or job (e.g., "SRR19542959").
+or job (the SRA accession or the read file's name without its extension).
 Just pick sensible names and move on. Do NOT present these to the user \
 for confirmation or approval.
 After a successful submission, ALWAYS tell the user where their \

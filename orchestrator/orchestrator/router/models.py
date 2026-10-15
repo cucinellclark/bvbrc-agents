@@ -23,6 +23,8 @@ class Step(BaseModel):
     task: str  # Focused task description passed to the agent
     depends_on: list[int] = Field(default_factory=list)  # Step indices
     batch_mode: bool = False  # True only for planning-delegated steps
+    # Delegated plan step: {plan_id, step_id, prior_groups} (create_group guard)
+    plan_step: dict[str, Any] | None = None
 
 
 class Plan(BaseModel):

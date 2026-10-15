@@ -169,6 +169,8 @@ async def execute_agent_step(
     # multiple submissions are permitted (planning-delegated steps only)
     if step.batch_mode:
         context_data["batch_mode"] = True
+    if step.plan_step:
+        context_data["plan_step"] = step.plan_step
 
     if handoff:
         context_data["handoff"] = handoff
