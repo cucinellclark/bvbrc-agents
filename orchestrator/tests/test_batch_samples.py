@@ -420,3 +420,18 @@ def test_prompts_send_batches_to_the_service_agent_tools():
     assert "every read pair in this folder" in " ".join(CLASSIFIER_SYSTEM_PROMPT.split())
     prompt = build_populate_prompt()
     assert "== BATCH ==" in prompt and "list_samples" in prompt and "prepare_batch" in prompt
+
+
+def test_every_str_format_prompt_template_builds():
+    """Live, 2026-10-15: every planning request failed with "Replacement index 0
+    out of range for positional args tuple".  The Phase 4 batch text added a
+    literal "template_inputs = {}" to the planner's SYSTEM_PROMPT, which is a
+    str.format() template.  Braces in these templates must be doubled."""
+    from orchestrator.router.prompts import build_routing_prompt
+    from planning_agent.prompts.step_query import build_step_execution_prompt
+    from planning_agent.prompts.system import build_system_prompt
+
+    planner = build_system_prompt("catalog")
+    assert "template_inputs = {}, samples = []" in planner
+    build_routing_prompt("q", "catalog")
+    build_step_execution_prompt("t", "d", "q", 1, 2, "step", "service", "why")

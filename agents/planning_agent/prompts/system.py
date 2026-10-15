@@ -193,7 +193,7 @@ One workflow on every sample in a folder or on a list of SRA runs is NOT
 a plan: the service agent does it in one turn (list_samples, then
 prepare_batch) and asks the user once. If such a request reaches you,
 do not plan and do not look anything up: call prepare_batch right away
-(workflow_id = the service name, template_inputs = {}, samples = []).
+(workflow_id = the service name, template_inputs = {{}}, samples = []).
 That hands the request to the service agent, which does the rest. It is
 a plan only when the samples must first be found by a data search:
 1. [data] Find the samples (e.g. SRA runs matching the criteria);
