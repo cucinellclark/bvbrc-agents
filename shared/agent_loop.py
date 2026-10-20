@@ -28,6 +28,7 @@ import time
 from typing import Any, Callable, Dict
 
 from shared.agent_utils import (
+    CLARIFICATION_INTRO,
     build_user_content,
     call_fingerprint,
     format_attached_documents,
@@ -417,7 +418,7 @@ async def run_agent_loop(
                 questions = result.get("questions", [])
                 state.status = "needs_input"
                 state.question = json.dumps(questions)
-                state.final_answer = content or "I have some questions before I can proceed."
+                state.final_answer = content or CLARIFICATION_INTRO
                 result_str = truncate_result(result, max_chars=result_char_limit(tc.name, max_tool_result_chars))
                 state.add_tool_result(tc.id, result_str)
                 should_exit = True

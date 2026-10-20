@@ -1104,6 +1104,47 @@ def format_handoff(context: dict[str, Any] | None) -> str:
     return "\n".join(lines)
 
 
+# What an agent says when it asks without writing any text of its own.
+CLARIFICATION_INTRO = "I have a few questions before I go on."
+
+
+def parse_clarification_questions(question: Any) -> list[dict[str, Any]] | None:
+    """The structured questions an agent asked, or None.
+
+    The shared loop (and the service populate loop) store a valid
+    ``ask_clarification`` result's questions in ``state.question`` as JSON;
+    a plain-text question (the service agent's own wording) is not a list
+    and gives None.
+    """
+    if isinstance(question, list):
+        items = question
+    elif isinstance(question, str) and question.lstrip().startswith("["):
+        try:
+            items = json.loads(question)
+        except ValueError:
+            return None
+    else:
+        return None
+    if not isinstance(items, list) or not items:
+        return None
+    if not all(isinstance(q, dict) and q.get("question") for q in items):
+        return None
+    return items
+
+
+def format_clarification_questions(questions: list[dict[str, Any]]) -> str:
+    """The questions as plain text (numbered, options as bullets).
+
+    For the places that show text, not the card: the plan card's step
+    question and the conversation history the next turn sees.
+    """
+    lines = []
+    for i, q in enumerate(questions, 1):
+        lines.append(f"{i}. {q.get('question', '')}")
+        lines.extend(f"   - {opt}" for opt in q.get("options") or [])
+    return "\n".join(lines)
+
+
 def thinking_extra_body(model: str | None, disable: bool) -> dict[str, Any] | None:
     """``extra_body`` that turns a Qwen model's thinking off, or None (D1).
 

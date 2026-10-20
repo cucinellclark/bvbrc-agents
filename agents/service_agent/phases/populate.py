@@ -859,6 +859,18 @@ async def populate_and_submit(
                 state.current_phase = "handoff"
                 return state
 
+            # ask_clarification: stop and show the questions as the card
+            # (dispatch passes them on, like the shared loop's agents).
+            if (
+                tc.name == "ask_clarification"
+                and isinstance(result, dict)
+                and result.get("status") == "valid"
+            ):
+                state.add_tool_result(tc.id, json.dumps(result, default=str))
+                state.status = "needs_input"
+                state.question = json.dumps(result.get("questions", []))
+                return state
+
             # rerun_jobs / prepare_batch prepared a set of jobs (they never submit).  The set
             # is complete: it is confirmed with the same one question as any
             # job set, whatever the session mode, so end tool use and let the

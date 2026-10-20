@@ -49,6 +49,11 @@ _solr_api_path = str(_REPO_ROOT / "mcp_server" / "bvbrc-python-api")
 if Path(_solr_api_path).is_dir() and _solr_api_path not in sys.path:
     sys.path.insert(0, _solr_api_path)
 
+from shared.agent_utils import (  # noqa: E402
+    CLARIFICATION_INTRO,
+    format_clarification_questions,
+    parse_clarification_questions,
+)
 from shared.answer_filter import collect_known_links, filter_answer  # noqa: E402
 from shared.tools import prepared_actions_of  # noqa: E402
 from shared.step_outputs import build_step_outputs  # noqa: E402
@@ -341,10 +346,35 @@ def _with_blocked_actions(response: Dict[str, Any], result: Any) -> Dict[str, An
     blocked = _blocked_actions_of(result)
     if blocked:
         response["blocked_actions"] = blocked
+    _add_clarification_questions(response, result)
     outputs = build_step_outputs(getattr(result, "tool_trace", None) or [])
     if outputs:
         response["step_outputs"] = outputs
     return response
+
+
+def _add_clarification_questions(response: Dict[str, Any], result: Any) -> None:
+    """Pass any agent's ``ask_clarification`` questions on as the card's data.
+
+    Planning sets ``clarification_questions`` itself; the other agents keep
+    the questions as JSON in ``question``.  The orchestrator turns the list
+    into the clickable questions card (ASK_QUESTIONS) for whichever agent
+    asked.  ``question`` becomes readable text (the plan card's step
+    question) and an answer that is empty or the raw JSON becomes a short
+    intro, so JSON never reaches the user (2026-10-20: the data agent's two
+    questions were dropped and the user saw only "I have some questions").
+    """
+    if response.get("status") != "needs_input" or response.get("clarification_questions"):
+        return
+    raw = getattr(result, "question", None)
+    questions = parse_clarification_questions(raw)
+    if not questions:
+        return
+    response["clarification_questions"] = questions
+    response["question"] = format_clarification_questions(questions)
+    answer = response.get("answer")
+    if not answer or not str(answer).strip() or answer == raw:
+        response["answer"] = CLARIFICATION_INTRO
 
 
 def _error_response(message: str) -> Dict[str, Any]:

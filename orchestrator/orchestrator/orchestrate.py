@@ -312,12 +312,16 @@ async def _orchestrate(
         _planning_handled = False
         for ar in agent_results:
             # --- CLARIFICATION QUESTIONS ---
+            # Any agent's questions (planning's, and since 2026-10-20 the
+            # others' via dispatch): the card says who asked, and its
+            # answers go back to that agent.
             if ar.get("clarification_questions"):
+                asking_agent = ar.get("agent") or "planning"
                 yield Event(
                     type=EventType.ASK_QUESTIONS,
-                    agent_name="planning",
+                    agent_name=asking_agent,
                     data={
-                        "agent": "planning",
+                        "agent": asking_agent,
                         "questions": ar["clarification_questions"],
                     },
                 )
@@ -572,6 +576,10 @@ async def _orchestrate(
                             "step_index": step_exec.get("step_index"),
                             "question": question_text,
                             "agent": step_exec.get("agent"),
+                            # The step agent's ask_clarification questions:
+                            # the gateway shows them as the questions card.
+                            **({"questions": step_result["clarification_questions"]}
+                               if step_result.get("clarification_questions") else {}),
                         },
                     )
 
