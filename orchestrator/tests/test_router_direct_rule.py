@@ -98,4 +98,4 @@ def test_input_text_error_is_not_reported_as_conversation_too_large():
 
     msg = _classify_agent_error(ValueError("invalid input_text field in request"), "data")
     assert "grown too large" not in msg
-    assert "grown too large" in _classify_agent_error(ValueError("maximum context length exceeded"), "data")
+    assert "more data than fits" in _classify_agent_error(ValueError("maximum context length exceeded"), "data")
