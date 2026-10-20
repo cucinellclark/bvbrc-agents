@@ -65,6 +65,8 @@ from planning_agent.prompts.step_query import (  # noqa: E402
 )
 from shared.tools.schemas import ALL_TOOL_SCHEMAS as TOOL_SCHEMAS  # noqa: E402
 from shared.step_outputs import format_step_outputs  # noqa: E402
+from shared.agent_utils import is_context_window_error  # noqa: E402
+from shared.context_budget import ContextBudget  # noqa: E402
 
 RECON_CAP_DEFAULT = 4
 PLAN_TOOL_NAMES = frozenset({"create_plan", "ask_clarification"})
@@ -591,6 +593,11 @@ async def _run_planning_loop(
     recon_cap = max(0, int(getattr(config, "max_recon_tools", RECON_CAP_DEFAULT) or 0))
     recon_count = 0
     capped = False
+    # Prompt budget (shared/context_budget.py, #12): past the hard line the
+    # model may only plan or ask (the recon cap's state), and an overflow
+    # compacts every result and retries once instead of failing the turn.
+    budget = ContextBudget.for_config(config)
+    overflow_recovered = False
 
     def _check_cancelled() -> None:
         """Raise CancelledError if the current asyncio task has been cancelled."""
@@ -615,13 +622,35 @@ async def _run_planning_loop(
             "Thinking about your request...",
         )
 
+        prep = budget.prepare(state.messages, PLAN_ONLY_SCHEMAS if capped else TOOL_SCHEMAS)
+        if prep["compacted"]:
+            logger.info("Compacted %d older tool result(s); %s", prep["compacted"], budget.describe())
+        if prep["exhausted"] and not capped:
+            capped = True
+            logger.warning("Context budget spent after %d lookup(s): plan or ask now (%s)",
+                           recon_count, budget.describe())
+            state.add_user_message(RECON_CAP_NUDGE)
+
         # Ask the LLM what to do
-        response = await chat_completion(
-            client=client,
-            messages=state.messages,
-            tools=PLAN_ONLY_SCHEMAS if capped else TOOL_SCHEMAS,
-            config=config,
-        )
+        try:
+            response = await chat_completion(
+                client=client,
+                messages=state.messages,
+                tools=PLAN_ONLY_SCHEMAS if capped else TOOL_SCHEMAS,
+                config=config,
+            )
+        except Exception as exc:
+            if not is_context_window_error(exc) or overflow_recovered:
+                raise
+            logger.warning("Context overflow after %d lookup(s); compacting and retrying once (%s)",
+                           recon_count, budget.describe())
+            budget.compact_all(state.messages)
+            overflow_recovered = True
+            if not capped:
+                capped = True
+                state.add_user_message(RECON_CAP_NUDGE)
+            continue
+        budget.record(response, state.messages, PLAN_ONLY_SCHEMAS if capped else TOOL_SCHEMAS)
 
         _check_cancelled()  # checkpoint 2: after LLM call
 

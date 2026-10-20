@@ -30,6 +30,7 @@ from typing import Any, Callable, Dict
 from shared.agent_utils import (
     CLARIFICATION_INTRO,
     build_user_content,
+    is_context_window_error,
     call_fingerprint,
     format_attached_documents,
     format_recent_messages,
@@ -43,13 +44,17 @@ from shared.agent_utils import (
     trim_messages_to_fit,
 )
 from shared.agent_messages import (
+    BUDGET_ANSWER_NOW,
+    BUDGET_FALLBACK,
     DUPLICATE_CALL_WARNING,
     EMPTY_ANSWER_NUDGE,
+    OVERFLOW_ANSWER_NOW,
     MAX_ITERATIONS_SYNTHESIS,
     MAX_ITERATIONS_FALLBACK,
     STUCK_ANSWER_NOW,
     STUCK_FALLBACK,
 )
+from shared.context_budget import ContextBudget
 from shared.models import BaseAgentState, BaseAgentConfig, ToolCall
 from shared.tools import execute_tool, is_handoff_result, truncate_result, result_char_limit
 
@@ -101,30 +106,48 @@ async def force_answer(
     chat_completion_fn: Callable,
     tool_schemas: list[dict] | None = None,
     trim_messages: bool = False,
+    nudge: str = STUCK_ANSWER_NOW,
+    fallback: str = STUCK_FALLBACK,
+    budget: ContextBudget | None = None,
+    compact_all: bool = False,
 ) -> None:
-    """End a stuck loop: one nudge, one call with tools off, then stop.
+    """End the loop with an answer: one nudge, one call with tools off, then stop.
 
-    Sets ``state.final_answer`` and ``state.status = "completed"``; an empty
-    or failed answer falls back to a fixed text naming the tools that ran.
+    Used when the model is stuck, when the context budget is spent, and
+    after a context overflow (``compact_all`` first shrinks every tool
+    result).  If the call itself overflows, every result is compacted and it
+    is tried once more.  Sets ``state.final_answer`` and ``state.status =
+    "completed"``; an empty or failed answer falls back to *fallback*, which
+    names the tools that ran.
     """
-    state.add_user_message(STUCK_ANSWER_NOW)
-    messages = state.messages
-    if trim_messages:
-        messages = trim_messages_to_fit(state.messages, tool_schemas, config.max_context_tokens)
+    if compact_all and budget is not None:
+        budget.compact_all(state.messages)
+    state.add_user_message(nudge)
     content = ""
-    try:
-        response = await chat_completion_fn(
-            client=client, messages=messages, tools=tool_schemas, config=config, tool_choice="none",
-        )
-        content = (get_response_content(response) or "").strip()
-    except Exception as exc:  # the fallback below still answers
-        logger.warning("Forced answer after a stuck loop failed: %s", exc)
+    for attempt in range(2):
+        messages = state.messages
+        if trim_messages:
+            messages = trim_messages_to_fit(state.messages, tool_schemas, config.max_context_tokens)
+        try:
+            response = await chat_completion_fn(
+                client=client, messages=messages, tools=tool_schemas, config=config, tool_choice="none",
+            )
+            content = (get_response_content(response) or "").strip()
+            break
+        except Exception as exc:  # the fallback below still answers
+            if attempt == 0 and budget is not None and is_context_window_error(exc) and not compact_all:
+                logger.warning("Forced answer overflowed the context; compacting every result and retrying")
+                budget.compact_all(state.messages)
+                compact_all = True
+                continue
+            logger.warning("Forced answer failed: %s", exc)
+            break
     if not content:
         steps = "\n".join(
             f"- `{te.tool_call.name}`" + (f": failed — {str(te.error)[:120]}" if te.error else "")
             for te in state.tool_executions[-10:]
         ) or "- (no tool ran)"
-        content = STUCK_FALLBACK.format(steps=steps)
+        content = fallback.format(steps=steps)
     state.final_answer = content
     state.status = "completed"
 
@@ -262,6 +285,9 @@ async def run_agent_loop(
     executed_fingerprints: set[str] = set()
     empty_answer_nudged = False
     duplicate_count = 0
+    # Prompt budget: compacts older results past the soft line, forces the
+    # answer past the hard line, recovers from an overflow (#12, 2026-10-20).
+    budget = ContextBudget.for_config(config)
 
     for iteration in range(config.max_iterations):
         # --- Cancel checkpoint: top of each iteration ---
@@ -277,18 +303,46 @@ async def run_agent_loop(
         )
 
         # 1. PLAN -- Ask the LLM what to do next
+        prep = budget.prepare(state.messages, tool_schemas)
+        if prep["compacted"]:
+            logger.info("Compacted %d older tool result(s); %s", prep["compacted"], budget.describe())
+        if prep["exhausted"]:
+            logger.warning("Context budget spent after %d tool call(s); forcing an answer (%s)",
+                           len(state.tool_executions), budget.describe())
+            await force_answer(
+                state, client, config, chat_completion_fn, tool_schemas,
+                trim_messages=trim_messages, nudge=BUDGET_ANSWER_NOW, fallback=BUDGET_FALLBACK, budget=budget,
+            )
+            break
+
         messages_for_llm = state.messages
         if trim_messages:
             messages_for_llm = trim_messages_to_fit(
                 state.messages, tool_schemas, config.max_context_tokens
             )
 
-        response = await chat_completion_fn(
-            client=client,
-            messages=messages_for_llm,
-            tools=tool_schemas,
-            config=config,
-        )
+        try:
+            response = await chat_completion_fn(
+                client=client,
+                messages=messages_for_llm,
+                tools=tool_schemas,
+                config=config,
+            )
+        except Exception as exc:
+            if not is_context_window_error(exc):
+                raise
+            # The work so far is kept: every result is compacted and the
+            # model answers from it (before, the turn was discarded with a
+            # "start a new conversation" message).
+            logger.warning("Context overflow after %d tool call(s); compacting and answering (%s)",
+                           len(state.tool_executions), budget.describe())
+            await force_answer(
+                state, client, config, chat_completion_fn, tool_schemas,
+                trim_messages=trim_messages, nudge=OVERFLOW_ANSWER_NOW, fallback=BUDGET_FALLBACK,
+                budget=budget, compact_all=True,
+            )
+            break
+        budget.record(response, messages_for_llm, tool_schemas)
 
         tool_calls = _parse_tool_calls_raw(response, ToolCall)
         content = get_response_content(response)
