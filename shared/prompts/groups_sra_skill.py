@@ -35,7 +35,17 @@ GROUPS_SRA_SKILL_PROMPT = """
   the same members as another is refused (``DUPLICATE_GROUP_MEMBERS``).
   In a plan step, create only the step's ONE group
   (``ONE_GROUP_PER_STEP``); the plan has a step for each group.
-- Only the **data** and **service** agents can call ``create_group``. Any
+- ``edit_group(group=<name or path>, group_type=..., remove_ids=[...],
+  add_ids=[...])`` changes an EXISTING group's members (the website's
+  read-modify-write). Use it when a result shows a member should go — a
+  fragmentary assembly that made a tree job fail, a genome the user wants
+  out — or to add a few ids to a group the user already has. Every id in
+  ``remove_ids`` must be a current member (``NOT_IN_GROUP`` otherwise; check
+  with ``get_group_ids``), and the group may not end up empty. It always
+  asks the user first, in every mode, showing the before/after counts.
+  After the edit, re-run a job on the group itself, not on a pasted id list.
+- Only the **data** and **service** agents can call ``create_group`` and
+  ``edit_group``. Any
   other agent describes the group (query, count, name) and tells the user they
   can ask for it to be made.
 - If ``create_group`` returns any error, report it. Never retry it with a

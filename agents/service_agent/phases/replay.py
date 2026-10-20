@@ -23,6 +23,7 @@ from typing import Any
 from service_agent.models import AgentConfig, AgentState, ToolCall
 from shared.tools import (
     EXECUTE_ONLY_TOOLS,
+    REPLAY_IN_PROGRESS,
     execute_tool,
     is_already_submitted_result,
     is_blocked_result,
@@ -76,7 +77,7 @@ def _group_line(summary: str, result: dict[str, Any]) -> str:
     name = result.get("name") or summary
     count = result.get("count")
     path = result.get("path")
-    verb = "Updated" if result.get("action") in ("append", "replace") else "Created"
+    verb = "Updated" if result.get("action") in ("append", "appended", "replace", "replaced", "edited") else "Created"
     size = f" ({count} items)" if count is not None else ""
     where = f" at `{path}`" if path else ""
     return f"{verb} group **{name}**{size}{where}."
@@ -110,6 +111,15 @@ async def replay_blocked_actions(
     attempted = 0
     stopped = False
 
+    # edit_group asks even in Execute mode; a replay is the answered question.
+    replay_token = REPLAY_IN_PROGRESS.set(True)
+    try:
+        return await _replay(actions, config, state, headers, lines, succeeded, attempted, stopped)
+    finally:
+        REPLAY_IN_PROGRESS.reset(replay_token)
+
+
+async def _replay(actions, config, state, headers, lines, succeeded, attempted, stopped):
     for i, action in enumerate(actions):
         tool, summary = action["tool"], action["summary"]
         attempted += 1
@@ -164,7 +174,7 @@ async def replay_blocked_actions(
         if error:
             logger.warning("Replay of %s failed: %s", tool, error)
             lines.append(f"Could not run **{summary}**{_folder_of(action)}: {error}")
-            if tool == "create_group":
+            if tool in ("create_group", "edit_group"):
                 # Later submits may depend on the group.
                 stopped = True
                 break
@@ -179,7 +189,7 @@ async def replay_blocked_actions(
             state.auto_submitted = True
             state.persisted = True
             lines.append(_submit_line(summary, result))
-        elif tool == "create_group":
+        elif tool in ("create_group", "edit_group"):
             lines.append(_group_line(summary, result))
         else:
             lines.append(f"Done: **{summary}**.")

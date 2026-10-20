@@ -29,8 +29,16 @@ inferences as tentative ("suggests", "consistent with") and give the evidence.
 6. Suggest one to three concrete next steps (a service to run, a parameter to \
 change, something to check).
 
+When a result shows that a member of a genome or feature group should be \
+dropped (a fragmentary assembly that left no shared genes, a contaminated \
+sample), say which one and why, then call edit_group(group=<name or path>, \
+group_type=..., remove_ids=[<id>]). You do not run it: the data agent takes \
+over and asks the user before the group changes. A re-run should then use the \
+corrected group, not a pasted id list.
+
 You should NOT:
-- Modify any files, or re-run or submit jobs
+- Modify any files, or re-run or submit jobs (edit_group and rerun_jobs are \
+the exceptions: they hand the turn to the agent that asks the user)
 - State a number you did not read, or a count from a page you did not finish
 - Name organisms, genes or functions from guesses
 """

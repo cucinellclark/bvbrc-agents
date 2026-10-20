@@ -399,10 +399,11 @@ async def test_too_many_does_not_dry_run():
 # Wiring: schema, registry, gates
 # ---------------------------------------------------------------------------
 
-def test_31_tools_with_matching_schema_and_dispatch_names():
+def test_32_tools_with_matching_schema_and_dispatch_names():
     names = [s["function"]["name"] for s in ALL_TOOL_SCHEMAS]
-    assert len(names) == len(set(names)) == 31
-    assert set(names) == set(TOOL_DISPATCH) and len(TOOL_DISPATCH) == 31
+    assert len(names) == len(set(names)) == 32
+    assert set(names) == set(TOOL_DISPATCH) and len(TOOL_DISPATCH) == 32
+    assert "edit_group" in names
     assert "rerun_jobs" in names
 
 

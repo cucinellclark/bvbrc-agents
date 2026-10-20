@@ -750,3 +750,188 @@ async def create_group(
         "message": message,
         "source": "bvbrc-workspace",
     }
+
+
+# ---------------------------------------------------------------------------
+# edit_group: remove / add members of an existing group
+# ---------------------------------------------------------------------------
+# The website's WorkspaceManager.removeFromGroup / addToGroup: read the
+# group, change its id list, write it back with overwrite.  Before
+# 2026-10-20 the only route was create_group(if_exists="replace") with the
+# whole remaining list, whose question did not say "replace"; when a tree
+# job's analysis found a fragmentary genome, the agent passed 49 ids to the
+# job instead of fixing the group (marcnguy, 2026-10-16).
+
+
+def _group_ref_error(group_type: str) -> Optional[Dict[str, Any]]:
+    if group_type not in _GROUP_TYPE_CONFIG:
+        return {
+            "error": f"Invalid group_type: '{group_type}'. Must be one of: {', '.join(_GROUP_TYPE_CONFIG)}",
+            "errorType": "INVALID_PARAMETERS",
+        }
+    return None
+
+
+async def _resolve_group(group: str, group_type: str, token: str, config: Any) -> Dict[str, Any]:
+    """``{name, path}`` for a group given by name or workspace path, or an error dict."""
+    gf = get_group_functions(getattr(config, "mcp_server_path", None))
+    api = _get_api(config)
+    ref = (group or "").strip()
+    if not ref:
+        return {"error": "group is required (a group name or its workspace path).", "errorType": "INVALID_PARAMETERS"}
+    if ref.startswith("/"):
+        return {"name": ref.rstrip("/").rsplit("/", 1)[-1], "path": ref}
+    resolved = await gf.resolve_group_path(api, ref, group_type, token)
+    if "error" in resolved or resolved.get("match_type") == "ambiguous":
+        return resolved
+    return {"name": resolved["name"], "path": resolved["path"]}
+
+
+async def plan_group_edit(
+    arguments: Dict[str, Any], config: Any = None, headers: Optional[Dict[str, str]] = None,
+) -> Dict[str, Any]:
+    """What an ``edit_group`` call would do, without doing it.
+
+    Reads the group once and returns ``{name, path, group_type, id_field,
+    previous_ids, remove, add, already_present, final_ids}``; or an error
+    dict when the change cannot be what the user meant (an id to remove
+    that is not in the group, nothing to change, an empty result).  The
+    plan-mode gate uses it for the question's text, ``edit_group`` for the
+    write, so the question and the write agree.
+    """
+    args = arguments if isinstance(arguments, dict) else {}
+    group_type = str(args.get("group_type") or "")
+    bad_type = _group_ref_error(group_type)
+    if bad_type:
+        return bad_type
+    token = _extract_token(headers)
+    if not token:
+        return {"error": "Authentication required. No auth token provided."}
+    remove, bad_remove = _clean_ids(args.get("remove_ids") or [], group_type)
+    add, bad_add = _clean_ids(args.get("add_ids") or [], group_type)
+    display = _GROUP_TYPE_CONFIG[group_type]["display_name"]
+    if bad_remove or bad_add:
+        return {
+            "error": f"{len(bad_remove) + len(bad_add)} value(s) are not {display} member ids: "
+                     f"{', '.join((bad_remove + bad_add)[:5])}.",
+            "errorType": "INVALID_PARAMETERS",
+        }
+    if not remove and not add:
+        return {"error": "Give remove_ids and/or add_ids.", "errorType": "INVALID_PARAMETERS"}
+
+    where = await _resolve_group(args.get("group"), group_type, token, config)
+    if "error" in where or where.get("match_type") == "ambiguous":
+        return where
+    gf = get_group_functions(getattr(config, "mcp_server_path", None))
+    obj = await gf._workspace_get(_get_api(config), where["path"], token, metadata_only=False)
+    if "error" in obj:
+        return {"error": f"Group '{where['name']}' could not be read: {obj['error']}",
+                "errorType": obj.get("errorType", "API_ERROR"), "path": where["path"]}
+    try:
+        data = json.loads(obj["data"]) if isinstance(obj.get("data"), str) else (obj.get("data") or {})
+    except (json.JSONDecodeError, TypeError):
+        data = None
+    if not isinstance(data, dict) or not isinstance(data.get("id_list"), dict):
+        return {"error": f"Group '{where['name']}' has no readable id list.", "errorType": "INVALID_RESPONSE"}
+    id_field = _GROUP_TYPE_CONFIG[group_type]["id_field"]
+    previous = [str(i) for i in (data["id_list"].get(id_field) or [])]
+
+    if group_type == "feature_group":
+        base_url = getattr(config, "bvbrc_api_url", None)
+        remove, missing_r = await _patric_to_feature_ids(remove, token, base_url)
+        add, missing_a = await _patric_to_feature_ids(add, token, base_url)
+        if missing_r or missing_a:
+            return {"error": f"{len(missing_r) + len(missing_a)} patric_id(s) were not found in BV-BRC: "
+                             f"{', '.join((missing_r + missing_a)[:5])}. Nothing was changed.",
+                    "errorType": "NOT_FOUND"}
+
+    present = set(previous)
+    absent = [i for i in remove if i not in present]
+    if absent:
+        return {
+            "error": f"{len(absent)} id(s) to remove are not in {display} '{where['name']}' "
+                     f"({len(previous)} members): {', '.join(absent[:5])}. Nothing was changed. "
+                     f"Check the members with get_group_ids.",
+            "errorType": "NOT_IN_GROUP", "path": where["path"],
+        }
+    already = [i for i in add if i in present]
+    add_new = [i for i in add if i not in present]
+    final = [i for i in previous if i not in set(remove)] + add_new
+    if not remove and not add_new:
+        return {"error": f"Nothing to change: the {len(already)} id(s) to add are already in "
+                         f"{display} '{where['name']}'.", "errorType": "NO_CHANGE", "path": where["path"]}
+    if not final:
+        return {"error": f"Removing {len(remove)} id(s) would empty {display} '{where['name']}'. "
+                         f"Nothing was changed; delete the group on the website if that is wanted.",
+                "errorType": "EMPTY_GROUP", "path": where["path"]}
+    return {
+        "name": where["name"], "path": where["path"], "group_type": group_type, "id_field": id_field,
+        "previous_ids": previous, "remove": remove, "add": add_new, "already_present": already,
+        "final_ids": final,
+    }
+
+
+def edit_summary(plan: Dict[str, Any]) -> str:
+    """The question's one line: "genome_group 'X': remove 1 (50 → 49): 1313.42242"."""
+    parts = []
+    if plan.get("remove"):
+        parts.append(f"remove {len(plan['remove'])}")
+    if plan.get("add"):
+        parts.append(f"add {len(plan['add'])}")
+    ids = (plan.get("remove") or []) + (plan.get("add") or [])
+    shown = ", ".join(ids[:5]) + (f", … ({len(ids)} ids)" if len(ids) > 5 else "")
+    return (f"{plan['group_type']} '{plan['name']}': {' and '.join(parts)} "
+            f"({len(plan['previous_ids'])} → {len(plan['final_ids'])}): {shown}")
+
+
+async def edit_group(
+    group: str,
+    group_type: str,
+    remove_ids: Optional[List[str]] = None,
+    add_ids: Optional[List[str]] = None,
+    config: Any = None,
+    headers: Optional[Dict[str, str]] = None,
+    **kwargs: Any,
+) -> Dict[str, Any]:
+    """Remove and/or add members of an existing genome or feature group.
+
+    Reads the group, applies the change and writes it back (the website's
+    read-modify-overwrite).  Never creates a group: an unknown group is an
+    error.  Every id in *remove_ids* must be a member; a result with no
+    members is refused.
+    """
+    plan = await plan_group_edit(
+        {"group": group, "group_type": group_type, "remove_ids": remove_ids, "add_ids": add_ids},
+        config, headers,
+    )
+    if "error" in plan:
+        return plan
+    token = _extract_token(headers)
+    api = _get_api(config)
+    content = {"id_list": {plan["id_field"]: plan["final_ids"]}, "name": plan["name"]}
+    try:
+        await api.acall(
+            "Workspace.create",
+            [{"objects": [[plan["path"], group_type, {}, content]], "overwrite": 1}],
+            1,
+            token,
+        )
+    except Exception as e:
+        return {"error": f"Workspace error while writing the group: {e}", "errorType": "API_ERROR",
+                "path": plan["path"]}
+    display = _GROUP_TYPE_CONFIG[group_type]["display_name"]
+    bits = []
+    if plan["remove"]:
+        bits.append(f"removed {len(plan['remove'])}")
+    if plan["add"]:
+        bits.append(f"added {len(plan['add'])}")
+    if plan["already_present"]:
+        bits.append(f"{len(plan['already_present'])} already present")
+    return {
+        "name": plan["name"], "path": plan["path"], "group_type": group_type, "action": "edited",
+        "removed": plan["remove"], "added": plan["add"], "already_present": plan["already_present"],
+        "previous_count": len(plan["previous_ids"]), "count": len(plan["final_ids"]),
+        "message": f"Updated {display} '{plan['name']}': {', '.join(bits)} "
+                   f"({len(plan['previous_ids'])} → {len(plan['final_ids'])} members).",
+        "source": "bvbrc-workspace",
+    }

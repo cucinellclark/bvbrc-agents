@@ -98,11 +98,14 @@ def build_step_outputs(executions: Iterable[Any]) -> dict[str, Any]:
                     "total": int(total) if isinstance(total, (int, float)) else len(values),
                     "query": args.get("query"),
                 })
-        elif name == "create_group" and result.get("path"):
-            selection = (
-                {"ids_count": len(args.get("ids") or [])}
-                if args.get("ids") else {"query": args.get("query"), "collection": args.get("collection")}
-            )
+        elif name in ("create_group", "edit_group") and result.get("path"):
+            if name == "edit_group":
+                selection = {"removed": len(result.get("removed") or []), "added": len(result.get("added") or [])}
+            else:
+                selection = (
+                    {"ids_count": len(args.get("ids") or [])}
+                    if args.get("ids") else {"query": args.get("query"), "collection": args.get("collection")}
+                )
             groups.append({
                 "name": result.get("name"),
                 "path": result["path"],

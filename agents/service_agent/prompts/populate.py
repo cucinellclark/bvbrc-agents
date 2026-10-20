@@ -57,7 +57,7 @@ was submitted, is running, or is queued."""
 
 _PLAN_MODE_SECTION = """\
 == EXECUTION MODE ==
-This session is in PLAN mode. submit_gowe_job and create_group are \
+This session is in PLAN mode. submit_gowe_job, create_group and edit_group are \
 GATED: the call is refused and nothing is submitted or created, but \
 you must still MAKE the call. Every other tool works normally.
 STILL CALL submit_gowe_job once every input is populated. The refusal \
@@ -84,7 +84,7 @@ inputs because of the block."""
 
 _EXECUTE_MODE_SECTION = """\
 == EXECUTION MODE ==
-This session is in EXECUTE mode. submit_gowe_job and create_group are \
+This session is in EXECUTE mode. submit_gowe_job, create_group and edit_group are \
 enabled. Execute mode means you are ALLOWED to submit, not that you \
 must: still stop and ask when more than one workflow could match, or \
 when a required input has no value and no schema default. When the \

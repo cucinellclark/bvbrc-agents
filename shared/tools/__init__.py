@@ -15,7 +15,9 @@ import math
 import os
 import traceback
 from collections import Counter, defaultdict
+from contextvars import ContextVar
 from typing import Any, Dict, Optional
+import logging
 
 
 # Tools that legitimately run longer than the agent's default tool timeout.
@@ -65,7 +67,17 @@ def result_char_limit(tool_name: str, default: int = 8000) -> int:
 # This is the single enforcement point — every agent loop dispatches
 # through ``execute_tool``, so the gate holds regardless of which agent
 # the router picked or what the LLM decided.
-EXECUTE_ONLY_TOOLS: frozenset[str] = frozenset({"submit_gowe_job", "create_group"})
+logger = logging.getLogger(__name__)
+
+EXECUTE_ONLY_TOOLS: frozenset[str] = frozenset({"submit_gowe_job", "create_group", "edit_group"})
+
+# Gated tools that ask even in Execute mode: they change something that
+# already exists (a group's members), so the user sees the exact change
+# before it runs.  Only a replay of the approved question runs them.
+ALWAYS_ASK_TOOLS: frozenset[str] = frozenset({"edit_group"})
+
+# True while service_agent.phases.replay runs a set the user approved.
+REPLAY_IN_PROGRESS: ContextVar[bool] = ContextVar("replay_in_progress", default=False)
 
 EXECUTION_MODES: frozenset[str] = frozenset({"plan", "execute"})
 
@@ -79,6 +91,7 @@ EXECUTION_MODES: frozenset[str] = frozenset({"plan", "execute"})
 TOOL_AGENT_ALLOWLIST: Dict[str, frozenset[str]] = {
     "submit_gowe_job": frozenset({"service"}),
     "create_group": frozenset({"service", "data"}),
+    "edit_group": frozenset({"service", "data"}),
     # Prepares jobs (never submits), but the set it prepares is replayed by
     # the service agent, which owns the confirmation question and watches.
     "rerun_jobs": frozenset({"service"}),
@@ -128,6 +141,13 @@ def describe_blocked_action(tool_name: str, arguments: Dict[str, Any]) -> str:
         limit = args.get("limit")
         suffix = f" (up to {limit} ids)" if limit else ""
         return f"{group_type} '{name}'{suffix}"
+    if tool_name == "edit_group":
+        parts = []
+        if args.get("remove_ids"):
+            parts.append(f"remove {len(args['remove_ids'])}")
+        if args.get("add_ids"):
+            parts.append(f"add {len(args['add_ids'])}")
+        return f"{args.get('group_type') or 'group'} '{args.get('group') or 'unnamed'}': {' and '.join(parts) or 'edit'}"
     return tool_name
 
 
@@ -232,6 +252,28 @@ def prepared_actions_of(result: Any) -> list[Dict[str, Any]]:
 _ONE_ROW_PER_MEMBER = {"genome_group": {"genome"}, "feature_group": {"genome_feature"}}
 
 
+async def _plan_group_edit_for_question(
+    arguments: Dict[str, Any], config: Any, headers: Any
+) -> tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """``(error, summary)`` for a gated edit_group call.
+
+    The edit is planned (one Workspace.get) so the question reads
+    "genome_group 'X': remove 1 (50 → 49): 1313.42242"; an edit that cannot
+    be what the user meant is returned as the tool error instead of a
+    question.  A read failure leaves the plain summary.
+    """
+    from shared.tools.groups import edit_summary, plan_group_edit
+
+    try:
+        plan = await asyncio.wait_for(plan_group_edit(_safe_args(arguments), config, headers), timeout=20)
+    except Exception as exc:
+        logger.warning("edit_group preview failed: %s", exc)
+        return None, None
+    if "error" in plan:
+        return {**plan, "tool": "edit_group", "arguments": _safe_args(arguments)}, None
+    return None, edit_summary(plan)
+
+
 async def _add_group_preview(
     result: Dict[str, Any], arguments: Dict[str, Any], config: Any, headers: Any
 ) -> None:
@@ -319,6 +361,7 @@ def wrong_agent_result(tool_name: str, agent_key: str) -> Dict[str, Any]:
 HANDOFF_TARGETS: Dict[str, str] = {
     "submit_gowe_job": "service",
     "create_group": "data",
+    "edit_group": "data",
     "create_plan": "planning",
     "rerun_jobs": "service",
     "prepare_batch": "service",
@@ -455,8 +498,19 @@ async def execute_tool(
 
     # Execution-mode gate: side-effecting tools only run in EXECUTE mode.
     # A missing config (or a config without the attribute) is treated as
-    # PLAN — the safe default.
-    if tool_name in EXECUTE_ONLY_TOOLS and execution_mode_of(config) != "execute":
+    # PLAN — the safe default.  ALWAYS_ASK_TOOLS are refused in Execute mode
+    # too, except inside a replay of the question the user answered Yes to.
+    gated = tool_name in EXECUTE_ONLY_TOOLS and (
+        execution_mode_of(config) != "execute"
+        or (tool_name in ALWAYS_ASK_TOOLS and not REPLAY_IN_PROGRESS.get())
+    )
+    if gated:
+        if tool_name == "edit_group":
+            # Read the group now: an impossible edit is refused here, and
+            # the question shows the real before/after counts.
+            edit_error, edit_summary_text = await _plan_group_edit_for_question(arguments, config, headers)
+            if edit_error:
+                return edit_error
         role_lines: list = []
         if tool_name == "submit_gowe_job":
             role_error, role_lines = await _check_job_roles(arguments, config)
@@ -468,6 +522,8 @@ async def execute_tool(
             _add_output_location(result, arguments, config)
         elif tool_name == "create_group":
             await _add_group_preview(result, arguments, config, headers)
+        elif tool_name == "edit_group" and edit_summary_text:
+            result["summary"] = edit_summary_text
         return result
 
     # Apply per-tool timeout overrides (use the larger of caller vs override)

@@ -311,6 +311,11 @@ Never fill such a group with ids from a search that lacks the condition, and \
 never use one id list for two groups -- a group identical to another is \
 refused. In a plan step, create only that step's one group.
 
+To remove members from (or add a few to) a group the user already has, use \
+edit_group(group=<name or path>, group_type=..., remove_ids=[...]) -- never \
+create_group with if_exists="replace". It reads the group, checks every id to \
+remove is a member, and asks the user before writing, in every mode.
+
 Parameters:
 - group_name: A descriptive name for the group.
 - group_type: "genome_group" or "feature_group".

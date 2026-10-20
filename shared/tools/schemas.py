@@ -8,7 +8,7 @@ definitions. No per-agent schema variants.
   Workspace: workspace_browse, get_file_metadata, read_file_preview, search_file, summarize_file,
              list_samples
   GoWe:      list_gowe_workflows, get_workflow_inputs, submit_gowe_job, rerun_jobs, prepare_batch
-  Groups:    create_group, list_groups, get_group_ids
+  Groups:    create_group, edit_group, list_groups, get_group_ids
   SRA:       get_sra_metadata
   Genome:    find_similar_genomes
   Literature: search_literature
@@ -823,6 +823,55 @@ CREATE_GROUP = {
     },
 }
 
+EDIT_GROUP = {
+    "type": "function",
+    "function": {
+        "name": "edit_group",
+        "description": (
+            "Remove and/or add members of an EXISTING genome or feature group in "
+            "the user's workspace (the website's read-modify-write; never creates "
+            "a group). Use it when a result shows a member should be dropped -- "
+            "for example a fragmentary assembly that made a tree job fail -- or "
+            "when the user asks to take ids out of, or put ids into, a group they "
+            "already have. Every id in remove_ids must be a current member; the "
+            "group may not end up empty. The call always asks the user first, "
+            "with the exact before/after counts; a later job should then run on "
+            "the group, not on a pasted id list."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "group": {
+                    "type": "string",
+                    "description": (
+                        "The group's name (as in list_groups / get_group_ids) or its "
+                        "workspace path from a tool result."
+                    ),
+                },
+                "group_type": {
+                    "type": "string",
+                    "enum": ["genome_group", "feature_group"],
+                    "description": "Type of the group.",
+                },
+                "remove_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Members to remove: genome ids like 83332.12, or for a feature "
+                        "group feature_id / patric_id values. Each must be in the group."
+                    ),
+                },
+                "add_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Members to add (ids already present are skipped).",
+                },
+            },
+            "required": ["group", "group_type"],
+        },
+    },
+}
+
 LIST_GROUPS = {
     "type": "function",
     "function": {
@@ -1606,6 +1655,7 @@ ALL_TOOL_SCHEMAS: list[dict] = [
     PREPARE_BATCH,
     # Groups
     CREATE_GROUP,
+    EDIT_GROUP,
     LIST_GROUPS,
     GET_GROUP_IDS,
     # SRA

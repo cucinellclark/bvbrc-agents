@@ -30,7 +30,9 @@ import shared.agent_dispatch as agent_dispatch  # noqa: E402  -- sets up agent p
 from shared.agent_utils import format_execution_mode  # noqa: E402
 from shared.models import BaseAgentConfig, BaseAgentState, ToolCall  # noqa: E402
 from shared.tools import (  # noqa: E402
+    ALWAYS_ASK_TOOLS,
     EXECUTE_ONLY_TOOLS,
+    REPLAY_IN_PROGRESS,
     PLAN_MODE_BLOCKED_MESSAGE,
     blocked_by_mode_result,
     describe_blocked_action,
@@ -59,26 +61,48 @@ class TestExecuteToolGate:
         return {
             "submit_gowe_job": AsyncMock(return_value={"submission_id": "sub_1"}),
             "create_group": AsyncMock(return_value={"path": "/u/home/Genome Groups/g"}),
+            "edit_group": AsyncMock(return_value={"path": "/u/home/Genome Groups/g", "action": "edited"}),
             "search_data": AsyncMock(return_value={"items": []}),
         }
 
-    async def test_gated_tools_are_the_two_side_effecting_ones(self):
-        assert EXECUTE_ONLY_TOOLS == frozenset({"submit_gowe_job", "create_group"})
+    # edit_group's gate plans the edit (one Workspace.get) for the question's
+    # text; these generic tests have no workspace, so skip that step.
+    def _no_preview(self):
+        return patch("shared.tools._plan_group_edit_for_question", AsyncMock(return_value=(None, None)))
+
+    async def test_gated_tools_are_the_three_side_effecting_ones(self):
+        assert EXECUTE_ONLY_TOOLS == frozenset({"submit_gowe_job", "create_group", "edit_group"})
 
     @pytest.mark.parametrize("tool", sorted(EXECUTE_ONLY_TOOLS))
     async def test_plan_mode_blocks_gated_tool(self, tool):
         table = self._table()
-        result = await execute_tool(tool, {"workflow_id": "wf", "inputs": {}}, table, config=_config("plan"))
+        with self._no_preview():
+            result = await execute_tool(tool, {"workflow_id": "wf", "inputs": {}}, table, config=_config("plan"))
         assert is_blocked_result(result)
         assert result["tool"] == tool
         assert result["execution_mode"] == "plan"
         assert "PLAN mode" in result["error"]
         table[tool].assert_not_awaited()
 
-    @pytest.mark.parametrize("tool", sorted(EXECUTE_ONLY_TOOLS))
+    @pytest.mark.parametrize("tool", sorted(EXECUTE_ONLY_TOOLS - ALWAYS_ASK_TOOLS))
     async def test_execute_mode_allows_gated_tool(self, tool):
         table = self._table()
         result = await execute_tool(tool, {"workflow_id": "wf", "inputs": {}}, table, config=_config("execute"))
+        assert not is_blocked_result(result)
+        table[tool].assert_awaited_once()
+
+    @pytest.mark.parametrize("tool", sorted(ALWAYS_ASK_TOOLS))
+    async def test_always_ask_tools_ask_in_execute_mode_and_run_only_in_a_replay(self, tool):
+        table = self._table()
+        with self._no_preview():
+            result = await execute_tool(tool, {"group": "g"}, table, config=_config("execute"))
+            assert is_blocked_result(result)
+            table[tool].assert_not_awaited()
+            token = REPLAY_IN_PROGRESS.set(True)
+            try:
+                result = await execute_tool(tool, {"group": "g"}, table, config=_config("execute"))
+            finally:
+                REPLAY_IN_PROGRESS.reset(token)
         assert not is_blocked_result(result)
         table[tool].assert_awaited_once()
 

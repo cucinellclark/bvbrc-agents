@@ -42,7 +42,7 @@ from shared.tools.gowe import list_gowe_workflows, get_workflow_inputs, submit_g
 from shared.tools.rerun import rerun_jobs
 from shared.tools.samples import list_samples
 from shared.tools.batch import prepare_batch
-from shared.tools.groups import create_group, list_groups, get_group_ids
+from shared.tools.groups import create_group, edit_group, list_groups, get_group_ids
 from shared.tools.sra import get_sra_metadata
 from shared.tools.similar_genome import find_similar_genomes
 from shared.tools.literature import search_literature
@@ -140,6 +140,7 @@ TOOL_DISPATCH: Dict[str, Any] = {
     "prepare_batch": prepare_batch,
     # Group tools
     "create_group": create_group,
+    "edit_group": edit_group,
     "list_groups": list_groups,
     "get_group_ids": get_group_ids,
     # SRA tools
