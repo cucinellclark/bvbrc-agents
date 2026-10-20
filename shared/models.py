@@ -100,6 +100,10 @@ class BaseAgentConfig(BaseModel):
     # 80k leaves room for estimate error (FASTA is underestimated ~7%).
     max_context_tokens: int = 80000
     max_tool_result_chars: int = 8000
+    # The model's context window (shared/context_budget.py).  Set by
+    # dispatch_agent from the model server (vLLM max_model_len); None means
+    # DEFAULT_CONTEXT_WINDOW.  The budget is window - max_tokens.
+    context_window_tokens: int | None = None
 
     # BV-BRC API
     bvbrc_api_url: str = "https://www.bv-brc.org/api-bulk"

@@ -55,6 +55,7 @@ from shared.agent_utils import (  # noqa: E402
     parse_clarification_questions,
 )
 from shared.answer_filter import collect_known_links, filter_answer  # noqa: E402
+from shared.context_budget import resolve_context_window  # noqa: E402
 from shared.tools import prepared_actions_of  # noqa: E402
 from shared.step_outputs import build_step_outputs  # noqa: E402
 
@@ -408,10 +409,12 @@ def _classify_agent_error(error: Exception, agent_type: str) -> str:
             "token limit",
         ]
     ):
+        # Reached only if the loop's overflow recovery itself failed: the
+        # loops compact their results and answer from them first.
         return (
-            "The conversation has grown too large for the AI model to process. "
-            "This can happen when there is a lot of prior conversation history. "
-            "Please try starting a new conversation and re-asking your question."
+            "This request pulled in more data than fits in one turn, and I could "
+            "not finish it. Please narrow the request (one organism, one genome "
+            "group, or a count first) and ask again."
         )
 
     # Authentication errors
@@ -781,6 +784,13 @@ async def dispatch_agent(
     ctx = _parse_context(context)
     config_kwargs = _build_config_kwargs(auth_token, ctx)
     config_kwargs["agent_key"] = agent_type
+    # The model's context window, for the loops' prompt budget
+    # (shared/context_budget.py); cached per model server.
+    window = await resolve_context_window(
+        config_kwargs.get("llm_base_url"), config_kwargs.get("llm_api_key"), config_kwargs.get("llm_model"),
+    )
+    if window:
+        config_kwargs["context_window_tokens"] = window
 
     runner = _AGENT_RUNNERS.get(agent_type)
     if runner is None:

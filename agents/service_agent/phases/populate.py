@@ -28,6 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent / "s
 if str(Path(__file__).resolve().parent.parent.parent.parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent))
 from agent_utils import (
+    is_context_window_error,
     build_user_content,
     call_fingerprint,
     format_attached_documents,
@@ -40,10 +41,13 @@ from agent_utils import (
     emit_progress,
 )
 from agent_messages import (
+    BUDGET_ANSWER_NOW,
+    OVERFLOW_ANSWER_NOW,
     DUPLICATE_CALL_WARNING_SHORT,
 )
 
 from service_agent.llm_client import chat_completion, create_client
+from shared.context_budget import ContextBudget
 from service_agent.models import AgentConfig, AgentState, ToolCall
 from service_agent.prompts.populate import build_populate_prompt
 from shared.tools.schemas import ALL_TOOL_SCHEMAS as POPULATE_TOOLS
@@ -181,8 +185,13 @@ CAPPED_SUBMIT_MESSAGE = (
 
 
 def _add_nudge(state: AgentState, text: str) -> None:
-    """Send a mid-loop correction, marked as a system check."""
-    state.add_user_message(SYSTEM_CHECK_PREFIX + text)
+    """Send a mid-loop correction, marked as a system check.
+
+    The shared budget / overflow nudges carry their own system-check marker.
+    """
+    if not text.startswith("[SYSTEM CHECK"):
+        text = SYSTEM_CHECK_PREFIX + text
+    state.add_user_message(text)
     state._nudged = True
 
 
@@ -404,6 +413,13 @@ async def populate_and_submit(
     job_set = multi_job or batch_mode
     prepared_actions = state.context.get("prepared_actions") if state.context else None
     force_no_tools = False
+    # Prompt budget (shared/context_budget.py, #12): older results are
+    # compacted past the soft line; past the hard line the next call has
+    # tools off and the model reports what it has.  marcnguy's tree turns
+    # (2026-10-16) grew to 76k-token prompts whose latency ate the 300 s.
+    budget = ContextBudget.for_config(config)
+    budget_exhausted = False
+    overflow_recovered = False
 
     # Build system prompt — feed parsed_documents for file inventory
     parsed_docs = state.context.get("parsed_documents", []) if state.context else []
@@ -542,13 +558,38 @@ async def populate_and_submit(
                 state.error_message = "Failed after repeated attempts."
             return state
 
-        response = await chat_completion(
-            client=client,
-            messages=state.messages,
-            tools=POPULATE_TOOLS,
-            config=config,
-            tool_choice="none" if force_no_tools else None,
-        )
+        prep = budget.prepare(state.messages, POPULATE_TOOLS)
+        if prep["compacted"]:
+            logger.info("Compacted %d older tool result(s); %s", prep["compacted"], budget.describe())
+        if prep["exhausted"] and not force_no_tools:
+            logger.warning("Context budget spent after %d tool call(s); tools off (%s)",
+                           len(state.tool_executions), budget.describe())
+            _add_nudge(state, BUDGET_ANSWER_NOW)
+            budget_exhausted = True
+            force_no_tools = True
+
+        try:
+            response = await chat_completion(
+                client=client,
+                messages=state.messages,
+                tools=POPULATE_TOOLS,
+                config=config,
+                tool_choice="none" if force_no_tools else None,
+            )
+        except Exception as exc:
+            if not is_context_window_error(exc) or overflow_recovered:
+                raise
+            # Keep the work: compact every result and let the model report
+            # from it, with tools off (one retry).
+            logger.warning("Context overflow after %d tool call(s); compacting and retrying once (%s)",
+                           len(state.tool_executions), budget.describe())
+            budget.compact_all(state.messages)
+            _add_nudge(state, OVERFLOW_ANSWER_NOW)
+            overflow_recovered = True
+            budget_exhausted = True
+            force_no_tools = True
+            continue
+        budget.record(response, state.messages, POPULATE_TOOLS)
 
         # --- Cancel checkpoint: after LLM call ---
         _check_cancelled()
@@ -657,6 +698,7 @@ async def populate_and_submit(
                     and not ever_blocked_submit
                     and not asks_user
                     and not needs_user
+                    and not budget_exhausted  # tools are off: it cannot submit now
                 ):
                     # The LLM prepared to submit but never called
                     # submit_gowe_job.  Push it back into the loop
