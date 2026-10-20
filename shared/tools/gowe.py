@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from shared.tools._mcp_imports import get_gowe_client
+from shared.tools.roles import check_roles
 
 logger = logging.getLogger(__name__)
 
@@ -228,6 +229,21 @@ def _workflow_name(workflow_ref: str, workflow_id: str) -> str:
     if not workflow_ref.startswith("wf_"):
         return workflow_ref
     return _workflow_names.get(workflow_id, workflow_ref)
+
+
+async def workflow_name_of(workflow_ref: Any, config: Any = None) -> str:
+    """The workflow's name for a name or a wf_<uuid> (catalog lookup, cached).
+
+    Used where no submission resolved the reference yet (the plan-mode gate).
+    An unreachable catalog leaves the reference as it is.
+    """
+    ref = str(workflow_ref or "")
+    if ref.startswith("wf_") and ref not in _workflow_names:
+        try:
+            await workflow_catalog(config)
+        except Exception as e:
+            logger.warning("Workflow catalog unavailable for %s: %s", ref, e)
+    return _workflow_name(ref, ref)
 
 
 # ---------------------------------------------------------------------------
@@ -609,6 +625,12 @@ async def submit_gowe_job(
     if id_error:
         logger.warning("Identifier check failed for workflow %s: %s", workflow_id, id_error)
         return {"error": id_error, "workflow_id": workflow_id}
+
+    # ----- Role inputs (reference, conditions) -----
+    role_error, _ = check_roles(_workflow_name(workflow_ref, workflow_id), inputs)
+    if role_error:
+        logger.warning("Role check failed for workflow %s: %s", workflow_id, role_error)
+        return {"error": role_error, "workflow_id": workflow_id}
 
     # ----- Organism (CGA / Genome Annotation) -----
     # Fixable by asking the user, so it is not a failed submission.

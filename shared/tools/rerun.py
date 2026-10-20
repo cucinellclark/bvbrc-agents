@@ -36,6 +36,7 @@ from shared.tools.gowe import (
     _workflow_status,
     place_output_path,
 )
+from shared.tools.roles import check_roles, labels_for_numbered_conditions, with_roles
 from shared.tools.workspace import workspace_browse
 
 logger = logging.getLogger(__name__)
@@ -245,9 +246,11 @@ async def rerun_jobs(
         except Exception as e:
             skip(job, f"could not read the inputs of {workflow['name']}: {e}")
             continue
-        inputs = {k: v for k, v in params.items() if k in declared}
+        inputs = labels_for_numbered_conditions(
+            workflow["name"], {k: v for k, v in params.items() if k in declared}
+        )
         dropped = sorted(k for k in params if k not in declared and not k.startswith("_"))
-        id_error = _check_identifiers(inputs)
+        id_error = _check_identifiers(inputs) or check_roles(workflow["name"], inputs)[0]
         if id_error:
             skip(job, f"the recorded inputs fail a check: {id_error}")
             continue
@@ -336,7 +339,10 @@ async def rerun_jobs(
 
         job = c["job"]
         failed = " (original failed)" if job["success"] is False else ""
-        summary = f"{c['workflow']['name']} ← job {job['task_id']} ({c['original_folder']}){failed}"
+        summary = with_roles(
+            f"{c['workflow']['name']} ← job {job['task_id']} ({c['original_folder']}){failed}",
+            check_roles(c["workflow"]["name"], inputs)[1],
+        )
         action: Dict[str, Any] = {
             "tool": "submit_gowe_job",
             "summary": summary,

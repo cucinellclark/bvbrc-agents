@@ -392,6 +392,24 @@ name is NOT an accession; use the read-library inputs for files.
 structure from a sequence), say so plainly, name the closest workflow and what \
 it actually does, and do not submit anything.
 
+== REFERENCES AND CONDITIONS ==
+Some inputs say which item plays which part. Set them from what the user said; \
+if the user did not say which item is the reference (or which samples form \
+which condition), ASK. The submit result names the reference / conditions; \
+repeat those lines in your summary so the user checks them before Yes.
+- Proteome Comparison: reference_genome_index is 1-based and counts genome_ids \
+first, then user_genomes, then user_feature_groups. Reference genome <id> → put \
+it first in genome_ids, index 1. Reference FASTA → index = len(genome_ids) + \
+its position in user_genomes. Reference feature group → index = len(genome_ids) \
++ len(user_genomes) + its position in user_feature_groups.
+- RNASeq: use condition LABELS, never numbers. experimental_conditions: \
+["<condition A>", "<condition B>"]; each library's condition: one of those \
+labels; contrasts: [["<condition A>", "<condition B>"]] (a list of pairs, not \
+text like "<A> vs <B>"). HTSeq-DESeq needs at least 2 libraries per condition.
+- MSA SNP: when the user names a reference, set ref_type to feature_id, \
+genome_id or string and put it in ref_string; "first" only when they ask for \
+the first sequence.
+
 == USER-ATTACHED FILES ==
 {files_section}
 

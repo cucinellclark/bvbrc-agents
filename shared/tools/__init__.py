@@ -172,6 +172,31 @@ def _add_output_location(result: Dict[str, Any], arguments: Dict[str, Any], conf
     result["error"] += " " + tell
 
 
+async def _check_job_roles(arguments: Dict[str, Any], config: Any) -> tuple[Optional[str], list]:
+    """``(error, lines)`` for a prepared job's role inputs (shared.tools.roles).
+
+    At the gate, so a reference or condition that cannot be what the user
+    meant is refused before the question, not after the Yes.
+    """
+    from shared.tools.gowe import workflow_name_of
+    from shared.tools.roles import check_roles
+
+    args = arguments if isinstance(arguments, dict) else {}
+    name = await workflow_name_of(args.get("workflow_id"), config)
+    return check_roles(name, args.get("inputs"))
+
+
+def _add_role_summary(result: Dict[str, Any], lines: list) -> None:
+    """Name the reference / conditions in the question and tell the model to."""
+    from shared.tools.roles import with_roles
+
+    if not lines:
+        return
+    result["roles"] = lines
+    result["summary"] = with_roles(result["summary"], lines)
+    result["error"] += " In the summary, state: " + "; ".join(lines) + "."
+
+
 def prepared_actions_of(result: Any) -> list[Dict[str, Any]]:
     """Jobs a tool prepared without running them (D4), as blocked actions.
 
@@ -432,8 +457,14 @@ async def execute_tool(
     # A missing config (or a config without the attribute) is treated as
     # PLAN — the safe default.
     if tool_name in EXECUTE_ONLY_TOOLS and execution_mode_of(config) != "execute":
+        role_lines: list = []
+        if tool_name == "submit_gowe_job":
+            role_error, role_lines = await _check_job_roles(arguments, config)
+            if role_error:
+                return {"error": role_error, "tool": tool_name, "arguments": _safe_args(arguments)}
         result = blocked_by_mode_result(tool_name, arguments)
         if tool_name == "submit_gowe_job":
+            _add_role_summary(result, role_lines)
             _add_output_location(result, arguments, config)
         elif tool_name == "create_group":
             await _add_group_preview(result, arguments, config, headers)

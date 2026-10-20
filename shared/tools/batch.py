@@ -34,6 +34,7 @@ from typing import Any, Dict, List, Optional
 
 from shared.tools import gowe
 from shared.tools.gowe import _check_identifiers, _workflow_status, place_output_path
+from shared.tools.roles import check_roles, with_roles
 
 logger = logging.getLogger(__name__)
 
@@ -253,7 +254,7 @@ async def prepare_batch(
             jobs.append({"inputs": inputs, "samples": [s]})
 
     for job in list(jobs):
-        id_error = _check_identifiers(job["inputs"])
+        id_error = _check_identifiers(job["inputs"]) or check_roles(name, job["inputs"])[0]
         if id_error:
             jobs.remove(job)
             skipped += [{"sample": s["sample_id"], "reason": id_error} for s in job["samples"]]
@@ -282,7 +283,7 @@ async def prepare_batch(
                  else f"{ids[0]} ({_label(job['samples'][0])})")
         prepared.append({
             "tool": "submit_gowe_job",
-            "summary": f"{name} ← {label}",
+            "summary": with_roles(f"{name} ← {label}", check_roles(name, job["inputs"])[1]),
             "arguments": {"workflow_id": resolved, "inputs": job["inputs"]},
             "origin": "prepare_batch",
             "samples": ids,
