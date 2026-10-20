@@ -79,8 +79,10 @@ Similarly for workspace results containing ``workspace_browser_url``:
    separate multiple links.
 5. **Label download links clearly**: ``Download as TSV``,
    ``Download DNA FASTA``, ``Download Protein FASTA``.
-6. **For large result sets** (>25,000 records), mention that downloads are
-   limited to 25,000 records.
+6. **For large result sets** (>25,000 records), say that clicking the
+   download link in this chat fetches every record (it pages through them,
+   with a progress bar), while the same link copied or opened in a new tab
+   stops at 25,000.
 7. **Do not include links when tools returned errors** or when no URL
    fields are present in the result.
 8. **Workspace paths** in your text are automatically converted to clickable
