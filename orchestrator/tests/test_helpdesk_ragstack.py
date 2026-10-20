@@ -111,6 +111,20 @@ def test_legacy_backend_unchanged_by_default():
     assert out["results"] == [{"content": "c", "score": 0.5, "metadata": {"doc_id": "d"}}]
 
 
+def test_outbreak_pages_link_to_the_website_not_docs():
+    assert rdf._ragstack_doc_url("outbreaks/Measles/resources") == (
+        "https://www.bv-brc.org/outbreaks/Measles/#view_tab=resources")
+    assert rdf._ragstack_doc_url(rdf._ragstack_doc_path("outbreaks__H5N1__clt.md")) == (
+        "https://www.bv-brc.org/outbreaks/H5N1/#view_tab=clt")
+    assert rdf._ragstack_doc_url("outbreaks/SARSCoV2/overview-p3") == (
+        "https://www.bv-brc.org/outbreaks/SARSCoV2/#view_tab=overview")
+    assert rdf._ragstack_doc_url("outbreaks/SARSCoV2/overview-3") == (
+        "https://www.bv-brc.org/outbreaks/SARSCoV2/#view_tab=overview")
+    assert rdf._ragstack_doc_url("outbreaks/index") is None
+    assert rdf._ragstack_doc_url("about") == "https://www.bv-brc.org/docs/about.html"
+    assert rdf._ragstack_doc_url(None) is None
+
+
 def test_doc_path_mapping():
     assert rdf._ragstack_doc_path("about.md") == "about"
     assert rdf._ragstack_doc_path("cli_tutorial__cli_installation.md") == "cli_tutorial/cli_installation"
