@@ -116,6 +116,13 @@ Protein family annotations (PLFam / PGFam):
   that does NOT mean the annotation is missing.  Only conclude "no family
   assignment" when the field is explicitly requested and returns empty/null.
 
+PATRIC annotations only (genome_feature, pathway):
+  BV-BRC stores each gene twice, as annotated by PATRIC and as imported from
+  RefSeq.  The tools restrict these two collections to PATRIC (like the
+  website) and refuse any other annotation term, so do not add one.  When you
+  give a feature or pathway count, say it counts PATRIC annotations (the
+  result's "annotation" note).
+
 Other patterns:
   feature_type:CDS AND product:"DNA gyrase"
 

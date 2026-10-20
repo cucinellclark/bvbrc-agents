@@ -44,6 +44,14 @@ def _get_solr_functions():
     return solr_query, solr_facet_query, solr_probe_query
 
 
+def _patric_only(collection: str, query: str):
+    """agent_data_tools.patric_only (lazy import, like the Solr functions)."""
+    _ensure_data_tools_path()
+    from mcp_tools.agent_data_tools import patric_only  # type: ignore[import-untyped]
+
+    return patric_only(collection, query)
+
+
 # ---------------------------------------------------------------------------
 # Public tool functions
 # ---------------------------------------------------------------------------
@@ -90,6 +98,13 @@ async def search_data(
     capped_from: Optional[int] = None
     if not count_only and not allow_large and isinstance(limit, int) and limit > AGENT_SEARCH_LIMIT:
         capped_from, limit = limit, AGENT_SEARCH_LIMIT
+
+    # PATRIC annotations only for genome_feature / pathway, applied here too
+    # so the view and download links below match the count (solr_query
+    # applies the same rule; it is idempotent).
+    query, annotation_error = _patric_only(collection, query)
+    if annotation_error:
+        return annotation_error
 
     token = _extract_token(headers)
     result = await solr_query_fn(

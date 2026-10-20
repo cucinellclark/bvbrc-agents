@@ -45,6 +45,10 @@ for querying BV-BRC's Solr collections.  Follow these rules:
     But if the fields were not included in ``select``, they will be absent from
     the response — that does NOT mean the annotation is missing. Always
     explicitly request these fields before concluding "no family assignment."
+  - PATRIC annotations only: each gene is stored twice (PATRIC and RefSeq), and
+    the tools restrict ``genome_feature`` and ``pathway`` to PATRIC, as the
+    website does. Do not add an ``annotation`` term; say counts are PATRIC
+    annotations.
 - ``genome_amr`` — AMR phenotypes (has ``genome_id``, ``antibiotic``,
   ``resistant_phenotype``). One genome has many rows, so ``numFound`` is a
   record count, not a genome count. For "how many genomes are resistant to

@@ -252,6 +252,54 @@ def _validate_query_fields(
 # Tool functions
 # ---------------------------------------------------------------------------
 
+# Collections that hold every gene twice: as annotated by PATRIC and as
+# imported from RefSeq.  The website shows PATRIC only (FeatureGridContainer
+# defaultFilter eq(annotation,"PATRIC")), so a Copilot count of both copies
+# disagreed with the page its own link opened: influenza A CDS, 5,530,264 =
+# 2,951,181 PATRIC + 2,579,083 RefSeq (2026-10-20), and the download held
+# every protein twice.  Copilot queries PATRIC annotations only.
+PATRIC_ONLY_COLLECTIONS = frozenset({"genome_feature", "pathway"})
+PATRIC_ONLY_NOTE = (
+    "PATRIC annotations only (as on the BV-BRC website); RefSeq copies of the "
+    "same genes are not included."
+)
+_ANNOTATION_TERM_RE = re.compile(r"(?<![\w.])annotation\s*:", re.IGNORECASE)
+_ANNOTATION_PATRIC_RE = re.compile(r'(?<![\w.])annotation\s*:\s*"?PATRIC"?(?![\w*?])', re.IGNORECASE)
+_ANNOTATION_NEGATED_RE = re.compile(r"(?:\bNOT\s+|-)\(?\s*annotation\s*:", re.IGNORECASE)
+
+
+def patric_only(collection: str, query: Optional[str]) -> tuple[str, Optional[Dict[str, Any]]]:
+    """``(query, None)`` limited to PATRIC annotations, or ``(query, error)``.
+
+    For ``genome_feature`` / ``pathway`` the query is ANDed with
+    ``annotation:PATRIC`` (an ``annotation:PATRIC`` the model wrote may sit
+    inside an OR, where it restricts nothing).  A query already in that form
+    is returned unchanged, so applying it twice is harmless.  Any other
+    annotation term (RefSeq, both, a wildcard, a negation) is refused rather
+    than rewritten: dropping a term from a boolean query could change its
+    meaning.  Other collections pass through.
+    """
+    q = (query or "*:*").strip() or "*:*"
+    if collection not in PATRIC_ONLY_COLLECTIONS:
+        return q, None
+    if q == "annotation:PATRIC" or q.endswith(") AND annotation:PATRIC"):
+        return q, None
+    terms = len(_ANNOTATION_TERM_RE.findall(q))
+    if terms == len(_ANNOTATION_PATRIC_RE.findall(q)) and not _ANNOTATION_NEGATED_RE.search(q):
+        return ("annotation:PATRIC" if q == "*:*" else f"({q}) AND annotation:PATRIC"), None
+    return q, {
+        "error": (
+            f"Copilot searches PATRIC annotations only in {collection} (as the BV-BRC "
+            f"website does); RefSeq annotations are not available here. Leave out the "
+            f"annotation term (PATRIC is applied automatically) and run the query again."
+        ),
+        "errorType": "ANNOTATION_NOT_SUPPORTED",
+        "collection": collection,
+        "query": q,
+        "source": "bvbrc-mcp-data",
+    }
+
+
 async def solr_query(
     collection: str,
     query: str = "*:*",
@@ -298,6 +346,9 @@ async def solr_query(
 
     # Auto-quote unquoted multi-word values (e.g., organism:Escherichia coli)
     query = _auto_quote_query(query or "*:*")
+    query, annotation_error = patric_only(collection, query)
+    if annotation_error:
+        return annotation_error
 
     # Normalize select and sort using MCP server's utility functions
     options: Dict[str, Any] = {}
@@ -327,6 +378,8 @@ async def solr_query(
             batch_size=min(limit, 10000) if not count_only else None,
         )
         result["source"] = "bvbrc-mcp-data"
+        if collection in PATRIC_ONLY_COLLECTIONS:
+            result["annotation"] = PATRIC_ONLY_NOTE
         return result
 
     except Exception as e:
@@ -406,6 +459,9 @@ async def solr_facet_query(
 
     # Auto-quote unquoted multi-word values
     query = _auto_quote_query(query or "*:*")
+    query, annotation_error = patric_only(collection, query)
+    if annotation_error:
+        return annotation_error
 
     if not facet_fields:
         return {
@@ -456,6 +512,8 @@ async def solr_facet_query(
                 f"{_DISTINCT_SAMPLE_BUCKETS} values — do not count them."
             )
         result["source"] = "bvbrc-mcp-data"
+        if collection in PATRIC_ONLY_COLLECTIONS:
+            result["annotation"] = PATRIC_ONLY_NOTE
         return result
 
     except Exception as e:
@@ -573,6 +631,8 @@ async def solr_probe_query(
         "limit(1)",
         f"select({pk_field})",
     ]
+    if collection in PATRIC_ONLY_COLLECTIONS:
+        body_parts.append("eq(annotation,PATRIC)")
     if facet_fields:
         body_parts.append(
             _build_rql_facet_clause(facet_fields, facet_limit=facet_limit)
