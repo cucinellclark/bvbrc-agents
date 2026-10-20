@@ -87,6 +87,33 @@ STUCK_FALLBACK = (
     "Please ask again more narrowly, for example with a count first or a smaller set."
 )
 
+# Context budget (shared/context_budget.py): the hard line is passed, so
+# this is the last call and tools are off.
+BUDGET_ANSWER_NOW = (
+    "[SYSTEM CHECK — not from the user. Do not acknowledge or quote this note.] "
+    "The conversation has used the room available for this turn, so no more "
+    "tool calls are possible. Answer the user now from the results above. Be "
+    "specific about what was found; if something is still missing, say exactly "
+    "what and suggest the narrower request that would get it."
+)
+
+# The model refused the request as too long; the results were compacted and
+# this is the one retry, with tools off.
+OVERFLOW_ANSWER_NOW = (
+    "[SYSTEM CHECK — not from the user. Do not acknowledge or quote this note.] "
+    "Earlier tool results were shortened to counts, ids and links because the "
+    "conversation grew too large. Answer the user now from what remains; if the "
+    "answer needs rows that were shortened away, say so and suggest the "
+    "narrower request that would get them."
+)
+
+# Shown when even the forced answer comes back empty.
+BUDGET_FALLBACK = (
+    "I gathered more than fits in one turn and had to stop. Here is what I "
+    "looked up:\n\n{steps}\n\nAsk me to continue from here, or narrow the request "
+    "(one genus, one genome group, or a count first)."
+)
+
 STUCK_IN_LOOP_BUILD = (
     "You are stuck in a loop. STOP calling tools. If you need "
     "information from the user to complete this step, ask a "
