@@ -14,7 +14,6 @@ Usage::
         system_prompt=SYSTEM_PROMPT,
         tool_schemas=TOOL_SCHEMAS,
         progress_callback=progress_callback,
-        progress_messages={"workspace_browse": "Browsing workspace..."},
         done_message="Workspace exploration complete.",
     )
 """
@@ -55,16 +54,15 @@ from shared.agent_messages import (
     STUCK_FALLBACK,
 )
 from shared.context_budget import ContextBudget
+from shared.prompts.progress_skill import PROGRESS_SKILL_PROMPT
+from shared import progress as prog
 from shared.models import BaseAgentState, BaseAgentConfig, ToolCall
 from shared.tools import execute_tool, is_handoff_result, truncate_result, result_char_limit
 
 logger = logging.getLogger(__name__)
 
 
-ProgressCallback = Any  # async (progress: float, total: float|None, message: str) -> None
-
-# Type for the progress message builder function
-ProgressMessageFn = Callable[[ToolCall], str]
+ProgressCallback = Any  # async (progress: float, total: float|None, step: dict) -> None
 
 
 def _check_cancelled() -> None:
@@ -78,25 +76,6 @@ def _check_cancelled() -> None:
     if task is not None and task.cancelled():
         raise asyncio.CancelledError()
 
-
-def _default_progress_message(tc: ToolCall) -> str:
-    """Default progress message: just show the tool name."""
-    return f"Calling {tc.name}..."
-
-
-def _default_result_message(tc: ToolCall, result: Any) -> str:
-    """Default result message after a tool completes."""
-    msg = f"Tool {tc.name} completed."
-    if isinstance(result, dict):
-        nf = result.get("numFound") or result.get("count")
-        if nf is not None:
-            msg = f"Found {nf} records."
-        items = result.get("items")
-        if isinstance(items, list):
-            msg = f"Found {len(items)} items."
-        if result.get("error"):
-            msg = "Query returned an error, adjusting approach..."
-    return msg
 
 
 async def force_answer(
@@ -162,8 +141,6 @@ async def run_agent_loop(
     chat_completion_fn: Any = None,
     chat_completion_stream_fn: Any = None,
     progress_callback: ProgressCallback | None = None,
-    progress_message_fn: ProgressMessageFn | None = None,
-    result_message_fn: Callable[[ToolCall, Any], str] | None = None,
     on_tool_result: Callable[[ToolCall, Any, BaseAgentState], str | None] | None = None,
     trim_messages: bool = False,
     max_tool_result_chars: int = 8000,
@@ -186,9 +163,9 @@ async def run_agent_loop(
         tool_schemas: Tool schemas to pass to the LLM. Defaults to ALL_TOOL_SCHEMAS.
         chat_completion_fn: Async function for non-streaming LLM calls.
         chat_completion_stream_fn: Async generator for streaming LLM calls.
-        progress_callback: Optional async callback for progress updates.
-        progress_message_fn: Function(tc) -> str for tool-specific progress messages.
-        result_message_fn: Function(tc, result) -> str for result-specific messages.
+        progress_callback: Optional async callback for progress updates
+            (steps from ``shared.progress``; every tool call and model call
+            is described there, so there is no per-agent message hook).
         on_tool_result: Optional hook called after each tool execution.
             If it returns a non-None string, the loop exits immediately
             (used by planning agent for early returns on create_plan, etc.).
@@ -205,10 +182,6 @@ async def run_agent_loop(
 
     if tool_schemas is None:
         tool_schemas = ALL_TOOL_SCHEMAS
-    if progress_message_fn is None:
-        progress_message_fn = _default_progress_message
-    if result_message_fn is None:
-        result_message_fn = _default_result_message
     if excluded_context_keys is None:
         excluded_context_keys = {
             "page_context", "images",
@@ -269,6 +242,7 @@ async def run_agent_loop(
         # Tell the LLM which side-effecting tools the gate will refuse.
         # Always injected — the gate applies even without gateway context.
         system_content += f"\n\n{format_execution_mode(config)}"
+        system_content += f"\n\n{PROGRESS_SKILL_PROMPT}"
 
         state.add_system_message(system_content)
         images = context.get("images", []) if context else []
@@ -295,25 +269,29 @@ async def run_agent_loop(
 
         state.iteration = iteration + 1
 
-        await emit_progress(
-            progress_callback,
-            iteration,
-            config.max_iterations,
-            "Planning next step...",
-        )
-
         # 1. PLAN -- Ask the LLM what to do next
         prep = budget.prepare(state.messages, tool_schemas)
         if prep["compacted"]:
             logger.info("Compacted %d older tool result(s); %s", prep["compacted"], budget.describe())
+            await prog.note(prog.NOTE_COMPACTED, cb=progress_callback)
         if prep["exhausted"]:
             logger.warning("Context budget spent after %d tool call(s); forcing an answer (%s)",
                            len(state.tool_executions), budget.describe())
+            await prog.note(prog.NOTE_BUDGET_SPENT, cb=progress_callback)
+            answer_step = await prog.start("answer", prog.THINKING_ANSWER, prog.DETAIL_FROM_SO_FAR, cb=progress_callback)
             await force_answer(
                 state, client, config, chat_completion_fn, tool_schemas,
                 trim_messages=trim_messages, nudge=BUDGET_ANSWER_NOW, fallback=BUDGET_FALLBACK, budget=budget,
             )
+            await prog.done(answer_step, cb=progress_callback)
             break
+
+        thinking = await prog.start(
+            "thinking",
+            prog.thinking_label(iteration, len(state.tool_executions)),
+            f"step {iteration + 1}",
+            cb=progress_callback,
+        )
 
         messages_for_llm = state.messages
         if trim_messages:
@@ -336,11 +314,15 @@ async def run_agent_loop(
             # "start a new conversation" message).
             logger.warning("Context overflow after %d tool call(s); compacting and answering (%s)",
                            len(state.tool_executions), budget.describe())
+            await prog.done(thinking, status="error", result=prog.RESULT_TOO_LARGE, cb=progress_callback)
+            await prog.note(prog.NOTE_OVERFLOW, cb=progress_callback)
+            answer_step = await prog.start("answer", prog.THINKING_ANSWER, prog.DETAIL_FROM_SO_FAR, cb=progress_callback)
             await force_answer(
                 state, client, config, chat_completion_fn, tool_schemas,
                 trim_messages=trim_messages, nudge=OVERFLOW_ANSWER_NOW, fallback=BUDGET_FALLBACK,
                 budget=budget, compact_all=True,
             )
+            await prog.done(answer_step, cb=progress_callback)
             break
         budget.record(response, messages_for_llm, tool_schemas)
 
@@ -364,19 +346,19 @@ async def run_agent_loop(
                 "Empty final answer after %d tool call(s); nudging once",
                 len(state.tool_executions),
             )
+            await prog.done(thinking, result=prog.RESULT_EMPTY_REPLY, cb=progress_callback)
             state.add_user_message(EMPTY_ANSWER_NUDGE)
             continue
 
         if not tool_calls:
-            await emit_progress(
-                progress_callback,
-                iteration + 1,
-                config.max_iterations,
-                "Composing answer...",
-            )
+            await prog.done(thinking, label=prog.THINKING_ANSWER, cb=progress_callback)
             state.final_answer = content or ""
             state.status = "completed"
             break
+
+        # The model's one-line intent (progress skill) labels its tool steps.
+        intent = prog.intent_line(content)
+        await prog.done(thinking, cb=progress_callback)
 
         # Add assistant message with tool_calls to conversation
         state.add_assistant_message(
@@ -393,6 +375,7 @@ async def run_agent_loop(
             # --- Duplicate detection ---
             if fp in executed_fingerprints:
                 duplicate_count += 1
+                await prog.note(prog.NOTE_REPEAT_SKIPPED, cb=progress_callback)
                 state.add_tool_result(
                     tc.id,
                     json.dumps(
@@ -413,11 +396,7 @@ async def run_agent_loop(
             # --- Cancel checkpoint: before each tool execution ---
             _check_cancelled()
 
-            # Progress message
-            tool_msg = progress_message_fn(tc)
-            await emit_progress(
-                progress_callback, iteration, config.max_iterations, tool_msg
-            )
+            tool_step = await prog.tool_start(tc.name, tc.arguments, intent, cb=progress_callback)
 
             # Execute the tool
             start = time.time()
@@ -441,11 +420,7 @@ async def run_agent_loop(
                 duration_ms=duration_ms,
             )
 
-            # Result progress message
-            res_msg = result_message_fn(tc, result)
-            await emit_progress(
-                progress_callback, iteration, config.max_iterations, res_msg
-            )
+            await prog.tool_done(tool_step, tc.name, tc.arguments, result, cb=progress_callback)
 
             # --- F1 handoff: the call belongs to another agent ---
             # record_execution has filled the dispatcher's handoff slot;
@@ -503,21 +478,20 @@ async def run_agent_loop(
             logger.warning(
                 "Agent repeated a tool call %d time(s); forcing an answer", duplicate_count
             )
+            await prog.note(prog.NOTE_STUCK, cb=progress_callback)
+            answer_step = await prog.start("answer", prog.THINKING_ANSWER, prog.DETAIL_FROM_SO_FAR, cb=progress_callback)
             await force_answer(
                 state, client, config, chat_completion_fn, tool_schemas,
                 trim_messages=trim_messages,
             )
+            await prog.done(answer_step, cb=progress_callback)
             break
 
     else:
         # Hit max iterations -- force synthesis
         state.status = "max_iterations"
-        await emit_progress(
-            progress_callback,
-            config.max_iterations,
-            config.max_iterations,
-            f"Synthesizing answer from {len(state.tool_executions)} tool calls...",
-        )
+        await prog.note(prog.NOTE_STEP_LIMIT.format(n=len(state.tool_executions)), cb=progress_callback)
+        answer_step = await prog.start("answer", prog.THINKING_ANSWER, prog.DETAIL_FROM_SO_FAR, cb=progress_callback)
 
         if chat_completion_stream_fn is not None:
             try:
@@ -546,6 +520,7 @@ async def run_agent_loop(
             state.final_answer = MAX_ITERATIONS_FALLBACK.format(
                 n=len(state.tool_executions)
             )
+        await prog.done(answer_step, cb=progress_callback)
 
     await emit_progress(
         progress_callback,

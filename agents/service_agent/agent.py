@@ -27,6 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "shared")
 if str(Path(__file__).resolve().parent.parent.parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from agent_utils import emit_progress
+from shared import progress as prog
 
 from service_agent.classifier import classify_intent
 from service_agent.handlers import handle_submit, handle_status, handle_cancel
@@ -39,6 +40,29 @@ logger = logging.getLogger(__name__)
 ProgressCallback = (
     Any  # async (progress: float, total: float|None, message: str) -> None
 )
+
+
+def _replay_label(actions: list) -> str:
+    """Label for a Yes on the question: what is being run."""
+    tools = [a.get("tool") for a in actions if isinstance(a, dict)]
+    jobs = sum(1 for t in tools if t == "submit_gowe_job")
+    groups = sum(1 for t in tools if t in ("create_group", "edit_group"))
+    parts = []
+    if jobs:
+        parts.append(f"{jobs} job" + ("s" if jobs != 1 else ""))
+    if groups:
+        parts.append(f"{groups} group" + ("s" if groups != 1 else ""))
+    what = " and ".join(parts) or "the prepared actions"
+    return f"Running {what} you confirmed"
+
+
+def _replay_result(state: Any) -> str:
+    n = len(getattr(state, "submission_ids", None) or [])
+    if n:
+        return f"{n} job" + ("s" if n != 1 else "") + " submitted"
+    if getattr(state, "status", "") == "error":
+        return "failed"
+    return "done"
 
 
 async def run_agent(
@@ -87,19 +111,20 @@ async def run_agent(
                 "expected form. Please ask me to prepare it again."
             )
             return state.to_result()
-        await emit_progress(progress_callback, 0, 1, "Submitting the prepared job...")
+        replay_step = await prog.start("tool", _replay_label(actions), cb=progress_callback)
         state = await replay_blocked_actions(actions, cfg, state)
-        await emit_progress(progress_callback, 1, 1, "Done.")
+        await prog.done(replay_step, _replay_result(state), cb=progress_callback)
         return state.to_result()
 
     # ------------------------------------------------------------------
     # Step 1: Classify intent
     # ------------------------------------------------------------------
-    await emit_progress(progress_callback, 0, 1, "Analyzing request...")
     if prepared is not None:
         intent = Intent(action="plan", job_count="many", reasoning="revising a prepared job set")
     else:
+        classify_step = await prog.start("thinking", "Reading your request", cb=progress_callback)
         intent = await classify_intent(query, ctx, cfg)
+        await prog.done(classify_step, cb=progress_callback)
     state.classified_intent = intent
 
     logger.info(
@@ -228,12 +253,12 @@ async def _run_job_request(
     ):
         action = state.blocked_actions[0]
         logger.info("Multi-job turn prepared one job in execute mode: submitting it directly")
-        await emit_progress(progress_callback, 0, 1, "Submitting the prepared job...")
+        submit_step = await prog.start("tool", "Submitting the prepared job", cb=progress_callback)
         direct = AgentState(query=query, context=state.context)
         direct.classified_intent = state.classified_intent
         direct.tool_executions = list(state.tool_executions)
         direct = await replay_blocked_actions([dict(action)], config, direct)
-        await emit_progress(progress_callback, 1, 1, "Done.")
+        await prog.done(submit_step, _replay_result(direct), cb=progress_callback)
         return direct.to_result()
     return result
 
@@ -250,13 +275,6 @@ async def _run_gowe_flow(
     input schema, populates the inputs using workspace/data tools, and
     submits the job.  All in a single LLM loop.
     """
-    await emit_progress(
-        progress_callback,
-        0,
-        1,
-        "Discovering workflows and preparing job...",
-    )
-
     state = await populate_and_submit(
         query,
         config,
@@ -264,8 +282,4 @@ async def _run_gowe_flow(
         progress_callback=progress_callback,
     )
 
-    if state.status in ("needs_input", "error"):
-        return state.to_result()
-
-    await emit_progress(progress_callback, 1, 1, "Done.")
     return state.to_result()

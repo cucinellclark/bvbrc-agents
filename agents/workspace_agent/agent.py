@@ -34,33 +34,6 @@ from workspace_agent.prompts.system import SYSTEM_PROMPT
 ProgressCallback = Any
 
 
-def _workspace_progress_message(tc: ToolCall) -> str:
-    """Build a human-readable progress message for workspace tool calls."""
-    args = tc.arguments
-    if tc.name == "workspace_browse":
-        path = args.get("path", "home")
-        return f"Browsing workspace '{path}'..."
-    elif tc.name == "get_file_metadata":
-        return "Retrieving file metadata..."
-    elif tc.name == "read_file_preview":
-        return "Reading file preview..."
-    elif tc.name == "search_file":
-        return f"Searching file for '{args.get('pattern', '')}'..."
-    return f"Calling {tc.name}..."
-
-
-def _workspace_result_message(tc: ToolCall, result: Any) -> str:
-    """Build a progress message after a workspace tool completes."""
-    msg = f"Tool {tc.name} completed."
-    if isinstance(result, dict):
-        items = result.get("items")
-        if isinstance(items, list):
-            msg = f"Found {len(items)} items."
-        elif result.get("error"):
-            msg = "Workspace query error, adjusting approach..."
-    return msg
-
-
 async def run_agent(
     query: str,
     config: AgentConfig | None = None,
@@ -95,8 +68,6 @@ async def run_agent(
         chat_completion_fn=chat_completion,
         chat_completion_stream_fn=chat_completion_stream,
         progress_callback=progress_callback,
-        progress_message_fn=_workspace_progress_message,
-        result_message_fn=_workspace_result_message,
         trim_messages=True,
         max_tool_result_chars=cfg.max_tool_result_chars,
         start_message="Analyzing your workspace question...",

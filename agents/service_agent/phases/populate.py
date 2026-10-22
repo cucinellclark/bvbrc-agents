@@ -48,6 +48,7 @@ from agent_messages import (
 
 from service_agent.llm_client import chat_completion, create_client
 from shared.context_budget import ContextBudget
+from shared import progress as prog
 from service_agent.models import AgentConfig, AgentState, ToolCall
 from service_agent.prompts.populate import build_populate_prompt
 from shared.tools.schemas import ALL_TOOL_SCHEMAS as POPULATE_TOOLS
@@ -379,6 +380,18 @@ def _parse_tool_calls(response: Any) -> list[ToolCall]:
     return _parse_tool_calls_raw(response, ToolCall)
 
 
+def _service_thinking_label(state: Any, iteration: int) -> str:
+    """What the model is deciding at this point of a service turn."""
+    names = [te.tool_call.name for te in state.tool_executions]
+    if not names:
+        return "Reading your request and choosing a service"
+    if "list_gowe_workflows" in names and "get_workflow_inputs" not in names:
+        return "Choosing the service to run"
+    if "get_workflow_inputs" in names and not any(n in names for n in ("submit_gowe_job", "rerun_jobs", "prepare_batch")):
+        return "Filling in the job inputs"
+    return prog.THINKING_NEXT
+
+
 async def populate_and_submit(
     query: str,
     config: AgentConfig,
@@ -526,15 +539,9 @@ async def populate_and_submit(
         # --- Cancel checkpoint: top of each iteration ---
         _check_cancelled()
 
-        await emit_progress(
-            progress_callback,
-            iteration,
-            config.max_iterations,
-            f"Workflow planning step {iteration + 1}...",
-        )
-
         # If stuck in a loop, force text response
         if duplicate_count >= 3:
+            await prog.note(prog.NOTE_STUCK, cb=progress_callback)
             _add_nudge(state, STUCK_MESSAGE)
             try:
                 response = await chat_completion(
@@ -561,13 +568,21 @@ async def populate_and_submit(
         prep = budget.prepare(state.messages, POPULATE_TOOLS)
         if prep["compacted"]:
             logger.info("Compacted %d older tool result(s); %s", prep["compacted"], budget.describe())
+            await prog.note(prog.NOTE_COMPACTED, cb=progress_callback)
         if prep["exhausted"] and not force_no_tools:
             logger.warning("Context budget spent after %d tool call(s); tools off (%s)",
                            len(state.tool_executions), budget.describe())
+            await prog.note(prog.NOTE_BUDGET_SPENT, cb=progress_callback)
             _add_nudge(state, BUDGET_ANSWER_NOW)
             budget_exhausted = True
             force_no_tools = True
 
+        thinking = await prog.start(
+            "thinking",
+            prog.THINKING_ANSWER if force_no_tools else _service_thinking_label(state, iteration),
+            f"step {iteration + 1}",
+            cb=progress_callback,
+        )
         try:
             response = await chat_completion(
                 client=client,
@@ -583,6 +598,8 @@ async def populate_and_submit(
             # from it, with tools off (one retry).
             logger.warning("Context overflow after %d tool call(s); compacting and retrying once (%s)",
                            len(state.tool_executions), budget.describe())
+            await prog.done(thinking, status="error", result=prog.RESULT_TOO_LARGE, cb=progress_callback)
+            await prog.note(prog.NOTE_OVERFLOW, cb=progress_callback)
             budget.compact_all(state.messages)
             _add_nudge(state, OVERFLOW_ANSWER_NOW)
             overflow_recovered = True
@@ -598,6 +615,9 @@ async def populate_and_submit(
         content = get_response_content(response)
         if content and getattr(state, "_nudged", False):
             content = _strip_nudge_echo(content)
+        # The model's one-line intent (progress skill) labels its tool steps.
+        intent = prog.intent_line(content) if tool_calls else None
+        await prog.done(thinking, label=None if tool_calls else prog.THINKING_ANSWER, cb=progress_callback)
 
         # No tool calls -> LLM produced text (question, answer, or done message)
         if not tool_calls:
@@ -783,30 +803,6 @@ async def populate_and_submit(
 
         # Execute each tool call
         for tc in tool_calls:
-            # Progress message
-            _msgs = {
-                "list_gowe_workflows": "Discovering available workflows...",
-                "get_workflow_inputs": "Getting workflow input schema...",
-                "submit_gowe_job": (
-                    "Preparing job (plan mode \u2014 not submitting)..."
-                    if config.execution_mode != "execute"
-                    else f"Submitting job {len(state.submission_ids) + 1}..."
-                    if state.submission_ids
-                    else "Submitting job..."
-                ),
-                "workspace_browse": "Browsing workspace for inputs...",
-                "read_file_info": "Reading file metadata...",
-                "search_data": "Querying BV-BRC data...",
-                "get_sra_metadata": "Fetching SRA metadata...",
-            }
-            _msg = _msgs.get(tc.name, f"Calling {tc.name}...")
-            await emit_progress(
-                progress_callback,
-                iteration,
-                config.max_iterations,
-                _msg,
-            )
-
             # --- Cancel checkpoint: before each tool execution ---
             _check_cancelled()
 
@@ -822,6 +818,7 @@ async def populate_and_submit(
                 logger.warning(
                     "Per-message cap (%d): refusing submit_gowe_job %s", MAX_PREPARED_JOBS, tc.id
                 )
+                await prog.note(f"Not included: an 11th job ({MAX_PREPARED_JOBS} per message)", cb=progress_callback)
                 if call_fingerprint(tc) not in executed_fingerprints:
                     summary = describe_blocked_action("submit_gowe_job", tc.arguments or {})
                     if summary not in state.capped_submits:
@@ -843,6 +840,7 @@ async def populate_and_submit(
                 logger.warning(
                     "Single-submission cap: skipping extra submit_gowe_job call %s", tc.id
                 )
+                await prog.note("Skipped a second job (one per message)", cb=progress_callback)
                 # A repeat of the call that just went out is not a second
                 # job; only a different job is reported as not submitted.
                 if call_fingerprint(tc) not in executed_fingerprints:
@@ -861,6 +859,7 @@ async def populate_and_submit(
 
             if fp in executed_fingerprints:
                 duplicate_count += 1
+                await prog.note(prog.NOTE_REPEAT_SKIPPED, cb=progress_callback)
                 state.add_tool_result(
                     tc.id,
                     json.dumps(
@@ -872,6 +871,7 @@ async def populate_and_submit(
                 )
                 continue
 
+            tool_step = await prog.tool_start(tc.name, tc.arguments, intent, cb=progress_callback)
             start = time.time()
             result = await execute_tool(
                 tool_name=tc.name,
@@ -892,6 +892,7 @@ async def populate_and_submit(
                 duration_ms=duration_ms,
                 iteration=iteration,
             )
+            await prog.tool_done(tool_step, tc.name, tc.arguments, result, cb=progress_callback)
 
             # F1 handoff (create_plan -> planning): the dispatcher returns
             # status "handoff" and the executor runs the planning agent.

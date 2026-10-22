@@ -35,6 +35,7 @@ from shared.agent_utils import (
     build_tool_calls_message,
     emit_progress,
 )
+from shared.prompts.progress_skill import PROGRESS_SKILL_PROMPT
 from shared.agent_messages import (
     MAX_PLANNING_ITERATIONS_FALLBACK,
 )
@@ -108,6 +109,7 @@ async def plan_only(
             system_content += f"\n\n{handoff_section}"
 
         system_content += f"\n\n{format_execution_mode(config or context)}"
+        system_content += f"\n\n{PROGRESS_SKILL_PROMPT}"
 
         # Inject bounded conversation context from recent_messages
         recent_msgs = context.get("recent_messages")
@@ -184,37 +186,6 @@ async def plan_only(
 ProgressCallback = Any
 
 
-def _data_progress_message(tc: ToolCall) -> str:
-    """Build a human-readable progress message for data tool calls."""
-    args = tc.arguments
-    if tc.name in ("search_data", "facet_query", "probe_data"):
-        coll = args.get("collection", "")
-        if coll:
-            return f"Querying BV-BRC {coll.replace('_', ' ')}..."
-    elif tc.name == "list_collections":
-        return "Listing available data collections..."
-    elif tc.name == "get_collection_fields":
-        return f"Looking up fields for {args.get('collection', 'collection')}..."
-    elif tc.name == "get_sra_metadata":
-        return "Fetching SRA metadata from NCBI..."
-    elif tc.name == "create_group":
-        gname = args.get("group_name", "group")
-        return f"Creating group '{gname}'..."
-    return f"Calling {tc.name}..."
-
-
-def _data_result_message(tc: ToolCall, result: Any) -> str:
-    """Build a progress message after a data tool completes."""
-    msg = f"Tool {tc.name} completed."
-    if isinstance(result, dict):
-        nf = result.get("numFound") or result.get("count")
-        if nf is not None:
-            msg = f"Found {nf} records."
-        elif result.get("error"):
-            msg = "Query returned an error, adjusting approach..."
-    return msg
-
-
 async def run_agent(
     query: str,
     config: AgentConfig | None = None,
@@ -245,8 +216,6 @@ async def run_agent(
         chat_completion_fn=chat_completion,
         chat_completion_stream_fn=chat_completion_stream,
         progress_callback=progress_callback,
-        progress_message_fn=_data_progress_message,
-        result_message_fn=_data_result_message,
         start_message="Analyzing your question...",
         done_message="Data retrieval complete.",
     )

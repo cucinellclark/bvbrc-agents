@@ -25,6 +25,7 @@ from typing import Any, Callable, TypeVar
 # would mean two turn tallies (the bvbrc-agents root is on sys.path wherever
 # agents run).
 from shared import usage as _usage
+from shared import progress as _progress
 
 logger = logging.getLogger(__name__)
 
@@ -147,6 +148,12 @@ def _is_transient_error(exc: BaseException) -> bool:
     )
 
 
+# Progress notes for the chat UI (shared/progress.py): a retry used to be
+# 180 s of "Planning next step..." with no explanation.
+RETRY_TIMEOUT_NOTE = "The model did not answer in time; trying once more"
+RETRY_BUSY_NOTE = "The model service is busy; trying again in a moment"
+
+
 async def llm_call_with_retry(
     fn: Callable[..., Any],
     *args: Any,
@@ -241,6 +248,7 @@ async def llm_call_with_retry(
                     delay,
                     e,
                 )
+                await _progress.note(RETRY_TIMEOUT_NOTE)
                 await asyncio.sleep(delay)
                 continue
 
@@ -263,6 +271,7 @@ async def llm_call_with_retry(
                 delay,
                 e,
             )
+            await _progress.note(RETRY_BUSY_NOTE)
             await asyncio.sleep(delay)
         else:
             return _usage.wrap_result(result, _usage_site, started, attempt > 0)
@@ -346,6 +355,7 @@ async def llm_stream_with_retry(
                     delay,
                     e,
                 )
+                await _progress.note(RETRY_TIMEOUT_NOTE)
                 await asyncio.sleep(delay)
                 continue
 
@@ -371,6 +381,7 @@ async def llm_stream_with_retry(
                 delay,
                 e,
             )
+            await _progress.note(RETRY_BUSY_NOTE)
             await asyncio.sleep(delay)
 
     raise last_exc  # type: ignore[misc]
@@ -600,22 +611,20 @@ def build_user_content(
 
 
 async def emit_progress(
-    cb: Any, progress: float, total: float | None, message: str
+    cb: Any, progress: float, total: float | None, message: Any
 ) -> None:
-    """Fire progress callback if provided, swallowing errors.
+    """Report a progress update, swallowing errors.
 
-    Args:
-        cb: Async callback with signature (progress, total, message) -> None,
-            or None.
-        progress: Current progress value.
-        total: Total expected value (or None if indeterminate).
-        message: Human-readable progress description.
+    ``message`` is a step dict (``shared.progress``) or a plain string, which
+    becomes a transient note (shown as the live line, never kept as a row).
+    It goes to the progress sink the orchestrator installed for this run, or
+    to ``cb`` (signature ``(progress, total, step_dict)``) when there is none.
     """
-    if cb is not None:
-        try:
-            await cb(progress, total, message)
-        except Exception:
-            pass
+    if isinstance(message, dict):
+        await _progress.report(message, cb)
+        return
+    step = _progress.finish(_progress.new_step("note", str(message or ""), transient=True))
+    await _progress.report(step, cb)
 
 
 # ---------------------------------------------------------------------------

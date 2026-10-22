@@ -64,9 +64,11 @@ from planning_agent.prompts.step_query import (  # noqa: E402
     build_step_execution_prompt,
 )
 from shared.tools.schemas import ALL_TOOL_SCHEMAS as TOOL_SCHEMAS  # noqa: E402
+from shared.prompts.progress_skill import PROGRESS_SKILL_PROMPT
 from shared.step_outputs import format_step_outputs  # noqa: E402
 from shared.agent_utils import is_context_window_error  # noqa: E402
 from shared.context_budget import ContextBudget  # noqa: E402
+from shared import progress as prog  # noqa: E402
 
 RECON_CAP_DEFAULT = 4
 PLAN_TOOL_NAMES = frozenset({"create_plan", "ask_clarification"})
@@ -184,6 +186,7 @@ async def _analyze_and_plan(
             system_prompt += f"\n\n{handoff_section}"
 
         system_prompt += f"\n\n{format_execution_mode(config)}"
+        system_prompt += f"\n\n{PROGRESS_SKILL_PROMPT}"
 
     # Add bounded conversation context from recent_messages
     if context:
@@ -265,6 +268,7 @@ async def _plan_with_answers(
             system_prompt += f"\n\n{handoff_section}"
 
         system_prompt += f"\n\n{format_execution_mode(config)}"
+        system_prompt += f"\n\n{PROGRESS_SKILL_PROMPT}"
 
         recent_msgs = context.get("recent_messages")
         if recent_msgs:
@@ -363,11 +367,8 @@ async def _execute_step(
     target_agent = step.get("agent", "data")
     step_reasoning = step.get("reasoning", "")
 
-    await emit_progress(
-        progress_callback,
-        current_index,
-        len(steps),
-        f"Preparing step {current_index + 1}: {step_description[:60]}...",
+    await prog.note(
+        f"Preparing step {current_index + 1} of {len(steps)}", step_description[:80], cb=progress_callback
     )
 
     # For 'direct' steps, the planning agent answers itself
@@ -455,12 +456,7 @@ async def _execute_step(
     if outputs_block:
         formulated_query = f"{formulated_query}\n\n{outputs_block}"
 
-    await emit_progress(
-        progress_callback,
-        current_index + 1,
-        len(steps),
-        f"Delegating to {target_agent} agent...",
-    )
+    await prog.note(f"Handing step {current_index + 1} to: {prog.agent_label(target_agent)}", cb=progress_callback)
 
     # Return step_ready status with the formulated query
     state = AgentState(query=query, context=context)
@@ -528,11 +524,8 @@ async def _execute_direct_step(
         {"role": "user", "content": step_description},
     ]
 
-    await emit_progress(
-        progress_callback,
-        step_index,
-        len(plan_data.get("steps", [])),
-        f"Working on: {step_description[:60]}...",
+    await prog.note(
+        f"Working on step {step_index + 1} of {len(plan_data.get('steps', []))}", step_description[:80], cb=progress_callback
     )
 
     # Stream the response for better UX
@@ -615,21 +608,23 @@ async def _run_planning_loop(
 
         state.iteration = iteration + 1
 
-        await emit_progress(
-            progress_callback,
-            iteration,
-            config.max_iterations,
-            "Thinking about your request...",
-        )
-
         prep = budget.prepare(state.messages, PLAN_ONLY_SCHEMAS if capped else TOOL_SCHEMAS)
         if prep["compacted"]:
             logger.info("Compacted %d older tool result(s); %s", prep["compacted"], budget.describe())
+            await prog.note(prog.NOTE_COMPACTED, cb=progress_callback)
         if prep["exhausted"] and not capped:
             capped = True
             logger.warning("Context budget spent after %d lookup(s): plan or ask now (%s)",
                            recon_count, budget.describe())
+            await prog.note(prog.NOTE_BUDGET_SPENT, cb=progress_callback)
             state.add_user_message(RECON_CAP_NUDGE)
+
+        thinking = await prog.start(
+            "thinking",
+            "Working out the steps" if recon_count else "Reading your request and deciding what to look up",
+            f"step {iteration + 1}",
+            cb=progress_callback,
+        )
 
         # Ask the LLM what to do
         try:
@@ -644,6 +639,8 @@ async def _run_planning_loop(
                 raise
             logger.warning("Context overflow after %d lookup(s); compacting and retrying once (%s)",
                            recon_count, budget.describe())
+            await prog.done(thinking, status="error", result=prog.RESULT_TOO_LARGE, cb=progress_callback)
+            await prog.note(prog.NOTE_OVERFLOW, cb=progress_callback)
             budget.compact_all(state.messages)
             overflow_recovered = True
             if not capped:
@@ -659,9 +656,12 @@ async def _run_planning_loop(
 
         # No tool calls -> the LLM produced a text response
         if not tool_calls:
+            await prog.done(thinking, label=prog.THINKING_ANSWER, cb=progress_callback)
             state.final_answer = content or ""
             state.status = "completed"
             break
+        intent = prog.intent_line(content)
+        await prog.done(thinking, cb=progress_callback)
 
         # Add assistant message with tool_calls
         state.add_assistant_message(
@@ -677,6 +677,7 @@ async def _run_planning_loop(
             # Duplicate detection
             if fp in executed_fingerprints:
                 duplicate_count += 1
+                await prog.note(prog.NOTE_REPEAT_SKIPPED, cb=progress_callback)
                 state.add_tool_result(
                     tc.id,
                     json.dumps(
@@ -710,6 +711,7 @@ async def _run_planning_loop(
                 if config.bvbrc_auth_token
                 else None
             )
+            tool_step = await prog.tool_start(tc.name, tc.arguments, intent, cb=progress_callback)
             start = time.time()
             result = await execute_tool(
                 tool_name=tc.name,
@@ -731,6 +733,7 @@ async def _run_planning_loop(
                 error=error,
                 duration_ms=duration_ms,
             )
+            await prog.tool_done(tool_step, tc.name, tc.arguments, result, cb=progress_callback)
 
             # F1 handoff (submit_gowe_job -> service, create_group -> data):
             # stop; the executor runs that agent next.
@@ -749,12 +752,7 @@ async def _run_planning_loop(
                 ]
                 state.status = "needs_input"
                 state.final_answer = "I have some questions before I can create a plan."
-                await emit_progress(
-                    progress_callback,
-                    config.max_iterations,
-                    config.max_iterations,
-                    "Waiting for your input...",
-                )
+                await prog.note("Waiting for your answer", transient=True, cb=progress_callback)
                 return state.to_result()
 
             elif tc.name == "create_plan" and result.get("status") == "valid":
@@ -774,12 +772,7 @@ async def _run_planning_loop(
                     f"It has {len(plan_dict['steps'])} steps. "
                     f"Please review and approve it."
                 )
-                await emit_progress(
-                    progress_callback,
-                    config.max_iterations,
-                    config.max_iterations,
-                    "Plan created — waiting for your review.",
-                )
+                await prog.note("Plan ready, waiting for your review", transient=True, cb=progress_callback)
                 return state.to_result()
 
             # For all tools, feed the result back to the LLM (truncated)

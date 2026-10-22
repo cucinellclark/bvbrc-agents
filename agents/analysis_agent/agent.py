@@ -22,6 +22,7 @@ for _p in (_REPO_ROOT, _SHARED_DIR, _CONFIG_DIR):
         sys.path.insert(0, _p)
 
 from shared.agent_loop import run_agent_loop
+from shared.prompts.progress_skill import PROGRESS_SKILL_PROMPT
 from shared.agent_utils import (
     build_user_content,
     format_attached_documents,
@@ -96,53 +97,6 @@ def _build_workflow_context_message(workflow_context: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _analysis_progress_message(tc: ToolCall) -> str:
-    """Build a human-readable progress message for analysis tool calls."""
-    args = tc.arguments
-    if tc.name == "workspace_browse":
-        path = args.get("path", "")
-        return f"Browsing output directory '{path}'..."
-    elif tc.name == "get_file_metadata":
-        return "Retrieving file metadata..."
-    elif tc.name == "read_file_preview":
-        sb = args.get("start_byte", 0)
-        if sb > 0:
-            page = (sb // 32768) + 1
-            return f"Reading output file (page {page})..."
-        return "Reading output file..."
-    elif tc.name == "search_file":
-        return f"Searching output file for '{args.get('pattern', '')}'..."
-    elif tc.name == "summarize_file":
-        return "Summarizing output file..."
-    elif tc.name == "get_expected_outputs":
-        svc = args.get("service_name", "")
-        return f"Looking up expected outputs for {svc}..."
-    elif tc.name == "get_job_details":
-        ids = args.get("task_ids", [])
-        return f"Retrieving job details for task {', '.join(str(i) for i in ids)}..."
-    return f"Calling {tc.name}..."
-
-
-def _analysis_result_message(tc: ToolCall, result: Any) -> str:
-    """Build a progress message after an analysis tool completes."""
-    msg = f"Tool {tc.name} completed."
-    if isinstance(result, dict):
-        items = result.get("items")
-        if isinstance(items, list):
-            msg = f"Found {len(items)} output files."
-        elif result.get("error"):
-            msg = "Query error, adjusting approach..."
-        elif tc.name == "get_expected_outputs":
-            known = result.get("known", False)
-            svc = result.get("service_name", "")
-            if known:
-                n = len(result.get("read_first", {}))
-                msg = f"Found {n} key output files for {svc}."
-            else:
-                msg = f"No known output patterns for {svc}, will browse dynamically."
-    return msg
-
-
 async def run_agent(
     query: str,
     config: AgentConfig | None = None,
@@ -206,6 +160,7 @@ async def run_agent(
             system_content += f"\n\n{handoff_section}"
 
         system_content += f"\n\n{format_execution_mode(config or context)}"
+        system_content += f"\n\n{PROGRESS_SKILL_PROMPT}"
 
         ctx_for_prompt = {
             k: v for k, v in context.items()
@@ -242,8 +197,6 @@ async def run_agent(
         chat_completion_fn=chat_completion,
         chat_completion_stream_fn=chat_completion_stream,
         progress_callback=progress_callback,
-        progress_message_fn=_analysis_progress_message,
-        result_message_fn=_analysis_result_message,
         trim_messages=True,
         max_tool_result_chars=cfg.max_tool_result_chars,
         excluded_context_keys={"workflow_context", "page_context", "images", "conversation_summary", "recent_messages", "parsed_documents", "attached_files", "handoff", "llm_override", "llm_options"},

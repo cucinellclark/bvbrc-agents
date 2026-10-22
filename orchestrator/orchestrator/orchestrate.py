@@ -30,6 +30,34 @@ from shared import usage
 logger = logging.getLogger(__name__)
 
 
+def _routing_step(status: str, label: str, **extra: Any) -> dict[str, Any]:
+    """The router's progress step (same shape as shared.progress steps)."""
+    return {
+        "agent": None,
+        "message": label,
+        "progress": 0,
+        "total": None,
+        "step_id": "routing",
+        "phase": "routing",
+        "status": status,
+        "label": label,
+        "ts_ms": 0,
+        **extra,
+    }
+
+
+def _routing_done_label(decision: Any) -> str:
+    from shared.progress import agent_label
+
+    if getattr(decision, "decision", None) == "direct":
+        return "Answering directly"
+    plan = getattr(decision, "plan", None)
+    steps = getattr(plan, "steps", None) or []
+    key = getattr(steps[0], "agent_key", None) if steps else None
+    label = agent_label(key)
+    return f"Handing to: {label}" if label else "Handing to an agent"
+
+
 async def orchestrate(
     request: OrchestratorRequest,
     registry: AgentRegistry,
@@ -114,6 +142,13 @@ async def _orchestrate(
             type=EventType.ROUTING_START,
             data={"query": request.query},
         )
+        # The routing step for the chat UI (shared.progress): the router
+        # call is 5–20 s on a thinking model and used to show nothing.
+        routing_started = time.monotonic()
+        yield Event(
+            type=EventType.AGENT_PROGRESS,
+            data=_routing_step("running", "Deciding how to handle your request"),
+        )
 
         decision = await route(request, registry, routing_llm or llm)
 
@@ -131,6 +166,14 @@ async def _orchestrate(
         yield Event(
             type=EventType.ROUTING_DECISION,
             data=routing_event_data,
+        )
+        yield Event(
+            type=EventType.AGENT_PROGRESS,
+            data=_routing_step(
+                "done",
+                _routing_done_label(decision),
+                took_ms=int((time.monotonic() - routing_started) * 1000),
+            ),
         )
 
         # ------------------------------------------------------------------

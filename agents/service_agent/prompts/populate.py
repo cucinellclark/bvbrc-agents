@@ -18,6 +18,7 @@ from shared.prompts.helpdesk_skill import HELPDESK_SKILL_PROMPT
 from shared.prompts.groups_sra_skill import GROUPS_SRA_SKILL_PROMPT
 from shared.prompts.similar_genome_skill import SIMILAR_GENOME_SKILL_PROMPT
 from shared.prompts.gowe_skill import RELEVANT_SERVICES_BY_INPUT
+from shared.prompts.progress_skill import PROGRESS_SKILL_PROMPT
 
 
 # D4 multi-job mode: the user asked for several jobs (several services on one
@@ -482,4 +483,5 @@ verify the job is configured correctly.
         + "\n\n" + GROUPS_SRA_SKILL_PROMPT
         + "\n\n" + SIMILAR_GENOME_SKILL_PROMPT
         + "\n\n" + RESPONSE_FORMAT_SKILL_PROMPT
+        + "\n\n" + PROGRESS_SKILL_PROMPT
     )

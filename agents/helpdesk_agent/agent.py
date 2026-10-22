@@ -35,31 +35,6 @@ from helpdesk_agent.prompts.system import SYSTEM_PROMPT
 ProgressCallback = Any
 
 
-def _helpdesk_progress_message(tc: ToolCall) -> str:
-    """Build a human-readable progress message for helpdesk tool calls."""
-    if tc.name == "query_helpdesk":
-        q = tc.arguments.get("query", "")
-        return f"Searching helpdesk: {q[:60]}..."
-    elif tc.name == "list_services":
-        return "Listing available BV-BRC services..."
-    elif tc.name == "get_service_schema":
-        svc = tc.arguments.get("service_name", "service")
-        return f"Looking up {svc} parameters..."
-    return f"Calling {tc.name}..."
-
-
-def _helpdesk_result_message(tc: ToolCall, result: Any) -> str:
-    """Build a progress message after a helpdesk tool completes."""
-    msg = f"Tool {tc.name} completed."
-    if isinstance(result, dict):
-        count = result.get("count")
-        if count is not None:
-            msg = f"Found {count} relevant documents."
-        elif result.get("error"):
-            msg = "Query returned an error, adjusting approach..."
-    return msg
-
-
 async def run_agent(
     query: str,
     config: AgentConfig | None = None,
@@ -90,8 +65,6 @@ async def run_agent(
         chat_completion_fn=chat_completion,
         chat_completion_stream_fn=chat_completion_stream,
         progress_callback=progress_callback,
-        progress_message_fn=_helpdesk_progress_message,
-        result_message_fn=_helpdesk_result_message,
         start_message="Analyzing your question...",
         done_message="Helpdesk response complete.",
     )

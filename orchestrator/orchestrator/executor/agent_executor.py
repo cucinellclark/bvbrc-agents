@@ -226,26 +226,45 @@ async def execute_agent_step(
         # waiting for the agent call to finish.
         progress_queue: asyncio.Queue[Event] = asyncio.Queue()
 
-        async def _on_progress(
-            progress: float, total: float | None, message: str | None
-        ) -> None:
+        # Structured steps (shared.progress): the sink installed for this run
+        # receives every step the agent reports — tool calls, model calls,
+        # retries, compaction — and the gateway forwards them as `progress`
+        # SSE events with the step fields on the payload.
+        from shared import progress as _progress
+
+        async def _emit_step(step: dict) -> None:
             event = Event(
                 type=EventType.AGENT_PROGRESS,
                 agent_name=agent.key,
                 step_index=step_index,
                 data={
                     "agent": agent.key,
-                    "message": message or "",
-                    "progress": progress,
-                    "total": total,
+                    "message": step.get("label") or "",
+                    "progress": step.get("ts_ms") or 0,
+                    "total": None,
+                    **step,
                 },
             )
             await progress_queue.put(event)
 
+        async def _on_progress(
+            progress: float, total: float | None, message: Any
+        ) -> None:
+            # Legacy callback shape (message may be a plain string).
+            if isinstance(message, dict):
+                await _emit_step(message)
+                return
+            await _emit_step(_progress.public(_progress.finish(
+                _progress.new_step("note", str(message or ""), transient=True)
+            )))
+
+        run_tokens = _progress.start_run(_emit_step, agent.key)
+
         # Launch the agent call as a task so we can yield progress in parallel.
         # If the caller abandons this generator (e.g. gateway aborts the SSE
         # stream), the finally block cancels the task so the LLM/tool work
-        # stops promptly.
+        # stops promptly.  The task copies this context, so it reports into
+        # the sink above.
         call_task = asyncio.create_task(
             agent.call_tool(chat_tool, arguments, progress_handler=_on_progress)
         )
@@ -273,6 +292,8 @@ async def execute_agent_step(
                     pass
             logger.info(f"Agent step for '{agent.key}' cancelled")
             raise
+        finally:
+            _progress.end_run(run_tokens)
 
         # Get the result (raises if the task failed). Both handle types
         # return a plain dict.
