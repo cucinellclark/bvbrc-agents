@@ -46,6 +46,15 @@ def test_search_label_reads_as_words():
     assert '"' not in detail and "(" not in detail
 
 
+def test_other_users_workspaces_and_group_paths():
+    assert prog.describe_tool_call("workspace_browse", {"scope": "shared"}) == ("Listing workspaces shared with you", None)
+    label, detail = prog.describe_tool_call("workspace_browse", {"scope": "public", "name_contains": ["NVDDTHD"]})
+    assert label == "Listing public workspaces" and "NVDDTHD" in detail
+    assert prog.describe_result("workspace_browse", {"scope": "public"}, {"scope": "public", "items": [{}, {}]})[1] == "2 workspaces"
+    label, _ = prog.describe_tool_call("get_group_ids", {"group_name": "/allan@patricbrc.org/AllanShare/Streptococcus public"})
+    assert label == "Reading group 'Streptococcus public'"
+
+
 def test_count_only_and_facets():
     assert prog.describe_tool_call("search_data", {"collection": "genome_amr", "query": "*:*", "count_only": True}) == ("Counting genome amr records", "everything")
     label, _ = prog.describe_tool_call("facet_query", {"collection": "genome", "query": "genus:Vibrio", "facet_fields": ["species", "genome_status"]})

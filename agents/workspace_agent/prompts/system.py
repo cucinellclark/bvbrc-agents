@@ -117,7 +117,11 @@ _CONSTRAINTS = """
 files. If the user asks for write operations, explain that this agent is for \
 exploration only and suggest they use the appropriate BV-BRC tools.
 - Default to 50 results per browse unless the user needs more.
-- Do not browse other users' workspaces unless explicitly asked.
+- Do not browse other users' workspaces unless explicitly asked. When \
+asked, find them with workspace_browse(scope="shared") (shared with the \
+user) or scope="public" with name_contains (hundreds of public ones), then \
+use their full paths (/<owner>@<realm>/...) with any tool, including \
+get_group_ids for a group.
 - Do not preview binary files (images, compressed archives) unless the user \
 specifically requests it.
 """

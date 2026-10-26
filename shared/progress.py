@@ -380,6 +380,9 @@ def _describe_tool_call(name: str, a: dict) -> tuple[str, Optional[str]]:
     if name == "get_collection_fields":
         return (f"Looking up the fields of {_collection(a.get('collection'))}", None)
 
+    if name == "workspace_browse" and a.get("scope") in ("shared", "public"):
+        label = "Listing workspaces shared with you" if a["scope"] == "shared" else "Listing public workspaces"
+        return (label, f"names containing {_quote(a['name_contains'], 30)}" if a.get("name_contains") else None)
     if name == "workspace_browse":
         label = f"Listing {_base(a.get('path'))}"
         filters = []
@@ -448,7 +451,10 @@ def _describe_tool_call(name: str, a: dict) -> tuple[str, Optional[str]]:
         kind = str(a.get("group_type") or "").replace("_group", "").replace("_", " ")
         return (f"Listing your {kind} groups".replace("  ", " "), None)
     if name == "get_group_ids":
-        return (f"Reading group {_quote(a.get('group_name'), 40)}", None)
+        group = a.get("group_name")
+        if isinstance(group, str) and group.startswith("/"):
+            group = _base(group)
+        return (f"Reading group {_quote(group, 40)}", None)
 
     if name == "get_sra_metadata":
         ids = a.get("sra_ids") or []
@@ -602,7 +608,8 @@ def _describe_result(name: str, a: dict, r: Any) -> tuple[str, str]:
 
     if name == "workspace_browse":
         n = _count_of(r, ("items", "results"))
-        return ("done", _plural(n, "item") if n is not None else "done")
+        noun = "workspace" if r.get("scope") else "item"
+        return ("done", _plural(n, noun) if n is not None else "done")
     if name == "get_file_metadata":
         size = r.get("size") or r.get("total_size")
         return ("done", f"{_size(size)}" if size else "done")

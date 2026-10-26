@@ -143,6 +143,10 @@ Phase 4). SVG is text — read it.
 ### Constraints
 - Read-only: you cannot create, modify, or delete workspace items.
 - Default limit: 50 results.  Max: 500.
-- Do not browse other users' workspaces unless asked.
+- Other users' workspaces only when asked. Find them with \
+``workspace_browse(scope="shared")`` (shared with the user) or \
+``scope="public"`` with ``name_contains`` (hundreds of public ones); then \
+use their full paths (``/<owner>@<realm>/...``) with any workspace tool, and \
+``get_group_ids`` with a group's full path.
 - Preview binary files only when explicitly requested.
 """.strip()
