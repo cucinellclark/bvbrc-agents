@@ -12,7 +12,7 @@ cd bvbrc-agents
 ./setup.sh
 ```
 
-This clones the MCP server repo into `mcp_server/`, clones `bvbrc-python-api`, and creates virtual environments with all dependencies installed.
+This creates the orchestrator virtual environment and installs its dependencies, including **bvbrc-mcp**, the package that holds the BV-BRC tools the agents use. By default it installs a `bvbrc-mcp` checkout next to this repo (`../bvbrc-mcp`) in editable mode; set `BVBRC_MCP_SOURCE` to a pip spec (for example a pinned git tag) for a deployment.
 
 You also need to provide a BV-BRC auth token. Either:
 - Set `BV_BRC_AUTH_TOKEN` in your environment, or
@@ -63,15 +63,9 @@ When `LLM_ADMISSION_URL` is set, all LLM traffic (routing, agents, classifier) i
 
 **Rollback:** `unset LLM_ADMISSION_URL` + restart orchestrator. No code changes needed.
 
-### MCP Server (optional, port 8153)
+### MCP Server (optional)
 
-Only needed for external MCP clients (e.g., Claude Desktop). Not needed for Copilot chat.
-
-```bash
-cd mcp_server
-source mcp_env/bin/activate
-python3 http_server.py
-```
+Only needed for external MCP clients (ChatGPT, Claude). Not needed for Copilot chat. It is part of the bvbrc-mcp repo (`bvbrc-mcp-http`, `bvbrc-mcp-stdio`); see its README and DEPLOYMENT.md.
 
 ## Smoke tests
 

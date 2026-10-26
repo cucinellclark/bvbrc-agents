@@ -29,15 +29,15 @@ for _dir in (_REPO_ROOT, _AGENTS_DIR, _CONFIG_DIR):
 
 def test_shared_tools_importable():
     """Verify shared tools are importable from the service agent context."""
-    from shared.tools.gowe import (
+    from bvbrc_mcp.tools.gowe import (
         list_gowe_workflows,
         get_workflow_inputs,
         submit_gowe_job,
     )
-    from shared.tools.workspace import workspace_browse, get_file_metadata
-    from shared.tools.data import search_data
-    from shared.tools.groups import create_group, list_groups, get_group_ids
-    from shared.tools.sra import get_sra_metadata
+    from bvbrc_mcp.tools.workspace import workspace_browse, get_file_metadata
+    from bvbrc_mcp.tools.data import search_data
+    from bvbrc_mcp.tools.groups import create_group, list_groups, get_group_ids
+    from bvbrc_mcp.tools.sra import get_sra_metadata
 
     assert callable(list_gowe_workflows)
     assert callable(get_workflow_inputs)

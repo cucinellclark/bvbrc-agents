@@ -14,20 +14,11 @@ import asyncio
 import base64
 import logging
 import os
-import sys
-from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# Ensure the bvbrc-agents repo root is on sys.path so that
-# ``shared.tools.pdf`` can be imported.  The orchestrator's own
-# import chain runs before ``agent_dispatch.py`` adds the repo root.
-_REPO_ROOT = str(Path(__file__).resolve().parent.parent.parent)
-if _REPO_ROOT not in sys.path:
-    sys.path.insert(0, _REPO_ROOT)
-
-from shared.tools.pdf import (  # noqa: E402
+from bvbrc_mcp.tools.pdf import (
     decode_workspace_download,
     extract_text_from_pdf,
     persist_extracted_text,
@@ -191,7 +182,7 @@ async def _workspace_pdf(
     path: str, name: str, request: Any, used_stems: set[str]
 ) -> dict[str, Any]:
     """Download, size-check, extract, and persist a workspace PDF."""
-    from shared.tools._mcp_imports import get_workspace_functions, get_json_rpc
+    from bvbrc_mcp.tools._clients import get_workspace_functions, get_json_rpc
 
     # Build API client
     mcp_path = None
@@ -303,7 +294,6 @@ async def _try_persist_file(
         return None
 
     class _MinConfig:
-        mcp_server_path = None
         bvbrc_workspace_url = "https://p3.theseed.org/services/Workspace"
         tool_timeout_seconds = 30
 
@@ -345,7 +335,6 @@ async def _try_persist(
 
     # Build a minimal config-like object for persist_extracted_text
     class _MinConfig:
-        mcp_server_path = None
         bvbrc_workspace_url = "https://p3.theseed.org/services/Workspace"
         tool_timeout_seconds = 30
 

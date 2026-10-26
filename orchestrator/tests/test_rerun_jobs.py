@@ -29,7 +29,7 @@ from shared.tools import (  # noqa: E402
     EXECUTE_ONLY_TOOLS,
     execute_tool,
 )
-from shared.tools import gowe, rerun  # noqa: E402
+from bvbrc_mcp.tools import gowe, rerun  # noqa: E402
 from shared.tools.registry import TOOL_DISPATCH  # noqa: E402
 from shared.tools.schemas import ALL_TOOL_SCHEMAS  # noqa: E402
 from service_agent import agent as service_agent  # noqa: E402
@@ -138,7 +138,7 @@ def _browse(items):
 
 def _cfg(session=True):
     return SimpleNamespace(
-        bvbrc_auth_token=TOKEN, gowe_url="http://gowe-test", mcp_server_path=None,
+        bvbrc_auth_token=TOKEN, gowe_url="http://gowe-test",
         session_id=SID if session else None, workspace_path=HOME if session else None,
     )
 

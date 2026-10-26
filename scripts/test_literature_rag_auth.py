@@ -120,7 +120,7 @@ def main() -> int:
 
     print("\n=== Shared tool tests (mirrors agent execution) ===")
     try:
-        from shared.tools.literature import search_literature
+        from bvbrc_mcp.tools.literature import search_literature
 
         # 1) No headers, no config token
         print("\n[tool 1] headers=None, config has no bvbrc_auth_token")

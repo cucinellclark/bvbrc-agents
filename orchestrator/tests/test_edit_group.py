@@ -19,7 +19,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import shared.agent_dispatch  # noqa: E402, F401  -- sets up agent package paths
 from shared.models import BaseAgentConfig, ToolCall, ToolExecution  # noqa: E402
 from shared.step_outputs import build_step_outputs  # noqa: E402
-from shared.tools import REPLAY_IN_PROGRESS, describe_blocked_action, execute_tool, groups  # noqa: E402
+from shared.tools import REPLAY_IN_PROGRESS, describe_blocked_action, execute_tool  # noqa: E402
+from bvbrc_mcp.tools import groups  # noqa: E402
 from shared.tools.registry import TOOL_DISPATCH  # noqa: E402
 from shared.tools.schemas import TOOL_SCHEMA_MAP  # noqa: E402
 

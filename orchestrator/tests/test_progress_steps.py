@@ -61,7 +61,7 @@ def test_file_tools_show_the_file_name_not_the_path():
 
 
 def test_job_tools_use_the_workflow_name_when_known():
-    from shared.tools import gowe
+    from bvbrc_mcp.tools import gowe
     with patch.dict(gowe._workflow_names, {"wf_1": "Genome Assembly"}):
         label, detail = prog.describe_tool_call("submit_gowe_job", {"workflow_id": "wf_1", "inputs": {"srr_ids": ["SRR1", "SRR2"]}})
         assert label == "Submitting a Genome Assembly job" and detail == "SRR1, SRR2"

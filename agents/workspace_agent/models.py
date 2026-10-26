@@ -96,8 +96,6 @@ class AgentConfig(BaseAgentConfig):
             if ws:
                 if "api_url" in ws:
                     file_values["bvbrc_workspace_url"] = ws["api_url"]
-                if "mcp_server_path" in ws:
-                    file_values["mcp_server_path"] = ws["mcp_server_path"]
 
         # Overrides take precedence over file values
         file_values.update(overrides)

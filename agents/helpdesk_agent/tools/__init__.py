@@ -11,18 +11,18 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from shared.tools import execute_tool as _shared_execute_tool, truncate_result
-from shared.tools.workspace import (
+from bvbrc_mcp.tools.workspace import (
     workspace_browse,
     get_file_metadata,
     read_file_preview,
 )
-from shared.tools.data import search_data
-from shared.tools.gowe import list_gowe_workflows, get_workflow_inputs
-from shared.tools.similar_genome import find_similar_genomes
-from shared.tools.literature import search_literature
+from bvbrc_mcp.tools.data import search_data
+from bvbrc_mcp.tools.gowe import list_gowe_workflows, get_workflow_inputs
+from bvbrc_mcp.tools.similar_genome import find_similar_genomes
+from bvbrc_mcp.tools.literature import search_literature
 
-from helpdesk_agent.tools.helpdesk import query_helpdesk
-from helpdesk_agent.tools.services import list_services, get_service_schema
+from bvbrc_mcp.tools.helpdesk import query_helpdesk
+from bvbrc_mcp.tools.helpdesk import list_services, get_service_schema
 
 # ---------------------------------------------------------------------------
 # Dispatch table: tool name -> async callable

@@ -9,7 +9,7 @@ Regenerate the collection reference with:
     python -m data_agent.prompts.generate_collection_docs
 """
 
-from data_agent.prompts.collection_reference import COLLECTION_REFERENCE
+from bvbrc_mcp.tools.collection_reference import COLLECTION_REFERENCE
 
 # ---------------------------------------------------------------------------
 # Static preamble -- role definition, query syntax, strategy, constraints

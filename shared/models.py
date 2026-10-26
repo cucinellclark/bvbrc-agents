@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import time
 from contextvars import ContextVar
-from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -129,11 +128,6 @@ class BaseAgentConfig(BaseModel):
         "/vol/patric3/production/containers/ubuntu-176-build12-2.sif"
     )
 
-    # MCP server path (for importing data_functions, workspace_functions, etc.)
-    mcp_server_path: str = str(
-        Path(__file__).resolve().parent.parent / "mcp_server"
-    )
-
     # Session context (injected by orchestrator via agent_chat_tool).
     # Used by submit_gowe_job to rewrite output_path under the chat
     # session's workspace folder.  Defined on BaseAgentConfig so that
@@ -159,7 +153,7 @@ class BaseAgentConfig(BaseModel):
     handoff_from: str | None = None
     # Set when this run is a delegated plan step: {plan_id, step_id,
     # prior_groups: [{name, path}]}.  create_group's guard allows one group per
-    # step and refuses one identical to an earlier step's (shared.tools.groups).
+    # step and refuses one identical to an earlier step's (bvbrc_mcp.tools.groups).
     plan_step: dict | None = None
     # D1: send chat_template_kwargs.enable_thinking=false on this agent's
     # LLM calls (Qwen models only; see shared.agent_utils.thinking_extra_body).

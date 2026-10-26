@@ -20,7 +20,7 @@ import logging
 import re
 from typing import Any, Iterable
 
-from shared.tools.url_utils import COLLECTION_VIEWER_MAP, ENTITY_VIEWER_MAP
+from bvbrc_mcp.tools.url_utils import COLLECTION_VIEWER_MAP, ENTITY_VIEWER_MAP
 
 logger = logging.getLogger(__name__)
 

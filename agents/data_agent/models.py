@@ -23,7 +23,7 @@ from shared.models import (
 
 # Solr-to-RQL converter lives in shared/tools/url_utils.py (used by
 # search_data() for URL enrichment and by _extract_structured_data).
-from shared.tools.url_utils import solr_to_rql  # noqa: F401 -- re-export
+from bvbrc_mcp.tools.url_utils import solr_to_rql  # noqa: F401 -- re-export
 
 
 # ---------------------------------------------------------------------------
@@ -164,7 +164,7 @@ class AgentState(BaseAgentState):
         # Attach actionable URLs so the LLM can include markdown links
         # in its response (viewer page, TSV download, FASTA download).
         if rql_query and collection:
-            from shared.tools.url_utils import enrich_search_result
+            from bvbrc_mcp.tools.url_utils import enrich_search_result
 
             enrich_search_result(result, collection, rql_query)
 

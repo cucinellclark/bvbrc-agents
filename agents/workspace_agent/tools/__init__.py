@@ -18,13 +18,13 @@ from collections import Counter, defaultdict
 from typing import Any, Dict
 
 from shared.tools import execute_tool as _shared_execute_tool
-from shared.tools.workspace import (
+from bvbrc_mcp.tools.workspace import (
     workspace_browse,
     get_file_metadata,
     read_file_preview,
 )
-from shared.tools.similar_genome import find_similar_genomes
-from shared.tools.literature import search_literature
+from bvbrc_mcp.tools.similar_genome import find_similar_genomes
+from bvbrc_mcp.tools.literature import search_literature
 
 # ---------------------------------------------------------------------------
 # Dispatch table: tool name -> async callable

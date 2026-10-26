@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import shared.agent_dispatch  # noqa: E402, F401  -- sets up agent package paths
 from shared.tools import execute_tool  # noqa: E402
-from shared.tools import groups  # noqa: E402
+from bvbrc_mcp.tools import groups  # noqa: E402
 
 FIFTY = [f"1313.{22000 + i}" for i in range(50)]
 OTHER = [f"1313.{23000 + i}" for i in range(50)]

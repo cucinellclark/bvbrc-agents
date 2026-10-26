@@ -6,7 +6,7 @@ Three sections as defined in the plan:
   3. Workflow context handling instructions
 """
 
-from analysis_agent.output_knowledge import build_service_knowledge_text
+from bvbrc_mcp.tools.output_knowledge import build_service_knowledge_text
 
 
 # ---------------------------------------------------------------------------

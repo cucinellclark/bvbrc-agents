@@ -55,5 +55,3 @@ workspace:
   # Workspace JSON-RPC endpoint
   api_url: "https://p3.theseed.org/services/Workspace"
 
-  # Path to the MCP server directory (for importing workspace_functions)
-  mcp_server_path: "/home/ac.cucinell/bvbrc-dev/Copilot/Agents/Workspace/bvbrc-mcp-server"

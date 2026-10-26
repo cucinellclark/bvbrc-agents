@@ -326,7 +326,7 @@ def workflow_name(workflow_id: Any) -> str:
     if not ref:
         return "the service"
     try:
-        from shared.tools.gowe import _workflow_names  # populated by list_gowe_workflows
+        from bvbrc_mcp.tools.gowe import _workflow_names  # populated by list_gowe_workflows
         name = _workflow_names.get(ref)
         if name:
             return name

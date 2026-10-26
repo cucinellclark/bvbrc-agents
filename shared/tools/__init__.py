@@ -174,7 +174,7 @@ def _add_output_location(result: Dict[str, Any], arguments: Dict[str, Any], conf
     inputs = arguments.get("inputs") if isinstance(arguments, dict) else None
     if not (session_id and workspace_path and isinstance(inputs, dict)):
         return
-    from shared.tools.gowe import place_output_path
+    from bvbrc_mcp.tools.gowe import place_output_path
 
     final, note = place_output_path(
         inputs.get("output_path"),
@@ -191,13 +191,13 @@ def _add_output_location(result: Dict[str, Any], arguments: Dict[str, Any], conf
 
 
 async def _check_job_roles(arguments: Dict[str, Any], config: Any) -> tuple[Optional[str], list]:
-    """``(error, lines)`` for a prepared job's role inputs (shared.tools.roles).
+    """``(error, lines)`` for a prepared job's role inputs (bvbrc_mcp.tools.roles).
 
     At the gate, so a reference or condition that cannot be what the user
     meant is refused before the question, not after the Yes.
     """
-    from shared.tools.gowe import workflow_name_of
-    from shared.tools.roles import check_roles
+    from bvbrc_mcp.tools.gowe import workflow_name_of
+    from bvbrc_mcp.tools.roles import check_roles
 
     args = arguments if isinstance(arguments, dict) else {}
     name = await workflow_name_of(args.get("workflow_id"), config)
@@ -206,7 +206,7 @@ async def _check_job_roles(arguments: Dict[str, Any], config: Any) -> tuple[Opti
 
 def _add_role_summary(result: Dict[str, Any], lines: list) -> None:
     """Name the reference / conditions in the question and tell the model to."""
-    from shared.tools.roles import with_roles
+    from bvbrc_mcp.tools.roles import with_roles
 
     if not lines:
         return
@@ -260,7 +260,7 @@ async def _plan_group_edit_for_question(
     be what the user meant is returned as the tool error instead of a
     question.  A read failure leaves the plain summary.
     """
-    from shared.tools.groups import edit_summary, plan_group_edit
+    from bvbrc_mcp.tools.groups import edit_summary, plan_group_edit
 
     try:
         plan = await asyncio.wait_for(plan_group_edit(_safe_args(arguments), config, headers), timeout=20)
@@ -283,7 +283,7 @@ async def _add_group_preview(
     summary keeps the name only.  The arguments are not changed, so the
     replay runs exactly what was shown.
     """
-    from shared.tools.groups import count_group_members, selection_summary
+    from bvbrc_mcp.tools.groups import count_group_members, selection_summary
 
     args = arguments if isinstance(arguments, dict) else {}
     group_type = args.get("group_type") or "group"
@@ -465,10 +465,10 @@ async def execute_tool(
         return wrong_agent_result(tool_name, agent_key)
 
     # One group per plan step, and no group identical to one already made
-    # (shared.tools.groups.group_guard).  Before the plan-mode gate, so a
+    # (bvbrc_mcp.tools.groups.group_guard).  Before the plan-mode gate, so a
     # prepared group is refused too, not only a created one.
     if tool_name == "create_group":
-        from shared.tools.groups import group_guard
+        from bvbrc_mcp.tools.groups import group_guard
 
         refusal = await group_guard(_safe_args(arguments), config, headers)
         if refusal:

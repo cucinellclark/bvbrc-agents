@@ -158,7 +158,7 @@ async def _noop():
 
 def test_tool_urls_with_raw_spaces_are_kept():
     """url_utils leaves raw spaces in RQL values; the real TSV link must survive."""
-    from shared.tools.url_utils import enrich_search_result, solr_to_rql
+    from bvbrc_mcp.tools.url_utils import enrich_search_result, solr_to_rql
 
     r = {"results": [], "numFound": 5}
     enrich_search_result(r, "genome", solr_to_rql('species:"Escherichia coli" AND genome_status:Complete'))

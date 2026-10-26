@@ -11,12 +11,12 @@ import json
 from typing import Any, Dict
 
 from shared.tools import execute_tool as _shared_execute_tool
-from shared.tools.data import search_data, facet_query, probe_data
-from shared.tools.collections import list_collections, get_collection_fields
-from shared.tools.similar_genome import find_similar_genomes
-from shared.tools.literature import search_literature
-from shared.tools.sra import get_sra_metadata
-from shared.tools.groups import create_group
+from bvbrc_mcp.tools.data import search_data, facet_query, probe_data
+from bvbrc_mcp.tools.collections import list_collections, get_collection_fields
+from bvbrc_mcp.tools.similar_genome import find_similar_genomes
+from bvbrc_mcp.tools.literature import search_literature
+from bvbrc_mcp.tools.sra import get_sra_metadata
+from bvbrc_mcp.tools.groups import create_group
 
 # ---------------------------------------------------------------------------
 # Dispatch table: tool name -> async callable

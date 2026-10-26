@@ -29,7 +29,7 @@ from shared.tools import (  # noqa: E402
     TOOL_TIMEOUT_OVERRIDES,
     execute_tool,
 )
-from shared.tools import batch, gowe, samples  # noqa: E402
+from bvbrc_mcp.tools import batch, gowe, samples  # noqa: E402
 from service_agent import agent as service_agent  # noqa: E402
 from service_agent.models import AgentConfig, AgentState, Intent  # noqa: E402
 from service_agent.phases import populate  # noqa: E402
@@ -96,7 +96,7 @@ def test_lone_mates_are_unpaired_and_plain_files_are_single_end():
 
 def _cfg(session=True):
     return SimpleNamespace(
-        bvbrc_auth_token=TOKEN, gowe_url="http://gowe-test", mcp_server_path=None,
+        bvbrc_auth_token=TOKEN, gowe_url="http://gowe-test",
         session_id=SID if session else None, workspace_path=HOME if session else None,
     )
 

@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
 # ---------------------------------------------------------------------------
-# sys.path setup -- make agent packages, shared/, config/, and bvbrc_solr_api
+# sys.path setup -- make agent packages, shared/ and config/
 # importable from the orchestrator venv (or any other process).
 #
 # Layout relative to this file:
@@ -30,8 +30,10 @@ from typing import Any, Callable, Dict, Optional
 #     ├── agents/helpdesk_agent/
 #     ├── agents/analysis_agent/
 #     ├── agents/planning_agent/
-#     ├── config/llm_config.py
-#     └── mcp_server/bvbrc-python-api/  (bvbrc_solr_api)
+#     └── config/llm_config.py
+#
+# The BV-BRC tools (and the Solr client) come from the installed bvbrc-mcp
+# package, not from a path.
 # ---------------------------------------------------------------------------
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -44,10 +46,6 @@ for _subdir in ("agents", "config"):
 _root_path = str(_REPO_ROOT)
 if _root_path not in sys.path:
     sys.path.insert(0, _root_path)
-
-_solr_api_path = str(_REPO_ROOT / "mcp_server" / "bvbrc-python-api")
-if Path(_solr_api_path).is_dir() and _solr_api_path not in sys.path:
-    sys.path.insert(0, _solr_api_path)
 
 from shared.agent_utils import (  # noqa: E402
     CLARIFICATION_INTRO,
@@ -809,7 +807,7 @@ async def dispatch_agent(
 
     # LLM calls in this agent run are attributed to it (shared.usage).
     agent_token = CURRENT_AGENT.set(agent_type)
-    from shared.tools.groups import GROUP_RUN
+    from bvbrc_mcp.tools.groups import GROUP_RUN
     # Groups this run prepares or creates, for create_group's guard.
     group_token = GROUP_RUN.set({})
 

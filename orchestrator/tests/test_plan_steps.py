@@ -22,7 +22,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import shared.agent_dispatch  # noqa: E402, F401  -- sets up agent package paths
 from shared import step_outputs as so  # noqa: E402
 from shared.models import ToolCall, ToolExecution  # noqa: E402
-from shared.tools import execute_tool, groups  # noqa: E402
+from shared.tools import execute_tool  # noqa: E402
+from bvbrc_mcp.tools import groups  # noqa: E402
 
 from orchestrator.router.models import ROUTING_JSON_SCHEMA, RoutingDecision  # noqa: E402
 from orchestrator.router.router import _parse_routing_response  # noqa: E402

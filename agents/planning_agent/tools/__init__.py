@@ -14,12 +14,12 @@ import time
 import traceback
 from typing import Any, Dict
 
-from shared.tools.workspace import workspace_browse, get_file_metadata
-from shared.tools.data import search_data
-from shared.tools.groups import create_group
-from shared.tools.gowe import list_gowe_workflows
-from shared.tools.similar_genome import find_similar_genomes
-from shared.tools.literature import search_literature
+from bvbrc_mcp.tools.workspace import workspace_browse, get_file_metadata
+from bvbrc_mcp.tools.data import search_data
+from bvbrc_mcp.tools.groups import create_group
+from bvbrc_mcp.tools.gowe import list_gowe_workflows
+from bvbrc_mcp.tools.similar_genome import find_similar_genomes
+from bvbrc_mcp.tools.literature import search_literature
 
 logger = logging.getLogger(__name__)
 
