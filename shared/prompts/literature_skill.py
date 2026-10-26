@@ -16,8 +16,8 @@ different terms (synonyms, gene names, a narrower aspect) — at most 3–4 \
 searches per question.
 - Each result is a list of distinct ``papers`` with ``title``, ``doi`` / \
 ``url``, ``year``, ``journal``, ``authors`` (only when known) and \
-``passages`` (the retrieved text). The corpus is ASM journals plus \
-PubMed Central open-access articles — not all of PubMed.
+``passages`` (the retrieved text). The corpus is PubMed Central \
+open-access articles — not all of PubMed.
 
 ### Citing
 - Cite ONLY papers that appear in a ``search_literature`` result in this \

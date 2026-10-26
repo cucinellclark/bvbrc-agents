@@ -155,12 +155,12 @@ def test_top_k_counts_papers_not_chunks():
 # ---------------------------------------------------------------- request
 
 
-async def test_request_searches_both_collections_and_overfetches(mock_ragstack):
+async def test_request_searches_pubmed_only_and_overfetches(mock_ragstack):
     state, calls = mock_ragstack
     state["handler"] = lambda body: httpx.Response(200, json={"sources": [_chunk("a", "x", **KPC)]})
     out = await search_literature("KPC", top_k=10, config=CFG)
     body = calls[0]["body"]
-    assert body["collections"] == ["asm-tok256", "open-access"]
+    assert body["collections"] == ["open-access"]
     assert body["top_k"] == 30
     assert calls[0]["headers"]["authorization"].startswith("Bearer ")
     assert calls[0]["url"].endswith("/v1/retrieve")
@@ -181,12 +181,13 @@ async def test_top_k_clamped(mock_ragstack):
 async def test_config_collections_override(mock_ragstack):
     state, calls = mock_ragstack
     state["handler"] = lambda body: httpx.Response(200, json={"sources": []})
-    cfg = SimpleNamespace(bvbrc_auth_token="tok", literature_rag_collections=["open-access"])
+    cfg = SimpleNamespace(bvbrc_auth_token="tok", literature_rag_collections=["asm-tok256"])
     await search_literature("q", config=cfg)
-    assert calls[0]["body"]["collections"] == ["open-access"]
+    assert calls[0]["body"]["collections"] == ["asm-tok256"]
 
 
-async def test_unreadable_collection_falls_back_to_default(mock_ragstack):
+async def test_unreadable_collection_is_an_error_not_a_search_of_the_server_default(mock_ragstack):
+    """No retry without "collections": RAGStack's own default is the ASM corpus."""
     state, calls = mock_ragstack
 
     def handler(body):
@@ -196,8 +197,9 @@ async def test_unreadable_collection_falls_back_to_default(mock_ragstack):
 
     state["handler"] = handler
     out = await search_literature("KPC", config=CFG)
-    assert len(calls) == 2 and "collections" not in calls[1]["body"]
-    assert out["count"] == 1
+    assert len(calls) == 1 and calls[0]["body"]["collections"] == ["open-access"]
+    assert out["errorType"] == "LITERATURE_COLLECTION_UNAVAILABLE"
+    assert "count" not in out
 
 
 async def test_empty_result_tells_llm_not_to_cite_from_memory(mock_ragstack):
@@ -251,3 +253,15 @@ async def test_default_ten_papers_fit_without_dropping(mock_ragstack):
     state["handler"] = lambda body: httpx.Response(200, json={"sources": sources})
     out = await search_literature("q", config=CFG)
     assert out["count"] == 10 and "truncated_papers" not in out
+
+
+def test_literature_collections_default_and_env_override(monkeypatch):
+    from shared.agent_dispatch import _build_config_kwargs
+    from shared.models import BaseAgentConfig
+
+    cfg = BaseAgentConfig(llm_base_url="x", llm_api_key="x", llm_model="x")
+    assert cfg.literature_rag_collections == ["open-access"]
+    monkeypatch.delenv("LITERATURE_RAG_COLLECTIONS", raising=False)
+    assert "literature_rag_collections" not in _build_config_kwargs("t", {})
+    monkeypatch.setenv("LITERATURE_RAG_COLLECTIONS", " open-access , asm-tok256 ,")
+    assert _build_config_kwargs("t", {})["literature_rag_collections"] == ["open-access", "asm-tok256"]

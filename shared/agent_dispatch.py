@@ -140,6 +140,14 @@ def _build_config_kwargs(
         "execute" if ctx.get("execution_mode") == "execute" else "plan"
     )
 
+    # Literature collections searched by search_literature (RAGStack ids,
+    # comma-separated; "open-access" = PubMed Central OA, the default).
+    lit_collections = [
+        c.strip() for c in os.environ.get("LITERATURE_RAG_COLLECTIONS", "").split(",") if c.strip()
+    ]
+    if lit_collections:
+        config_kwargs["literature_rag_collections"] = lit_collections
+
     # Forward GoWe URL override if provided
     gowe_url = ctx.get("gowe_url")
     if gowe_url:
