@@ -1,8 +1,9 @@
 """Pydantic models for the BV-BRC Workspace Exploration Agent.
 
-Key design: AgentResult carries BOTH a natural language answer AND structured
-data (file listings, metadata, ui_grids) so the orchestrator/UI can render
-rich file browser views alongside the LLM's summary.
+AgentResult carries the natural language answer plus small structured data
+(file metadata, read previews, how many files were listed).  The full file
+listings and UI grids are not passed through any more (2026-10-26): nothing
+rendered them, and one recursive listing (11,215 items) made the result 7.9 MB.
 """
 
 from __future__ import annotations
@@ -108,9 +109,8 @@ class AgentState(BaseAgentState):
     # Structured data collected during exploration.
     # Each tool execution that returns file listings/metadata appends here.
     # This is passed through to AgentResult so the UI can render grids.
-    collected_items: list[dict[str, Any]] = Field(default_factory=list)
+    files_found: int = 0
     collected_metadata: list[dict[str, Any]] = Field(default_factory=list)
-    collected_ui_grids: list[dict[str, Any]] = Field(default_factory=list)
     collected_previews: list[dict[str, Any]] = Field(default_factory=list)
 
     def record_execution(
@@ -131,47 +131,15 @@ class AgentState(BaseAgentState):
         if isinstance(result, dict) and not result.get("error"):
             self._extract_structured_data(tc.name, result)
 
-    @staticmethod
-    def _meta_array_to_dict(meta_array: list) -> dict[str, Any]:
-        """Convert a BV-BRC workspace metadata positional array to a named dict.
-
-        The Workspace.ls JSON-RPC API returns each item as a 12-element list:
-          [name, type, path, creation_time, id, owner_id, size,
-           userMeta, autoMeta, user_permissions, global_permission, link_reference]
-        """
-        if not isinstance(meta_array, list) or len(meta_array) < 12:
-            return {"raw": meta_array}
-        return {
-            "name": meta_array[0],
-            "type": meta_array[1],
-            "path": meta_array[2],
-            "creation_time": meta_array[3],
-            "id": meta_array[4],
-            "owner_id": meta_array[5],
-            "size": meta_array[6],
-            "userMeta": meta_array[7],
-            "autoMeta": meta_array[8],
-            "user_permissions": meta_array[9],
-            "global_permission": meta_array[10],
-            "link_reference": meta_array[11],
-        }
-
     def _extract_structured_data(self, tool_name: str, result: dict) -> None:
-        """Extract file listings, metadata, and ui_grids from tool results."""
+        """Extract the listing count, file metadata and previews from tool results."""
         # workspace_browse returns nested result envelope
         inner = result.get("result", result)
 
         if tool_name in ("workspace_browse", "workspace_search"):
             items = inner.get("items", [])
-            if items:
-                # Convert positional arrays from the BV-BRC API to named dicts
-                self.collected_items.extend(
-                    self._meta_array_to_dict(item) if isinstance(item, list) else item
-                    for item in items
-                )
-            ui_grid = inner.get("ui_grid")
-            if ui_grid:
-                self.collected_ui_grids.append(ui_grid)
+            if isinstance(items, list):
+                self.files_found += len(items)
 
         elif tool_name == "get_file_metadata":
             metadata = inner.get("metadata", inner)
@@ -203,10 +171,8 @@ class AgentState(BaseAgentState):
             answer=self.final_answer or "",
             status=self.status,
             question=self.question,
-            # Structured data for UI rendering
-            items=self.collected_items,
+            files_found=self.files_found,
             metadata=self.collected_metadata,
-            ui_grids=self.collected_ui_grids,
             previews=self.collected_previews,
             # Trace info
             paths_explored=paths_explored,
@@ -222,22 +188,18 @@ class AgentResult(BaseAgentResult):
 
     The dual-output design lets consumers choose how to present results:
     - CLI/chat: use `answer` for a human-readable summary
-    - Web UI: use `items`, `ui_grids`, `metadata` to render file browser views
+    - Web UI: shows the answer (with workspace links the agent wrote)
     - API: use the full structured response
     """
 
     # Structured workspace data (passthrough from tool results)
-    items: list[dict[str, Any]] = Field(
-        default_factory=list,
-        description="Flat list of workspace items found (file metadata arrays).",
+    files_found: int = Field(
+        default=0,
+        description="How many workspace items the listings returned (the items themselves are not kept).",
     )
     metadata: list[dict[str, Any]] = Field(
         default_factory=list,
         description="Detailed metadata for individual files inspected.",
-    )
-    ui_grids: list[dict[str, Any]] = Field(
-        default_factory=list,
-        description="UI grid payloads for rendering file browser tables.",
     )
     previews: list[dict[str, Any]] = Field(
         default_factory=list,

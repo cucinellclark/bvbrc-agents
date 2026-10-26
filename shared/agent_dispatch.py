@@ -601,10 +601,11 @@ async def _run_workspace_agent(
         "elapsed_seconds": result.elapsed_seconds,
         "tool_trace": tool_trace,
         "known_links": _known_links(result),
-        # Workspace agent structured payload for rich UI rendering
-        "items": getattr(result, "items", []),
+        # Small structured extras.  The full listings and UI grids are not
+        # passed on (2026-10-26): nothing rendered them, and one recursive
+        # listing made this response 7.9 MB.
+        "files_found": getattr(result, "files_found", 0),
         "metadata": getattr(result, "metadata", []),
-        "ui_grids": getattr(result, "ui_grids", []),
         "previews": getattr(result, "previews", []),
         "paths_explored": getattr(result, "paths_explored", []),
     }, result)

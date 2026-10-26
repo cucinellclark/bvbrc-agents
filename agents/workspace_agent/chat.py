@@ -78,8 +78,8 @@ def print_result(result: AgentResult, verbose: bool = False) -> None:
     if result.paths_explored:
         print(f"{_dim('Paths explored:')} {', '.join(result.paths_explored)}")
 
-    if result.items:
-        print(f"{_dim('Files found:')} {len(result.items)}")
+    if result.files_found:
+        print(f"{_dim('Files found:')} {result.files_found}")
 
     if result.metadata:
         print(f"{_dim('Files inspected:')} {len(result.metadata)}")
