@@ -19,8 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import shared.agent_dispatch  # noqa: E402, F401  -- sets up agent package paths
 from shared.tools import data  # noqa: E402
 
-data._ensure_data_tools_path()
-from mcp_tools import agent_data_tools as adt  # noqa: E402
+from data_agent.mcp_tools import agent_data_tools as adt  # noqa: E402
 
 
 @pytest.mark.parametrize("query, expected", [

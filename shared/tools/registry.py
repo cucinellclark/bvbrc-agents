@@ -2,7 +2,7 @@
 
 Provides:
   - ``TOOL_DISPATCH``: Universal dispatch table mapping tool names to async callables.
-  - ``ALL_TOOL_SCHEMAS``: All 31 tool schemas (re-exported from schemas.py).
+  - ``ALL_TOOL_SCHEMAS``: All 32 tool schemas (re-exported from schemas.py).
   - ``TOOL_SCHEMA_MAP``: Name-to-schema lookup (re-exported from schemas.py).
 
 All agents import from here. No more per-agent dispatch tables.
@@ -33,38 +33,8 @@ from shared.tools.schemas import (  # noqa: F401
 # ---------------------------------------------------------------------------
 # Shared tool implementations (always available)
 # ---------------------------------------------------------------------------
-from shared.tools.data import search_data, facet_query, probe_data
-from shared.tools.collections import list_collections, get_collection_fields
-from shared.tools.workspace import workspace_browse, get_file_metadata, read_file_preview
-from shared.tools.file_search import search_file
-from shared.tools.file_summary import summarize_file
-from shared.tools.gowe import list_gowe_workflows, get_workflow_inputs, submit_gowe_job
-from shared.tools.rerun import rerun_jobs
-from shared.tools.samples import list_samples
-from shared.tools.batch import prepare_batch
-from shared.tools.groups import create_group, edit_group, list_groups, get_group_ids
-from shared.tools.sra import get_sra_metadata
-from shared.tools.similar_genome import find_similar_genomes
-from shared.tools.literature import search_literature
-from shared.tools.jobs import list_jobs
+from bvbrc_mcp.registry import TOOL_DISPATCH as BVBRC_TOOL_DISPATCH
 
-# ---------------------------------------------------------------------------
-# Helpdesk-specific tools
-# ---------------------------------------------------------------------------
-from agents.helpdesk_agent.tools.helpdesk import query_helpdesk
-from agents.helpdesk_agent.tools.services import list_services, get_service_schema
-
-# ---------------------------------------------------------------------------
-# Analysis-specific tools
-# ---------------------------------------------------------------------------
-from agents.analysis_agent.tools import (
-    _get_expected_outputs_async as get_expected_outputs,
-    get_job_details,
-)
-
-# ---------------------------------------------------------------------------
-# Planning-specific tools (wrapped as async for uniform interface)
-# ---------------------------------------------------------------------------
 from agents.planning_agent.tools.plan_tools import (
     handle_ask_clarification,
     handle_create_plan,
@@ -118,46 +88,9 @@ async def _list_agents_async(
 # Universal dispatch table: tool name -> async callable
 # ---------------------------------------------------------------------------
 
+# The BV-BRC tools (bvbrc_mcp) plus the harness's own planning tools.
 TOOL_DISPATCH: Dict[str, Any] = {
-    # Data tools
-    "search_data": search_data,
-    "facet_query": facet_query,
-    "probe_data": probe_data,
-    "list_collections": list_collections,
-    "get_collection_fields": get_collection_fields,
-    # Workspace tools
-    "workspace_browse": workspace_browse,
-    "get_file_metadata": get_file_metadata,
-    "read_file_preview": read_file_preview,
-    "search_file": search_file,
-    "summarize_file": summarize_file,
-    "list_samples": list_samples,
-    # GoWe tools
-    "list_gowe_workflows": list_gowe_workflows,
-    "get_workflow_inputs": get_workflow_inputs,
-    "submit_gowe_job": submit_gowe_job,
-    "rerun_jobs": rerun_jobs,
-    "prepare_batch": prepare_batch,
-    # Group tools
-    "create_group": create_group,
-    "edit_group": edit_group,
-    "list_groups": list_groups,
-    "get_group_ids": get_group_ids,
-    # SRA tools
-    "get_sra_metadata": get_sra_metadata,
-    # Genome similarity
-    "find_similar_genomes": find_similar_genomes,
-    # Literature
-    "search_literature": search_literature,
-    # Helpdesk tools
-    "query_helpdesk": query_helpdesk,
-    "list_services": list_services,
-    "get_service_schema": get_service_schema,
-    # Analysis tools
-    "get_expected_outputs": get_expected_outputs,
-    "get_job_details": get_job_details,
-    "list_jobs": list_jobs,
-    # Planning tools
+    **BVBRC_TOOL_DISPATCH,
     "ask_clarification": _ask_clarification_async,
     "create_plan": _create_plan_async,
     "list_agents": _list_agents_async,

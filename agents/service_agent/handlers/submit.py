@@ -54,8 +54,7 @@ async def handle_submit(
         return state.to_result()
 
     try:
-        _ensure_mcp_path(config)
-        from common.gowe_client import GoWeClient
+        from bvbrc_mcp.clients.gowe_client import GoWeClient
 
         client = GoWeClient(base_url=config.gowe_url)
 
@@ -99,10 +98,3 @@ async def handle_submit(
 
     await emit_progress(progress_callback, 1, 1, "Done.")
     return state.to_result()
-
-
-def _ensure_mcp_path(config: AgentConfig) -> None:
-    """Add the MCP server path to sys.path if needed."""
-    mcp_path = config.mcp_server_path
-    if mcp_path and mcp_path not in sys.path:
-        sys.path.insert(0, mcp_path)
