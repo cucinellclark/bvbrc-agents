@@ -440,7 +440,6 @@ class TestOrchestrateEndpoint:
                 "query": "Hello",
                 "session_id": "sess-123",
                 "user_id": "user-456",
-                "conversation_summary": "Previous discussion about genomes.",
                 "recent_messages": [
                     {"role": "user", "content": "Hi"},
                     {"role": "assistant", "content": "Hello!"},

@@ -31,10 +31,6 @@ Rules:
   did succeed.
 - Do not fabricate data. Only use information from the agent results.
 - Use markdown formatting for readability (tables, lists, bold).
-- IMPORTANT: If a service agent produced a workflow manifest (JSON), you \
-  MUST include it in your response as a fenced JSON code block. Do NOT \
-  omit or summarize the manifest -- the user needs the exact JSON. Place \
-  the manifest at the end of your response after your explanatory text.
 """
 
 
@@ -66,7 +62,6 @@ def build_synthesis_prompt(
         answer = result.get("answer", "(no answer)")
         status = result.get("status", "unknown")
         sources = result.get("sources", [])
-        manifest = result.get("manifest")
 
         user_parts.append(f"## Agent Result: {agent} (status: {status})")
         if sources:
@@ -90,13 +85,6 @@ def build_synthesis_prompt(
                 detail = _json.dumps(summary, default=str) if summary else f"error: {error}"
                 user_parts.append(f"- {tool}: {detail}")
             user_parts.append("")
-
-        if manifest:
-            import json as _json
-            user_parts.append(
-                "### Workflow Manifest (include this JSON in your response)\n"
-                f"```json\n{_json.dumps(manifest, indent=2, default=str)}\n```\n"
-            )
 
     if len(agent_results) > 1:
         user_parts.append(

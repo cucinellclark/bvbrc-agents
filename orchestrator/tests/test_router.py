@@ -317,7 +317,6 @@ class TestRoute:
         llm = _make_llm_client(llm_response)
         request = OrchestratorRequest(
             query="What about AMR?",
-            conversation_summary="User previously searched for E. coli genomes",
             recent_messages=[
                 {"role": "user", "content": "Find E. coli genomes"},
                 {"role": "assistant", "content": "Found 100 genomes"},

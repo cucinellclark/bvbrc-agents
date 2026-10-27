@@ -103,9 +103,9 @@ async def execute_agent_step(
         arguments.update(agent.config.chat_tool_params)
 
     # Pass context if available.
-    # NOTE: conversation_summary is intentionally NOT forwarded to agents.
-    # It is unbounded (full session history) and bloats the agent's system
-    # prompt, causing LLM timeouts on long conversations.  Agents receive
+    # There is no full-history summary: the gateway's unbounded
+    # conversation_summary bloated agent prompts and caused LLM timeouts, and
+    # was removed (2026-10-27).  Agents receive the bounded recent_messages.
     # For single-agent routing, step.task is the original user query
     # (router does not rewrite it). Pipeline steps still use per-step
     # task text. recent_messages is token-budgeted to ~4000 tokens by
@@ -329,8 +329,8 @@ async def execute_agent_step(
             "mcp_server_name": agent.config.mcp_server_name,
         }
 
-        # Preserve agent-specific fields (e.g., service agent's manifest,
-        # workflow_plan, question) so they are available downstream
+        # Preserve agent-specific fields (e.g., the service agent's
+        # submission_ids, question) so they are available downstream
         # in the pipeline and in the synthesizer.
         _STANDARD_KEYS = {
             "answer", "status", "sources", "elapsed_seconds",

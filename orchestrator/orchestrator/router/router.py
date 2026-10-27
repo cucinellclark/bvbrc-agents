@@ -81,11 +81,10 @@ async def route(
 
     # --- Build conversation context ---
     # Only use recent_messages (already token-budgeted by the gateway's
-    # selectRecentMessages, ~4000 tokens).  conversation_summary is
-    # unbounded and can contain the full content of every message in the
-    # session, which overflows the routing LLM's context window on long
-    # conversations.  The router only needs enough context to classify
-    # intent — the current query (in ## User Request) plus a few
+    # selectRecentMessages, ~4000 tokens).  The gateway used to send an
+    # unbounded conversation_summary too; it overflowed the routing LLM's
+    # context on long conversations and was removed (2026-10-27).  The router
+    # only needs enough context to classify intent — the current query (in ## User Request) plus a few
     # truncated recent messages is sufficient.
     # Last 5 messages, start and end of each: the router only classifies,
     # but "do the next steps" / "submit it" refer to the END of the last

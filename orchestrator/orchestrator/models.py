@@ -76,7 +76,6 @@ class OrchestratorRequest(BaseModel):
     auth_token: str | None = None
 
     # Conversation context (provided by gateway)
-    conversation_summary: str | None = None
     recent_messages: list[dict[str, Any]] = Field(default_factory=list)
 
     # Session context

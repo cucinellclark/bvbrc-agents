@@ -58,12 +58,7 @@ async def handle_submit(
 
         client = GoWeClient(base_url=config.gowe_url)
 
-        # Get submission inputs -- prefer state, fall back to regenerating
         inputs = state.submission_inputs
-        if not inputs and state.completed_steps:
-            from service_agent.cwl.generator import generate_submission_inputs
-
-            inputs = generate_submission_inputs(state.completed_steps)
 
         result = await client.create_submission(
             workflow_id=workflow_id,

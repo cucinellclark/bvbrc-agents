@@ -7,7 +7,6 @@ the agent's response directly (skips the unnecessary LLM call).
 
 from __future__ import annotations
 
-import json
 import logging
 from collections.abc import AsyncGenerator
 from typing import Any
@@ -146,25 +145,6 @@ async def synthesize(
             f"preview={answer[:80]!r}"
         )
 
-        # Append workflow manifest if the agent produced one.
-        # If the manifest contains a cwl_document, format it as YAML
-        # (idiomatic for CWL v1.2).  Otherwise fall back to JSON.
-        manifest = agent_results[0].get("manifest")
-        if manifest:
-            cwl_doc = manifest.get("cwl_document") if isinstance(manifest, dict) else None
-            if cwl_doc:
-                import yaml
-                answer += (
-                    "\n\n### CWL Workflow\n```yaml\n"
-                    + yaml.dump(cwl_doc, default_flow_style=False, sort_keys=False)
-                    + "```"
-                )
-            else:
-                answer += (
-                    "\n\n### Workflow Manifest\n"
-                    f"```json\n{json.dumps(manifest, indent=2, default=str)}\n```"
-                )
-
         # Emit the answer as a single synthesis chunk so the gateway
         # always receives a synthesis_chunk -> final_response mapping.
         yield Event(
@@ -188,7 +168,6 @@ async def synthesize(
     # --- LLM synthesis for complex cases (streamed) ---
     try:
         # Build bounded conversation context from recent_messages
-        # (conversation_summary is unbounded and not forwarded to agents)
         conversation_context: str | None = None
         if request.recent_messages:
             from shared.agent_utils import format_recent_messages

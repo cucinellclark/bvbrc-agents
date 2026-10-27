@@ -529,9 +529,8 @@ async def _run_service_agent(
 
     tool_trace = _build_tool_trace(result)
 
-    # Service2: build answer from structured result
-    # Lifecycle operations (submit/status/cancel) produce an operation_message;
-    # planning results use the full pretty() output.
+    # The populate loop, replay and the lifecycle handlers (submit/status/
+    # cancel) put the reply in operation_message; pretty() is the fallback.
     if result.operation_message:
         answer = result.operation_message
     elif result.status == "needs_input" and result.question:
@@ -549,10 +548,6 @@ async def _run_service_agent(
         "tool_trace": tool_trace,
         "known_links": _known_links(result),
     }
-    if result.manifest:
-        response["manifest"] = result.manifest
-    if result.workflow_plan:
-        response["workflow_plan"] = result.workflow_plan
     if result.question:
         response["question"] = result.question
     # Workflow engine persistence metadata
@@ -567,8 +562,6 @@ async def _run_service_agent(
         response["submission_id"] = result.submission_id
     if result.submission_ids:
         response["submission_ids"] = result.submission_ids
-    if result.cwl_document:
-        response["cwl_document"] = result.cwl_document
     return response
 
 
