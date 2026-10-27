@@ -69,6 +69,21 @@ def test_small_results_text_facets_and_summaries():
     assert data["count"] == 40 and len(data["ids"]) == 25 and data["ids_truncated"] == 40
 
 
+def test_a_nested_result_envelope_keeps_its_totals_summary_and_paging():
+    # workspace_browse nests everything under "result"; compaction used to
+    # replace the whole envelope with "[object with N fields omitted]".
+    items = [{"name": f"f{i}.fastq", "type": "reads", "path": f"/u/home/f{i}.fastq", "size": 1} for i in range(50)]
+    full = json.dumps({"result": {"items": items, "count": 50, "total": 812, "truncated": True,
+                                  "next_offset": 50, "summary": {"by_type": {"reads": 800, "txt": 12}}},
+                       "workspace_browser_url": "https://www.bv-brc.org/workspace/u/home"}, indent=2)
+    data = json.loads(cb.compact_tool_result(full))
+    inner = data["result"]
+    assert inner["total"] == 812 and inner["next_offset"] == 50 and inner["truncated"] is True
+    assert inner["summary"]["by_type"]["reads"] == 800
+    assert inner["items_count"] == 50 and len(inner["items_sample"]) == 5
+    assert data["workspace_browser_url"].endswith("/u/home")
+
+
 def test_only_results_before_the_latest_exchange_are_compacted():
     big = json.dumps(_search_result())
     messages = [

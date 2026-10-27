@@ -30,8 +30,9 @@ system. The typical structure is:
         parsed_pdfs/        -- PDF text extracts
         <job_subfolder>/    -- GoWe job outputs from this chat
 
-Common job output folders follow the pattern:
-  .<ServiceName>_<timestamp>/  -- e.g., .GenomeAssembly2_20240315T...
+Each job result has a hidden output folder next to it:
+  .<job output name>/  -- searches leave these out unless \
+include_job_outputs=true (the result's hidden_in_job_outputs counts them)
 
 The chats/ folder contains session folders for chatbot conversations. \
 Use the path from === SESSION WORKSPACE === to access it."""
@@ -77,20 +78,35 @@ expected item, fall back to home.
 folders. If the user asks about a specific file type, use workspace_types to \
 filter efficiently.
 
-3. USE THE RIGHT FILTER:
-   - User asks about "reads files" -> workspace_types: ["reads"]
-   - User asks about "FASTA files" -> file_extensions: ["fasta", "fa", "fna"]
-   - User asks about "files named ecoli" -> name_contains: ["ecoli"]
-   - User asks about "what's in my Assembly folder" -> path: "Assembly"
+3. USE THE RIGHT FILTER. Filters apply to one folder unless recursive=true \
+(search every folder under path); set recursive explicitly:
+   - User asks about "my reads files" -> workspace_types: ["reads"], recursive: true
+   - User asks about "FASTA files" -> file_extensions: ["fasta", "fa", "fna"], recursive: true
+   - User asks about "files named ecoli" -> name_contains: ["ecoli"], recursive: true
+   - User asks about "what's in my Assembly folder" -> path: "Assembly", recursive: false
+   - User asks about "the FASTA files in Assembly" -> path: "Assembly", \
+file_extensions: [...], recursive: false
+   - Synonyms or spellings -> ONE call: name_contains: ["<term>", "<synonym>"], \
+name_match: "any"; whole words only -> name_match: "word"
+   - "files from last week" -> created_after: <date a week before today>
+   - Jobs ("which jobs failed", "where are my <service> results") -> \
+list_jobs(service="<service>", status=...), not a folder search: it has every \
+job and each one's result_path / output_folder
 
 4. DO NOT combine workspace_types and file_extensions for the same concept. \
 Pick the one that best matches the user's intent.
 
-5. INSPECT WHEN NEEDED: If the user asks about a specific file's properties \
+5. LARGE RESULTS: total is how many matched, count how many came back. When \
+truncated is true, say the list is partial ("showing 50 of 812") and never \
+guess what the rest is; describe the whole from summary (counts by type, by \
+subfolder for a search, size, dates). Page with offset=next_offset only when \
+the user needs the rest.
+
+6. INSPECT WHEN NEEDED: If the user asks about a specific file's properties \
 or format, use get_file_metadata for details and read_file_preview to peek at \
 the actual content.
 
-6. PREVIEW SELECTIVELY: Only use read_file_preview when the user specifically \
+7. PREVIEW SELECTIVELY: Only use read_file_preview when the user specifically \
 wants to know about file contents or format. Do not preview files just to list \
 them. The tool returns up to 32 KB per call; page with start_byte = next_start \
 until is_complete is true. To find something specific in a file, use search_file \
@@ -121,7 +137,12 @@ exploration only and suggest they use the appropriate BV-BRC tools.
 asked, find them with workspace_browse(scope="shared") (shared with the \
 user) or scope="public" with name_contains (hundreds of public ones), then \
 use their full paths (/<owner>@<realm>/...) with any tool, including \
-get_group_ids for a group.
+get_group_ids for a group. To find files or groups in shared workspaces \
+("do any shared workspaces have X"), make ONE call: \
+workspace_browse(scope="shared", recursive=true, name_contains=[...]) \
+searches inside all of them (summary.by_root says which have matches); never \
+search them one by one. Public workspaces are found by name only. Several \
+known folders at once: paths=[...].
 - Do not preview binary files (images, compressed archives) unless the user \
 specifically requests it.
 """

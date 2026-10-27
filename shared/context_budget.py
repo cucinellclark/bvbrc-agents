@@ -60,7 +60,7 @@ _MAX_IDS = 25
 _FACET_BUCKETS = 10
 _ID_FIELDS = ("genome_id", "feature_id", "patric_id", "id", "taxon_id", "pdb_id")
 _LIST_KEYS = ("items", "files", "workflows", "jobs", "matches", "sample_rows", "inputs", "groups", "samples")
-_KEEP_DICT_KEYS = ("_summary", "distinct_counts", "bucket_counts", "metadata", "column_stats", "stats")
+_KEEP_DICT_KEYS = ("_summary", "summary", "distinct_counts", "bucket_counts", "metadata", "column_stats", "stats")
 
 
 def _ids_of(rows: list) -> Optional[list]:
@@ -97,40 +97,50 @@ def compact_tool_result(content: Any) -> Any:
     elif isinstance(data, dict):
         if data.get(COMPACT_MARK):
             return content
-        out = {}
-        for key, value in data.items():
-            if key == "results" and isinstance(value, list):
-                out["results_sample"] = value[:_SAMPLE_ROWS]
-                out["results_returned"] = len(value)
-                ids = _ids_of(value)
-                if ids:
-                    out["ids"] = ids[:_MAX_IDS]
-                    if len(ids) > _MAX_IDS:
-                        out["ids_truncated"] = len(ids)
-            elif key == "facets" and isinstance(value, dict):
-                out[key] = {
-                    f: (b[:_FACET_BUCKETS] if isinstance(b, list) else b) for f, b in value.items()
-                }
-            elif key in _LIST_KEYS and isinstance(value, list):
-                out[f"{key}_sample"] = value[:_SAMPLE_ITEMS]
-                out[f"{key}_count"] = len(value)
-            elif isinstance(value, str):
-                out[key] = value if len(value) <= 300 else value[:300] + "…"
-            elif isinstance(value, list):
-                out[key] = value if len(json.dumps(value, default=str)) <= 600 else f"[{len(value)} items omitted]"
-            elif isinstance(value, dict):
-                if key in _KEEP_DICT_KEYS or len(json.dumps(value, default=str)) <= 800:
-                    out[key] = value
-                else:
-                    out[key] = f"[object with {len(value)} fields omitted]"
-            else:
-                out[key] = value
+        out = _compact_fields(data)
     else:
         return content
     out[COMPACT_MARK] = True
     out["_note"] = COMPACT_NOTE
     compact = json.dumps(out, default=str)
     return compact if len(compact) < len(content) else content
+
+
+def _compact_fields(data: Dict[str, Any]) -> Dict[str, Any]:
+    """The dict branch of ``compact_tool_result``; steps into a ``result`` envelope."""
+    out: Dict[str, Any] = {}
+    for key, value in data.items():
+        if key == "result" and isinstance(value, dict):
+            # workspace_browse / group tools nest everything here; without
+            # this the whole envelope (total, summary, paging) was dropped.
+            out[key] = _compact_fields(value)
+        elif key == "results" and isinstance(value, list):
+            out["results_sample"] = value[:_SAMPLE_ROWS]
+            out["results_returned"] = len(value)
+            ids = _ids_of(value)
+            if ids:
+                out["ids"] = ids[:_MAX_IDS]
+                if len(ids) > _MAX_IDS:
+                    out["ids_truncated"] = len(ids)
+        elif key == "facets" and isinstance(value, dict):
+            out[key] = {
+                f: (b[:_FACET_BUCKETS] if isinstance(b, list) else b) for f, b in value.items()
+            }
+        elif key in _LIST_KEYS and isinstance(value, list):
+            out[f"{key}_sample"] = value[:_SAMPLE_ITEMS]
+            out[f"{key}_count"] = len(value)
+        elif isinstance(value, str):
+            out[key] = value if len(value) <= 300 else value[:300] + "…"
+        elif isinstance(value, list):
+            out[key] = value if len(json.dumps(value, default=str)) <= 600 else f"[{len(value)} items omitted]"
+        elif isinstance(value, dict):
+            if key in _KEEP_DICT_KEYS or len(json.dumps(value, default=str)) <= 800:
+                out[key] = value
+            else:
+                out[key] = f"[object with {len(value)} fields omitted]"
+        else:
+            out[key] = value
+    return out
 
 
 def _last_assistant_index(messages: list) -> int:

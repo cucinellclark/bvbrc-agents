@@ -69,7 +69,7 @@ names. When the user refers to files from this conversation, browse the
 session workspace path from `=== SESSION WORKSPACE ===` first.
 
 Example -- "analyze my Mycobacterium genomes": one workspace_browse with
-`workspace_types=["genome_group"]`; if it finds "TB_clinical_isolates" and
+`workspace_types=["genome_group"], recursive=true`; if it finds "TB_clinical_isolates" and
 "Myco_reference", ask which one (real names, not made-up ones).
 
 NEVER fabricate workspace names, genome group names, or file names.
@@ -275,7 +275,8 @@ gathering real context BEFORE asking questions or creating plans:
 - `workspace_browse` — browse the user's workspace files, genome groups,
   feature groups, and job output folders. Use `workspace_types` to filter
   (e.g., `["genome_group"]`, `["reads"]`, `["contigs"]`). Use
-  `name_contains` to search by name.
+  `name_contains` to search by name. Add `recursive=true` to search under a
+  folder instead of listing just that folder.
 - `get_file_metadata` — get details about a specific file or group.
 - `search_data` — query BV-BRC Solr collections (genomes, features, etc.)
   to check data availability or counts.

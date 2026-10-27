@@ -69,6 +69,31 @@ def test_file_tools_show_the_file_name_not_the_path():
     assert prog.describe_tool_call("workspace_browse", {}) == ("Listing your home folder", None)
 
 
+def test_workspace_browse_says_listing_or_searching_and_how_many_of_how_many():
+    assert prog.describe_tool_call("workspace_browse", {"path": "Assembly", "recursive": True})[0] == "Searching Assembly"
+    assert prog.describe_tool_call("workspace_browse", {"file_extensions": ["fastq"], "recursive": False})[0] == "Listing your home folder"
+    # Filters without recursive: the tool searches, so the label says so.
+    assert prog.describe_tool_call("workspace_browse", {"file_extensions": ["fastq"]})[0] == "Searching your home folder"
+    page = {"result": {"items": [{}] * 50, "count": 50, "total": 812}}
+    assert prog.describe_result("workspace_browse", {}, page) == ("done", "50 of 812 items")
+    assert prog.describe_result("workspace_browse", {}, {"result": {"items": [{}, {}], "total": 2}}) == ("done", "2 items")
+    assert prog.describe_result("workspace_browse", {"scope": "public"},
+                                {"scope": "public", "items": [{}], "matched": 13})[1] == "1 of 13 workspaces"
+    # Part 3: one search inside every shared workspace; several folders at once.
+    label, detail = prog.describe_tool_call("workspace_browse", {"scope": "shared", "recursive": True, "name_contains": ["strep"]})
+    assert label == "Searching the workspaces shared with you" and "strep" in detail
+    assert prog.describe_tool_call("workspace_browse", {"paths": ["/a/b", "/c/d"], "recursive": True})[0] == "Searching 2 folders"
+    assert prog.describe_tool_call("workspace_browse", {"paths": ["/a/Reads"]})[0] == "Listing Reads"
+    found = {"result": {"scope": "shared", "result_type": "search_result", "items": [{}] * 3, "total": 3}}
+    assert prog.describe_result("workspace_browse", {}, found) == ("done", "3 items")
+    assert prog.describe_result("list_groups", {}, {"groups": ["a"] * 300, "total": 320}) == ("done", "300 of 320 groups")
+    # Filter / sort review: any-of names, job filters and dates read as words.
+    label, detail = prog.describe_tool_call("workspace_browse", {"name_contains": ["flu", "influenza"], "name_match": "any",
+                                                                 "created_after": "2026-10-01"})
+    assert label == "Searching your home folder" and detail.startswith("names containing any of") and detail.endswith("since 2026-10-01")
+    assert prog.describe_result("list_jobs", {}, {"items": [{}] * 20, "total": 156}) == ("done", "20 of 156 jobs")
+
+
 def test_job_tools_use_the_workflow_name_when_known():
     from bvbrc_mcp.tools import gowe
     with patch.dict(gowe._workflow_names, {"wf_1": "Genome Assembly"}):

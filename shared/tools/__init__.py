@@ -38,6 +38,8 @@ TOOL_RESULT_CHAR_LIMITS: dict[str, int] = {
     "summarize_file":    12_000,   # self-bounded to ~11 000 by file_summary.py
     "search_literature": 24_000,   # self-bounded to ~20 000 by literature.py
     "workspace_browse":  16_000,   # ~45 compact items; job_result entries carry a job block
+    "list_groups":       12_000,   # up to 300 group names (bvbrc_mcp groups.MAX_LISTED_GROUPS)
+    "list_jobs":         24_000,   # 20 compact jobs (paths + data inputs) ~16-21 KB
     "rerun_jobs":        24_000,   # up to 10 prepared jobs with their full inputs
     "prepare_batch":     24_000,   # same
     "list_samples":      24_000,   # up to ~100 samples with full read paths

@@ -10,9 +10,11 @@ GROUPS_SRA_SKILL_PROMPT = """
 
 ### Genome and Feature Groups
 
-- Discover existing groups with ``list_groups`` or
-  ``workspace_browse(workspace_types=["genome_group"])`` /
-  ``workspace_browse(workspace_types=["feature_group"])``.
+- Discover existing groups with ``list_groups`` (each entry is a group name, or
+  a full path for a group outside the default group folder; pass either to
+  ``get_group_ids``; ``total`` is the full count) or
+  ``workspace_browse(workspace_types=["genome_group"], recursive=true)`` /
+  ``workspace_browse(workspace_types=["feature_group"], recursive=true)``.
 - Do NOT fabricate group paths like ``/user@domain/home/Genome Groups/Guessed Name``.
   Browse first, then copy the real path from the result.
 - ``create_group`` creates a group, and via ``if_exists`` can also **append

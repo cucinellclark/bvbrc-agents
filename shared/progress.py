@@ -380,17 +380,32 @@ def _describe_tool_call(name: str, a: dict) -> tuple[str, Optional[str]]:
     if name == "get_collection_fields":
         return (f"Looking up the fields of {_collection(a.get('collection'))}", None)
 
+    if name == "workspace_browse" and a.get("scope") == "shared" and (
+            a.get("recursive") is True or a.get("file_extensions") or a.get("workspace_types")):
+        return ("Searching the workspaces shared with you",
+                f"names containing {_quote(a['name_contains'], 30)}" if a.get("name_contains") else None)
     if name == "workspace_browse" and a.get("scope") in ("shared", "public"):
         label = "Listing workspaces shared with you" if a["scope"] == "shared" else "Listing public workspaces"
         return (label, f"names containing {_quote(a['name_contains'], 30)}" if a.get("name_contains") else None)
     if name == "workspace_browse":
-        label = f"Listing {_base(a.get('path'))}"
+        filtered = any(a.get(k) for k in ("name_contains", "file_extensions", "workspace_types"))
+        recursive = a.get("recursive")
+        if recursive is None:
+            recursive = filtered  # the tool's rule when recursive is not given
+        many = a.get("paths") if isinstance(a.get("paths"), list) and len(a["paths"]) > 1 else None
+        where = f"{len(many)} folders" if many else _base((a.get("paths") or [None])[0] if a.get("paths") else a.get("path"))
+        label = f"{'Searching' if recursive else 'Listing'} {where}"
         filters = []
         if a.get("name_contains"):
-            filters.append(f"names containing {_quote(a['name_contains'], 30)}")
+            how = {"any": "names containing any of", "word": "names with the word"}.get(a.get("name_match"), "names containing")
+            filters.append(f"{how} {_quote(a['name_contains'], 30)}")
         exts = a.get("file_extensions")
         if exts:
             filters.append("." + ", .".join(str(e).lstrip(".") for e in (exts if isinstance(exts, list) else [exts])[:4]) + " files")
+        if a.get("created_after"):
+            filters.append(f"since {_clip(a['created_after'], 10)}")
+        if a.get("created_before"):
+            filters.append(f"before {_clip(a['created_before'], 10)}")
         return (label, "; ".join(filters) or None)
     if name == "get_file_metadata":
         return (f"Checking {_base(a.get('path'))}", None)
@@ -607,8 +622,13 @@ def _describe_result(name: str, a: dict, r: Any) -> tuple[str, str]:
         return ("done", _plural(n, "field") if n is not None else "done")
 
     if name == "workspace_browse":
-        n = _count_of(r, ("items", "results"))
-        noun = "workspace" if r.get("scope") else "item"
+        inner = r.get("result") if isinstance(r.get("result"), dict) else r
+        n = _count_of(inner, ("items", "results"))
+        # A scope listing lists workspaces; a scope search finds items.
+        noun = "workspace" if inner.get("scope") and "result_type" not in inner else "item"
+        total = inner.get("total", inner.get("matched"))
+        if n is not None and isinstance(total, int) and total > n:
+            return ("done", f"{_n(n)} of {_plural(total, noun)}")
         return ("done", _plural(n, noun) if n is not None else "done")
     if name == "get_file_metadata":
         size = r.get("size") or r.get("total_size")
@@ -666,6 +686,9 @@ def _describe_result(name: str, a: dict, r: Any) -> tuple[str, str]:
         return ("done", "updated")
     if name == "list_groups":
         n = _count_of(r, ("groups", "items"))
+        total = r.get("total")
+        if n is not None and isinstance(total, int) and total > n:
+            return ("done", f"{_n(n)} of {_plural(total, 'group')}")
         return ("done", _plural(n, "group") if n is not None else "done")
     if name == "get_group_ids":
         n = _count_of(r, ("ids", "id_list", "items"))
@@ -695,6 +718,9 @@ def _describe_result(name: str, a: dict, r: Any) -> tuple[str, str]:
         return ("done", _plural(n, "job") if n is not None else "done")
     if name == "list_jobs":
         n = _count_of(r, ("jobs", "items", "tasks"))
+        total = r.get("total")
+        if n is not None and isinstance(total, int) and total > n:
+            return ("done", f"{_n(n)} of {_plural(total, 'job')}")
         return ("done", _plural(n, "job") if n is not None else "done")
 
     if name == "ask_clarification":

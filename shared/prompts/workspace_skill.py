@@ -38,7 +38,8 @@ extracts, job outputs submitted from the chatbot). Use the path from \
 - Page context that already points at a workspace path
 
 **Fall back.** If the session folder is missing, empty, or does not contain \
-the named item, browse home or search with ``name_contains``. Do not tell \
+the named item, browse home or search with ``name_contains`` and \
+``recursive=true``. Do not tell \
 the user a file is gone until both places have been checked.
 
 Do not search other sessions under ``chats/`` unless the user asks.
@@ -58,7 +59,7 @@ says "my assembly test folder", do NOT call a tool with \
 ### Discovering Files and Folders
 - When the user mentions a folder or file by name, ALWAYS browse first to \
 discover the actual path. Call ``workspace_browse()`` with no path (home) \
-or with ``name_contains=["keyword"]`` to search.
+or search with ``name_contains=["keyword"]`` and ``recursive=true``.
 - Once you find the item in the results, copy the full path from the result \
 into your next tool call.
 - If the item is not found, tell the user the folder/file was not found and \
@@ -74,9 +75,9 @@ tell the user there is a "temporary issue" or "service outage".
 or searching with ``name_contains`` to find the correct path.
 
 ### Finding Genome Groups and Feature Groups
-- To find all genome groups: ``workspace_browse(workspace_types=["genome_group"])``
+- To find all genome groups: ``workspace_browse(workspace_types=["genome_group"], recursive=true)``
   or ``workspace_browse(path="Genome Groups")``
-- To find all feature groups: ``workspace_browse(workspace_types=["feature_group"])``
+- To find all feature groups: ``workspace_browse(workspace_types=["feature_group"], recursive=true)``
   or ``workspace_browse(path="Feature Groups")``
 - These are the most common way users organize data in BV-BRC.
 
@@ -87,7 +88,33 @@ or searching with ``name_contains`` to find the correct path.
 - ``file_extensions``: Filter by file extension (e.g. ``.fasta``, ``.csv``) — use for
   specific formats.
 - ``name_contains``: Literal filename substring search — use for specific file names.
+  Several spellings or synonyms go in ONE call with ``name_match="any"`` \
+(e.g. ``["influenza", "flu"]``); ``name_match="word"`` keeps whole words only \
+(a genus name then does not match a longer genus that contains it).
+- ``created_after`` / ``created_before`` (YYYY-MM-DD): "last week", "this \
+month", "since October" — work the date out from today's date.
+- Questions about jobs ("which jobs failed", "where are my <service> \
+results", "my recent <service> runs") go to ``list_jobs`` (``service``, \
+``status``), not to folder searches: it has every job, and each job's \
+``result_path`` / ``output_folder``, wherever its results were written.
+- Default order: a listing shows folders first, then names; a search shows \
+the newest first. Set ``sort_by`` only when the user asks for an order.
 - Do NOT combine ``workspace_types`` and ``file_extensions`` for the same concept.
+- Filters apply to one folder unless ``recursive=true``, which searches every \
+folder under ``path``. Set ``recursive`` explicitly: true only to find files \
+whose folder you don't know.
+- Searches leave out files inside job output folders (hidden ``.<job>`` \
+folders); ``hidden_in_job_outputs`` counts them. Set \
+``include_job_outputs=true`` only when the user wants files a job produced.
+
+### Large Results
+- ``total`` is how many items matched; ``count`` how many came back. When \
+``truncated`` is true you saw only part of it: say so ("showing 50 of 812"), \
+and never guess what the rest is.
+- ``summary`` gives counts by type and (searches) by subfolder, total size and \
+dates over everything matched. Use it to describe a large folder.
+- Fetch the next page (``offset=next_offset``) only when the user needs the \
+rest; narrowing with a filter or subfolder is usually better.
 
 ### Uploaded Files
 - Files the user attached in chat are saved under the session folder's \
@@ -148,5 +175,11 @@ Phase 4). SVG is text — read it.
 ``scope="public"`` with ``name_contains`` (hundreds of public ones); then \
 use their full paths (``/<owner>@<realm>/...``) with any workspace tool, and \
 ``get_group_ids`` with a group's full path.
+- "Do any shared workspaces have X?": ONE call, \
+``workspace_browse(scope="shared", recursive=true, name_contains=[...])`` \
+(or ``workspace_types``); it searches inside all of them, and \
+``summary.by_root`` says which have matches. Never loop over them one by one. \
+Public workspaces are found by name only; their contents are not searched.
+- Several known folders at once: ``paths=[...]`` instead of one call per folder.
 - Preview binary files only when explicitly requested.
 """.strip()
