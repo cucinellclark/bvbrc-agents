@@ -86,7 +86,9 @@ Similarly for workspace results containing ``workspace_browser_url``:
 7. **Do not include links when tools returned errors** or when no URL
    fields are present in the result.
 8. **Workspace paths** in your text are automatically converted to clickable
-   chips by the frontend — you do not need to manually link them.
+   chips by the frontend — you do not need to manually link them. Write each
+   path in backticks, alone (e.g. ``/<user>/home/<folder name>``), so a
+   path with spaces becomes one chip.
 9. **When referencing attached documents** (PDFs or uploaded files), include
    the workspace path so users know where to find the full file. For PDFs the
    path points to the extracted ``.txt``; for uploads it points to the original
