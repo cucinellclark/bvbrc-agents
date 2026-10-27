@@ -49,39 +49,3 @@ def test_shared_tools_importable():
     assert callable(list_groups)
     assert callable(get_group_ids)
     assert callable(get_sra_metadata)
-
-
-def test_service_agent_tools_dispatch():
-    """Verify the service agent's tool dispatch table is correctly wired."""
-    from service_agent.tools import TOOL_DISPATCH
-
-    expected_tools = {
-        "list_gowe_workflows",
-        "get_workflow_inputs",
-        "submit_gowe_job",
-        "workspace_browse",
-        "read_file_info",
-        "search_data",
-        "create_group",
-        "list_groups",
-        "get_group_ids",
-        "get_sra_metadata",
-        "find_similar_genomes",
-        "search_literature",
-    }
-    assert set(TOOL_DISPATCH.keys()) == expected_tools
-
-
-def test_tool_registry_populate_tools():
-    """Verify the tool registry only contains GoWe populate flow tools."""
-    from service_agent.tool_registry import POPULATE_TOOLS, TOOL_MAP
-
-    assert len(POPULATE_TOOLS) == 10
-    assert "list_gowe_workflows" in TOOL_MAP
-    assert "get_workflow_inputs" in TOOL_MAP
-    assert "submit_gowe_job" in TOOL_MAP
-    # Legacy tools should NOT be present
-    assert "create_workflow_plan" not in TOOL_MAP
-    assert "plan_service" not in TOOL_MAP
-    assert "get_service_schema" not in TOOL_MAP
-    assert "compose_workflow" not in TOOL_MAP

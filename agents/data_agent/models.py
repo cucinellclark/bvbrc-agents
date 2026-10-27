@@ -1,7 +1,7 @@
 """Pydantic models for the Data Retrieval Agent.
 
-Subclasses the shared base models. Adds data-specific fields
-(planned_calls, structured_data) and the Solr-to-RQL converter.
+Subclasses the shared base models. Adds ``structured_data`` and the
+Solr-to-RQL converter.
 """
 
 from __future__ import annotations
@@ -10,8 +10,6 @@ import json
 import re
 import time
 from typing import Any
-
-from pydantic import Field
 
 from shared.models import (
     ToolCall,  # noqa: F401 -- re-export for backward compat
@@ -43,20 +41,12 @@ class AgentConfig(BaseAgentConfig):
 class AgentState(BaseAgentState):
     """Tracks the full state of a data agent execution."""
 
-    planned_calls: list[ToolCall] = Field(default_factory=list)
-
-    def record_planned_call(self, tc: ToolCall) -> None:
-        self.planned_calls.append(tc)
-
     def to_result(self) -> "AgentResult":
         elapsed = time.time() - self.start_time
 
-        # Collect unique collections from both planned and executed calls
+        # Collect unique collections from the executed calls
         sources: list[str] = []
-        all_calls = list(self.planned_calls) + [
-            ex.tool_call for ex in self.tool_executions
-        ]
-        for tc in all_calls:
+        for tc in (ex.tool_call for ex in self.tool_executions):
             if (
                 tc.name in ("search_data", "facet_query")
                 and "collection" in tc.arguments
@@ -71,23 +61,8 @@ class AgentState(BaseAgentState):
             answer=self.final_answer or "",
             status=self.status,
             question=self.question,
-            plan=[
-                {
-                    "tool": tc.name,
-                    "arguments": tc.arguments,
-                }
-                for tc in self.planned_calls
-            ],
             sources=sources,
             tool_trace=self.tool_executions,
-            planned_tool_calls=[
-                {
-                    "id": tc.id,
-                    "name": tc.name,
-                    "arguments": tc.arguments,
-                }
-                for tc in self.planned_calls
-            ],
             iterations_used=self.iteration,
             blocked_actions=list(self.blocked_actions),
             elapsed_seconds=round(elapsed, 2),
@@ -172,10 +147,8 @@ class AgentState(BaseAgentState):
 
 
 class AgentResult(BaseAgentResult):
-    """Returned by run_agent() / plan_only(). Clean interface for consumers."""
+    """Returned by run_agent(). Clean interface for consumers."""
 
-    plan: list[dict[str, Any]] = Field(default_factory=list)
-    planned_tool_calls: list[dict[str, Any]] = Field(default_factory=list)
     structured_data: dict[str, Any] | None = None
 
     def pretty(self) -> str:
@@ -204,13 +177,6 @@ class AgentResult(BaseAgentResult):
                     if len(result_str) > 500:
                         result_str = result_str[:500] + "\n      ... [truncated]"
                     lines.append(f"    Result: {result_str}")
-
-        # Show planned calls if we only have those (plan_only mode)
-        elif self.planned_tool_calls:
-            lines.extend(["", "--- PLANNED TOOL CALLS ---"])
-            for i, tc in enumerate(self.planned_tool_calls, 1):
-                lines.append(f"\n  Step {i}: {tc['name']}")
-                lines.append(f"    Arguments: {json.dumps(tc['arguments'], indent=6)}")
 
         if self.answer:
             lines.extend(["", "--- LLM ANSWER ---", self.answer])

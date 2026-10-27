@@ -108,7 +108,6 @@ class TestSharedAgentMessages:
             DUPLICATE_CALL_WARNING_SERVICE,
             MAX_ITERATIONS_SYNTHESIS,
             MAX_ITERATIONS_FALLBACK,
-            MAX_PLANNING_ITERATIONS_FALLBACK,
             STUCK_IN_LOOP_DECOMPOSE,
             STUCK_IN_LOOP_BUILD,
         )
@@ -119,7 +118,6 @@ class TestSharedAgentMessages:
             DUPLICATE_CALL_WARNING_SERVICE,
             MAX_ITERATIONS_SYNTHESIS,
             MAX_ITERATIONS_FALLBACK,
-            MAX_PLANNING_ITERATIONS_FALLBACK,
             STUCK_IN_LOOP_DECOMPOSE,
             STUCK_IN_LOOP_BUILD,
         ]:
@@ -145,11 +143,10 @@ class TestSharedAgentMessages:
         assert "STOP calling tools" in STUCK_IN_LOOP_BUILD
 
     def test_fallback_format_strings(self):
-        from agent_messages import MAX_ITERATIONS_FALLBACK, MAX_PLANNING_ITERATIONS_FALLBACK
+        from agent_messages import MAX_ITERATIONS_FALLBACK
 
         # Verify format strings work with {n}
         assert "5" in MAX_ITERATIONS_FALLBACK.format(n=5)
-        assert "10" in MAX_PLANNING_ITERATIONS_FALLBACK.format(n=10)
 
 
 # -----------------------------------------------------------------------
@@ -176,45 +173,6 @@ class TestDataAgentPrompts:
         )
         for section in [_PREAMBLE, _QUERY_SYNTAX, _STRATEGY, _PROBE_STRATEGY]:
             assert len(section) > 50
-
-    def test_plan_only_addendum(self):
-        from data_agent.prompts.system import PLAN_ONLY_ADDENDUM
-
-        assert "PLANNING MODE" in PLAN_ONLY_ADDENDUM
-
-    def test_simulated_results_importable(self):
-        from data_agent.prompts.simulated_results import build_simulated_result
-
-        assert callable(build_simulated_result)
-
-    def test_simulated_results_search_data(self):
-        from data_agent.prompts.simulated_results import build_simulated_result
-        from dataclasses import dataclass
-
-        @dataclass
-        class FakeTC:
-            name: str
-            arguments: dict
-
-        tc = FakeTC(name="search_data", arguments={"collection": "genome", "count_only": True})
-        result = build_simulated_result(tc)
-        assert result["_mode"] == "plan_only"
-        assert result["_tool"] == "search_data"
-        assert "_note" in result
-
-    def test_simulated_results_unknown_tool(self):
-        from data_agent.prompts.simulated_results import build_simulated_result
-        from dataclasses import dataclass
-
-        @dataclass
-        class FakeTC:
-            name: str
-            arguments: dict
-
-        tc = FakeTC(name="unknown_tool", arguments={})
-        result = build_simulated_result(tc)
-        assert "_note" in result
-        assert "Plan your next step" in result["_note"]
 
 
 # -----------------------------------------------------------------------

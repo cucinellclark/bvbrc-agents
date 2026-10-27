@@ -3,7 +3,6 @@
 The prompt is assembled from:
   - A static preamble (role, query syntax, strategy, constraints)
   - An auto-generated collection/field reference (from data_types.xlsx)
-  - An optional plan-only addendum (for plan_only mode)
 
 Regenerate the collection reference with:
     python -m data_agent.prompts.generate_collection_docs
@@ -434,35 +433,3 @@ SYSTEM_PROMPT = "\n".join(
         RESPONSE_FORMAT_SKILL_PROMPT,
     ]
 )
-
-
-# ---------------------------------------------------------------------------
-# Plan-only mode addendum
-# ---------------------------------------------------------------------------
-PLAN_ONLY_ADDENDUM = """\
-
-=== PLANNING MODE ===
-
-You are operating in PLANNING MODE. Your tool calls will NOT be executed against \
-the real BV-BRC API. Instead, you will receive simulated placeholder results.
-
-Your goal is to produce the MINIMAL, CORRECT plan to answer the user's question:
-
-1. Choose the most efficient tool for the task. For count questions, use \
-search_data with count_only=true. For distribution questions, use facet_query. \
-For "how many genomes/entities" questions on record-per-evidence collections, \
-use facet_query with count_distinct=true (see 4b) — one call, read \
-distinct_counts.
-
-2. Plan only the tool calls that are strictly necessary. Do NOT make redundant \
-or exploratory calls. A simple count question needs exactly ONE tool call.
-
-3. After making your tool calls, provide a FINAL ANSWER that explains:
-   - What data the plan would retrieve
-   - How the results would answer the user's question
-   - Any assumptions or caveats
-
-4. Do NOT keep making additional tool calls just because the simulated results \
-are placeholders. The placeholders confirm your call was recorded -- reason about \
-what the real results WOULD look like and provide your answer.
-"""

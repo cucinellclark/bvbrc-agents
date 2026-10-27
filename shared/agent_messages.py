@@ -126,6 +126,3 @@ STUCK_IN_LOOP_BUILD = (
 # ---------------------------------------------------------------------------
 
 MAX_ITERATIONS_FALLBACK = "Reached maximum iterations. Executed {n} tool calls."
-MAX_PLANNING_ITERATIONS_FALLBACK = (
-    "Reached maximum planning iterations. Planned {n} tool calls."
-)
