@@ -50,7 +50,7 @@ def test_other_users_workspaces_and_group_paths():
     assert prog.describe_tool_call("workspace_browse", {"scope": "shared"}) == ("Listing workspaces shared with you", None)
     label, detail = prog.describe_tool_call("workspace_browse", {"scope": "public", "name_contains": ["NVDDTHD"]})
     assert label == "Listing public workspaces" and "NVDDTHD" in detail
-    assert prog.describe_result("workspace_browse", {"scope": "public"}, {"scope": "public", "items": [{}, {}]})[1] == "2 workspaces"
+    assert prog.describe_result("workspace_browse", {"scope": "public"}, {"scope": "public", "result_type": "workspaces", "items": [{}, {}]})[1] == "2 workspaces"
     label, _ = prog.describe_tool_call("get_group_ids", {"group_name": "/allan@patricbrc.org/AllanShare/Streptococcus public"})
     assert label == "Reading group 'Streptococcus public'"
 
@@ -74,17 +74,17 @@ def test_workspace_browse_says_listing_or_searching_and_how_many_of_how_many():
     assert prog.describe_tool_call("workspace_browse", {"file_extensions": ["fastq"], "recursive": False})[0] == "Listing your home folder"
     # Filters without recursive: the tool searches, so the label says so.
     assert prog.describe_tool_call("workspace_browse", {"file_extensions": ["fastq"]})[0] == "Searching your home folder"
-    page = {"result": {"items": [{}] * 50, "count": 50, "total": 812}}
+    page = {"items": [{}] * 50, "count": 50, "total": 812}
     assert prog.describe_result("workspace_browse", {}, page) == ("done", "50 of 812 items")
-    assert prog.describe_result("workspace_browse", {}, {"result": {"items": [{}, {}], "total": 2}}) == ("done", "2 items")
+    assert prog.describe_result("workspace_browse", {}, {"items": [{}, {}], "total": 2}) == ("done", "2 items")
     assert prog.describe_result("workspace_browse", {"scope": "public"},
-                                {"scope": "public", "items": [{}], "matched": 13})[1] == "1 of 13 workspaces"
+                                {"scope": "public", "result_type": "workspaces", "items": [{}], "total": 13})[1] == "1 of 13 workspaces"
     # Part 3: one search inside every shared workspace; several folders at once.
     label, detail = prog.describe_tool_call("workspace_browse", {"scope": "shared", "recursive": True, "name_contains": ["strep"]})
     assert label == "Searching the workspaces shared with you" and "strep" in detail
     assert prog.describe_tool_call("workspace_browse", {"paths": ["/a/b", "/c/d"], "recursive": True})[0] == "Searching 2 folders"
     assert prog.describe_tool_call("workspace_browse", {"paths": ["/a/Reads"]})[0] == "Listing Reads"
-    found = {"result": {"scope": "shared", "result_type": "search_result", "items": [{}] * 3, "total": 3}}
+    found = {"scope": "shared", "result_type": "search_result", "items": [{}] * 3, "total": 3}
     assert prog.describe_result("workspace_browse", {}, found) == ("done", "3 items")
     assert prog.describe_result("list_groups", {}, {"groups": ["a"] * 300, "total": 320}) == ("done", "300 of 320 groups")
     # Filter / sort review: any-of names, job filters and dates read as words.

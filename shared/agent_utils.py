@@ -983,6 +983,11 @@ def trim_messages_to_fit(
                     count = data.get("count", data.get("total", ""))
                     if count:
                         summary_parts.append(f"count={count}")
+                    if data.get("total") not in (None, "", count):
+                        summary_parts.append(f"total={data['total']}")
+                    path = data.get("path", "")
+                    if isinstance(path, str) and path:
+                        summary_parts.append(f"path={path}")
                     error = data.get("error", "")
                     if error:
                         summary_parts.append(f"error={error}")

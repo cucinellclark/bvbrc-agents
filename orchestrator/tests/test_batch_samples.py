@@ -102,7 +102,7 @@ def _cfg(session=True):
 
 
 async def _list(items, **kwargs):
-    browse = AsyncMock(return_value={"result": {"path": READS, "items": items}})
+    browse = AsyncMock(return_value={"path": READS, "items": items})
     with patch.object(samples, "workspace_browse", browse):
         out = await samples.list_samples(config=_cfg(), headers={"Authorization": TOKEN}, **kwargs)
     return out, browse

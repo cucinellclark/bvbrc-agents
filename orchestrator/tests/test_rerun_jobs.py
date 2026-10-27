@@ -133,7 +133,7 @@ def _query_tasks(tasks):
 
 
 def _browse(items):
-    return AsyncMock(return_value={"result": {"items": items, "count": len(items)}})
+    return AsyncMock(return_value={"items": items, "count": len(items)})
 
 
 def _cfg(session=True):

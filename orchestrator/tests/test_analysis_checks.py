@@ -112,11 +112,11 @@ JOB = {"id": 21474665, "status": "completed", "start_time": "2026-02-15 03:48:39
 def _browse_factory(parent_items, folder_items):
     async def fake_browse(path=None, **kw):
         if path == "/u/home/TC":
-            return {"result": {"items": parent_items}}
+            return {"items": parent_items}
         if path == "/u/home/TC/.out":
             if folder_items is None:
                 return {"errorType": "PATH_NOT_FOUND", "error": "not found"}
-            return {"result": {"items": folder_items}}
+            return {"items": folder_items}
         raise AssertionError(path)
     return fake_browse
 

@@ -622,11 +622,9 @@ def _describe_result(name: str, a: dict, r: Any) -> tuple[str, str]:
         return ("done", _plural(n, "field") if n is not None else "done")
 
     if name == "workspace_browse":
-        inner = r.get("result") if isinstance(r.get("result"), dict) else r
-        n = _count_of(inner, ("items", "results"))
-        # A scope listing lists workspaces; a scope search finds items.
-        noun = "workspace" if inner.get("scope") and "result_type" not in inner else "item"
-        total = inner.get("total", inner.get("matched"))
+        n = _count_of(r, ("items", "results"))
+        noun = "workspace" if r.get("result_type") == "workspaces" else "item"
+        total = r.get("total")
         if n is not None and isinstance(total, int) and total > n:
             return ("done", f"{_n(n)} of {_plural(total, noun)}")
         return ("done", _plural(n, noun) if n is not None else "done")

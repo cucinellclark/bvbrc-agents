@@ -70,7 +70,8 @@ def test_small_results_text_facets_and_summaries():
 
 
 def test_a_nested_result_envelope_keeps_its_totals_summary_and_paging():
-    # workspace_browse nests everything under "result"; compaction used to
+    # Some tool results nest everything under "result" (workspace_browse did
+    # until 2026-10-27; the old MCP server's copies still do); compaction used to
     # replace the whole envelope with "[object with N fields omitted]".
     items = [{"name": f"f{i}.fastq", "type": "reads", "path": f"/u/home/f{i}.fastq", "size": 1} for i in range(50)]
     full = json.dumps({"result": {"items": items, "count": 50, "total": 812, "truncated": True,

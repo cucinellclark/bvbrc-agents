@@ -85,7 +85,7 @@ async def test_step_outputs_from_tool_results():
             {"error": "Plan mode", "blocked_by_mode": True}),
         _te("submit_gowe_job", {"workflow_id": "MSA"},
             {"submission_id": "sub_1", "output_path": "/u/home/chats/s/msa"}),
-        _te("workspace_browse", {"path": "/u/home/reads"}, {"result": {"items": []}}),
+        _te("workspace_browse", {"path": "/u/home/reads"}, {"items": []}),
         _te("search_data", {"collection": "genome"}, {"error": "bad query"}),
     ]
     out = so.build_step_outputs(execs)
@@ -279,7 +279,7 @@ async def test_recon_cap_leaves_only_plan_or_ask_after_four_lookups():
         message=SimpleNamespace(content="I need more detail.", tool_calls=None, reasoning=None),
         finish_reason="stop")])
     chat = AsyncMock(side_effect=[_call(i) for i in range(4)] + [final])
-    browse = AsyncMock(return_value={"result": {"items": []}})
+    browse = AsyncMock(return_value={"items": []})
     cfg = AgentConfig(llm_base_url="http://llm", llm_api_key="k", llm_model="m")
     state = AgentState(query="q", context={})
     state.add_system_message("sys")
