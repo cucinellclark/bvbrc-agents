@@ -297,7 +297,13 @@ async def _add_group_preview(
     unit = "genomes" if group_type == "genome_group" else "features" if group_type == "feature_group" else "members"
     parts = [f"{group_type} '{name}'"]
     if n is not None:
-        exact = bool(args.get("ids")) or args.get("collection") in _ONE_ROW_PER_MEMBER.get(group_type, set())
+        # Listed ids alone: exact.  A query on a one-row-per-member
+        # collection: exact.  Both together: listed ids may also match the
+        # query, so the count is an upper bound.
+        if args.get("ids"):
+            exact = not args.get("query")
+        else:
+            exact = args.get("collection") in _ONE_ROW_PER_MEMBER.get(group_type, set())
         parts.append(f"— {'' if exact else 'up to '}{n} {unit}")
         result["member_count"] = n
         result["member_count_exact"] = exact

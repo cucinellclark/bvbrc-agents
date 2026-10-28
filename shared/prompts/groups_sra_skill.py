@@ -63,7 +63,11 @@ GROUPS_SRA_SKILL_PROMPT = """
   - ``collection``: ``"genome"`` for genome groups, ``"genome_feature"`` for
     feature groups
   - ``query``: Solr query string (same syntax as ``search_data``)
-  - ``limit``: Max IDs to include (default 500)
+  - ``ids``: explicit member ids. With a query, the ids the group must
+    contain (e.g. a reference genome next to a sample of ``limit``): they are
+    always members and the query fills the rest, in ONE call. Never prepare
+    the group first and plan to add an id afterwards.
+  - ``limit``: Max IDs to include (default 500; listed ids count toward it)
   - ``if_exists``: ``"error"`` (default) | ``"append"`` | ``"replace"``
 - Before creating a group, use ``search_data`` with ``count_only=true`` to
   check how many records match. Tell the user the total count and the limit

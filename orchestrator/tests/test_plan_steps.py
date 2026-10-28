@@ -154,13 +154,66 @@ async def test_create_group_from_ids_keeps_order_and_drops_duplicates():
     assert out["count"] == 2 and out["query_used"] is None
 
 
-@pytest.mark.parametrize("kwargs", [
-    {"ids": ["83332.12"], "query": "genus:X", "collection": "genome"},
-    {},
-])
-async def test_create_group_needs_exactly_one_selection(kwargs):
-    out = await groups.create_group("g", "genome_group", headers={"Authorization": "tok"}, **kwargs)
+async def test_create_group_needs_a_selection():
+    out = await groups.create_group("g", "genome_group", headers={"Authorization": "tok"})
     assert out["errorType"] == "INVALID_PARAMETERS"
+
+
+# A query plus listed ids: "50 M. tuberculosis genomes including H37Rv".
+# Live, 2026-10-28: the tool took only one of the two, the agent's corrected
+# call (an id list) was refused, and the tree ran without the reference.
+
+async def test_listed_ids_always_join_and_the_query_fills_up_to_limit():
+    record = {}
+    fetch = AsyncMock(return_value={"ids": ["1.1", "83332.12", "2.1", "3.1", "4.1"], "total_matching": 41887})
+    with patch.object(groups, "get_group_functions", lambda *_: _gf(record)), \
+         patch.object(groups, "get_json_rpc", lambda *_: SimpleNamespace(JsonRpcCaller=lambda **k: object())), \
+         patch.object(groups, "_fetch_ids_by_query", fetch):
+        out = await groups.create_group("g", "genome_group", collection="genome", query="genus:X",
+                                        ids=["83332.12"], limit=4, headers={"Authorization": "tok"})
+    # Listed first; the duplicate from the query is skipped; 4 in all.
+    assert record["id_list"] == ["83332.12", "1.1", "2.1", "3.1"]
+    # Fetched enough to fill the slots even if listed ids recur in the matches.
+    assert fetch.await_args.kwargs["limit"] == 5
+    assert out["count"] == 4 and out["listed"] == 1 and out["from_query"] == 3
+    assert out["query_used"] == "genus:X"
+    assert "1 listed + 3 from the query" in out["message"]
+
+
+async def test_listed_ids_are_never_cut_by_limit():
+    record = {}
+    with patch.object(groups, "get_group_functions", lambda *_: _gf(record)), \
+         patch.object(groups, "get_json_rpc", lambda *_: SimpleNamespace(JsonRpcCaller=lambda **k: object())), \
+         patch.object(groups, "_fetch_ids_by_query", AsyncMock(return_value={"ids": ["9.1"], "total_matching": 1})):
+        await groups.create_group("g", "genome_group", collection="genome", query="genus:X",
+                                  ids=["1.1", "2.1", "3.1"], limit=2, headers={"Authorization": "tok"})
+    assert record["id_list"] == ["1.1", "2.1", "3.1"]
+
+
+async def test_a_failed_query_never_leaves_just_the_listed_ids():
+    gf = SimpleNamespace(create_group=AsyncMock(side_effect=AssertionError("must not create")))
+    with patch.object(groups, "get_group_functions", lambda *_: gf), \
+         patch.object(groups, "_fetch_ids_by_query", AsyncMock(return_value={"error": "Solr down"})):
+        out = await groups.create_group("g", "genome_group", collection="genome", query="genus:X",
+                                        ids=["83332.12"], headers={"Authorization": "tok"})
+    assert out["error"] == "Solr down"
+
+
+async def test_blocked_group_question_with_listed_ids_and_a_query():
+    args = {"group_name": "mtb_50", "group_type": "genome_group", "collection": "genome",
+            "query": 'genome_name:"Mycobacterium tuberculosis"', "ids": ["83332.12"], "limit": 50}
+    with patch.object(groups, "_get_solr_query_fn", lambda: AsyncMock(return_value={"numFound": 41887})):
+        out = await execute_tool("create_group", dict(args), {"create_group": AsyncMock()},
+                                 config=SimpleNamespace(execution_mode="plan", agent_key="data"))
+    assert out["member_count"] == 50 and out["member_count_exact"] is False
+    assert out["summary"] == ("genome_group 'mtb_50' — up to 50 genomes "
+                              '(1 listed id + genome: genome_name:"Mycobacterium tuberculosis")')
+    assert out["arguments"] == args
+    # The guard sees the same members the tool would write.
+    with patch.object(groups, "_fetch_ids_by_query",
+                      AsyncMock(return_value={"ids": ["1.1", "2.1"], "total_matching": 2})):
+        members = await groups.resolve_group_members({**args, "limit": 2})
+    assert members == frozenset({"83332.12", "1.1"})
 
 
 async def test_create_group_rejects_malformed_ids():
