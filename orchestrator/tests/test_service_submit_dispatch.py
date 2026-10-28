@@ -1,4 +1,4 @@
-"""Service agent dispatch for ``submit`` with no workflow id (release plan risk R5).
+"""Service agent dispatch: ``submit`` with no workflow id (release plan risk R5), ``status``.
 
 A job prepared through GoWe has no saved workflow id: its inputs exist only in
 the conversation. The "Submit this job" button sends an execute-once follow-up,
@@ -11,6 +11,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
+
+import pytest
 
 _REPO_ROOT = str(Path(__file__).resolve().parent.parent.parent)
 if _REPO_ROOT not in sys.path:
@@ -39,11 +41,25 @@ async def test_submit_without_workflow_id_runs_populate_loop():
     assert flow.await_args.args[0] == QUERY
 
 
-async def test_status_without_workflow_id_still_asks():
-    result, flow = await _run(Intent(action="status", workflow_id=None))
+@pytest.mark.parametrize("workflow_id", [None, "wf_abc"])
+async def test_status_runs_populate_loop(workflow_id):
+    # The old direct GoWe lookup used a wf_ workflow id as a submission id
+    # (always "not found") and, with no id, asked for one users never see.
+    result, flow = await _run(Intent(action="status", workflow_id=workflow_id))
+    assert result == "ran-populate"
+    flow.assert_awaited_once()
+
+
+async def test_cancel_without_workflow_id_still_asks():
+    result, flow = await _run(Intent(action="cancel", workflow_id=None))
     flow.assert_not_awaited()
     assert result.status == "needs_input"
-    assert "couldn't determine which one" in (result.question or "")
+
+
+def test_populate_prompt_has_job_status_section():
+    from service_agent.prompts.populate import build_populate_prompt
+    prompt = build_populate_prompt()
+    assert "== JOB STATUS ==" in prompt and "list_jobs" in prompt
 
 
 async def test_submit_with_workflow_id_uses_handler():

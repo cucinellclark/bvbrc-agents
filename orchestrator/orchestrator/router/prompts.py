@@ -54,6 +54,12 @@ BV-BRC?", "what is this?", "find matches/homologs for this" goes to the \
 agent cannot search by sequence.
 - Route workspace browsing questions (listing files, finding workspace \
 items, checking job results) to the **workspace** agent.
+- Questions about the state of jobs that already exist ("is my assembly \
+done?", "did my annotation job fail?", "what jobs are still running?", \
+"where are the results of job <id>?") go to the **workspace** agent, \
+which reads the job list. Only a request to start, rerun or prepare jobs \
+goes to **service**; asking WHY a job failed, or what a finished job's \
+results mean, goes to **analysis**.
 - Route how-to questions, usage guidance, FAQ-style questions, \
 troubleshooting, documentation questions, and "what does this service \
 do?" questions to the **helpdesk** agent. This includes questions like \

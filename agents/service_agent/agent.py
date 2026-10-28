@@ -6,7 +6,7 @@ Intent-dispatched architecture:
   2. Dispatch to the appropriate handler:
      - plan   -> GoWe-first workflow: discover, select, populate, submit
      - submit -> direct GoWe call
-     - status -> direct GoWe call
+     - status -> the populate loop (list_jobs / get_job_details, == JOB STATUS ==)
      - cancel -> direct GoWe call
      - modify -> reserved (falls through to plan)
      - unknown -> falls through to plan (LLM-powered fallback)
@@ -30,7 +30,7 @@ from agent_utils import emit_progress
 from shared import progress as prog
 
 from service_agent.classifier import classify_intent
-from service_agent.handlers import handle_submit, handle_status, handle_cancel
+from service_agent.handlers import handle_submit, handle_cancel
 from service_agent.models import AgentConfig, AgentResult, AgentState, Intent
 from service_agent.phases.populate import populate_and_submit
 from service_agent.phases.replay import replay_blocked_actions, valid_replay_actions
@@ -155,14 +155,12 @@ async def run_agent(
             progress_callback,
         )
 
-    # Status: direct engine call, no LLM
-    if intent.action == "status" and intent.workflow_id:
-        return await handle_status(
-            intent.workflow_id,
-            cfg,
-            state,
-            progress_callback,
-        )
+    # Status: the populate loop answers it with list_jobs / get_job_details
+    # (prompt == JOB STATUS ==). The old direct GoWe lookup took a wf_
+    # workflow id as a submission id (always "not found"), and without an id
+    # asked users for one they are never shown.
+    if intent.action == "status":
+        return await _run_job_request(query, cfg, state, multi_job, progress_callback)
 
     # Cancel: direct engine call, no LLM
     if intent.action == "cancel" and intent.workflow_id:
@@ -191,8 +189,8 @@ async def run_agent(
         logger.info("Submit with no workflow_id: running the populate loop on the conversation")
         return await _run_job_request(query, cfg, state, multi_job, progress_callback)
 
-    # Status/cancel without workflow_id: classifier couldn't resolve
-    if intent.action in ("status", "cancel") and not intent.workflow_id:
+    # Cancel without workflow_id: classifier couldn't resolve
+    if intent.action == "cancel" and not intent.workflow_id:
         state.status = "needs_input"
         state.question = (
             f"I understand you want to {intent.action} a workflow, but I "

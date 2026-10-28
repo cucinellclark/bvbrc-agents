@@ -6,7 +6,6 @@ are indistinguishable from planning results to upstream consumers.
 """
 
 from service_agent.handlers.submit import handle_submit
-from service_agent.handlers.status import handle_status
 from service_agent.handlers.cancel import handle_cancel
 
-__all__ = ["handle_submit", "handle_status", "handle_cancel"]
+__all__ = ["handle_submit", "handle_cancel"]
