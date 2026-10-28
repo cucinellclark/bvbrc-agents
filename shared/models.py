@@ -109,8 +109,10 @@ class BaseAgentConfig(BaseModel):
     bvbrc_workspace_url: str = "https://p3.theseed.org/services/Workspace"
     bvbrc_auth_token: str | None = None
 
-    # GoWe workflow engine
-    gowe_url: str = "http://140.221.78.67:12007"
+    # GoWe workflow engine. Set by dispatch_agent from the orchestrator's
+    # gowe_url (agents.yaml / GOWE_URL); None means no GoWe, and GoWe tools
+    # return an error instead of calling another deployment's server.
+    gowe_url: str | None = None
 
     # Literature RAG retrieval (RAGStack API)
     literature_rag_url: str = "https://www.bv-brc.org/ragstack/asm-next/api"

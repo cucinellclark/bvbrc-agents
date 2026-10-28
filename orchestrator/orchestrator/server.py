@@ -136,6 +136,16 @@ def _build_lifespan(
                 "create ~/.copilot_internal_key (chmod 600) with the same "
                 "value the gateway uses. See orchestrator/internal_auth.py."
             )
+        # --- GoWe server (required) ---
+        if not config.gowe_url.strip():
+            raise RuntimeError(
+                "No GoWe server configured. Set orchestrator.gowe_url in "
+                "agents.yaml or the GOWE_URL environment variable."
+            )
+        from shared.agent_dispatch import set_gowe_url
+        set_gowe_url(config.gowe_url)
+        logger.info("GoWe server: %s", config.gowe_url)
+
         if not config.llm_allowed_hosts:
             logger.warning(
                 "orchestrator.llm_allowed_hosts is empty — every request's "

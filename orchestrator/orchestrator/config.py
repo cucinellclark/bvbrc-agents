@@ -118,6 +118,13 @@ class OrchestratorConfig(BaseModel):
     # Empty means every override is rejected. See internal_auth.py.
     llm_allowed_hosts: list[str] = Field(default_factory=list)
 
+    # GoWe server every agent submits to and reads workflows from (the
+    # user's token goes with each call). The environment variable GOWE_URL
+    # overrides the yaml value. Empty: the server refuses to start
+    # (server.py lifespan), so a deployment never falls back to another
+    # instance's GoWe.
+    gowe_url: str = ""
+
     @classmethod
     def from_yaml(cls, path: str | Path) -> OrchestratorConfig:
         """Load configuration from a YAML file."""
@@ -137,6 +144,9 @@ class OrchestratorConfig(BaseModel):
             agents[key] = AgentConfig(**agent_data)
 
         settings = raw.get("orchestrator", {})
+        gowe_env = os.environ.get("GOWE_URL", "").strip()
+        if gowe_env:
+            settings = {**settings, "gowe_url": gowe_env}
         return cls(agents=agents, **settings)
 
     @classmethod

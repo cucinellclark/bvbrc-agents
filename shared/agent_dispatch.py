@@ -104,6 +104,24 @@ def _parse_context(context: Any) -> dict[str, Any]:
     return {"raw_context": str(context)}
 
 
+# GoWe server for every agent run, set once at startup by the orchestrator
+# (agents.yaml orchestrator.gowe_url / GOWE_URL). Other callers (the MCP
+# bridge, scripts) get the GOWE_URL environment variable. Never taken from
+# the request context: the user's token is sent to this address.
+_GOWE_URL: str | None = None
+
+
+def set_gowe_url(url: str | None) -> None:
+    """Set the GoWe server every agent run uses (orchestrator startup)."""
+    global _GOWE_URL
+    _GOWE_URL = (url or "").strip() or None
+
+
+def gowe_url() -> str | None:
+    """The configured GoWe server, or None when nothing is configured."""
+    return _GOWE_URL or os.environ.get("GOWE_URL", "").strip() or None
+
+
 def _build_config_kwargs(
     auth_token: Optional[str],
     ctx: dict[str, Any],
@@ -146,10 +164,10 @@ def _build_config_kwargs(
     if lit_collections:
         config_kwargs["literature_rag_collections"] = lit_collections
 
-    # Forward GoWe URL override if provided
-    gowe_url = ctx.get("gowe_url")
-    if gowe_url:
-        config_kwargs["gowe_url"] = gowe_url
+    # GoWe server: from startup config only (see set_gowe_url), never ctx.
+    configured_gowe = gowe_url()
+    if configured_gowe:
+        config_kwargs["gowe_url"] = configured_gowe
 
     # Forward session context for session-based workspace output paths.
     # submit_gowe_job uses these to rewrite output_path under

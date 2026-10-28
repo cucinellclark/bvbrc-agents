@@ -197,6 +197,13 @@ orchestrator:
   # any port). The model list in Mongo supplies base_url per request; without
   # this allowlist any caller could aim the agents at a server it controls.
   # Add a host here (and restart) before activating a modelList row on it.
+  # GoWe server the agents submit jobs to and read workflows from. Required:
+  # the orchestrator refuses to start without it. GOWE_URL in the environment
+  # overrides it (production on elm: http://127.0.0.1:7000). The gateway's
+  # job monitor has its own setting (config.json workflow_monitor.gowe_url);
+  # the two must point at the same server.
+  gowe_url: "http://140.221.78.67:12007"
+
   llm_allowed_hosts:
     - "mango.cels.anl.gov"    # vLLM: Qwen, Llama 4 Scout
     - "apps.inside.anl.gov"   # Argo
